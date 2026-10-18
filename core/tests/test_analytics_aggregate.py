@@ -555,6 +555,30 @@ def test_bucket_normalizes_timestamptz_offset_before_truncating(tmp_path, conn):
     assert rows == [{"annee": "2026-01-05 00:00:00", "value": 2}]
 
 
+def test_bucket_day_in_requested_time_zone(tmp_path, conn):
+    """AUD-115 : 2026-07-01T00:30+02:00 est le 1er juillet à Paris mais le 30 juin en UTC."""
+    _write_partition(tmp_path, rows=[_row(1, "Nord", "2026-07-01 00:30:00+02", 1, lsn=1)])
+
+    def run(tz):
+        request = AggregateRequestBody(groupBy="annee", bucket="day", agg="count", timeZone=tz)
+        return run_collection_aggregate(
+            conn,
+            base_uri=str(tmp_path),
+            tenant_id="t1",
+            collection_id="villes",
+            table_info=TABLE_INFO,
+            request=request,
+        )[1]
+
+    assert run(None) == [{"annee": "2026-06-30 00:00:00", "value": 1}]
+    assert run("Europe/Paris") == [{"annee": "2026-07-01 00:00:00", "value": 1}]
+
+
+def test_bucket_time_zone_must_be_iana():
+    with pytest.raises(ValueError):
+        AggregateRequestBody(groupBy="annee", bucket="day", timeZone="Mars/Phobos")
+
+
 def test_bucket_groups_rows_by_month(tmp_path, conn):
     _write_partition(
         tmp_path,

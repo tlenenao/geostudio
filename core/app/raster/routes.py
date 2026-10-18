@@ -250,9 +250,12 @@ def read_raster_tile(
             if not _RENDER_PARAMS[name].match(value):
                 raise HTTPException(status_code=422, detail=f"invalid {name}")
             params[name] = value
+    # AUD-056 : autorisation faite, on rend la connexion avant l'appel sortant
+    # (une rafale vers un TiTiler lent épuisait le pool).
+    session.commit()
     try:
         resp = httpx.get(
-            f"{titiler_url.rstrip('/')}/cog/tiles/{z}/{x}/{y}.png", params=params, timeout=30.0
+            f"{titiler_url.rstrip('/')}/cog/tiles/{z}/{x}/{y}.png", params=params, timeout=10.0
         )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="raster tile service unavailable") from exc

@@ -44,6 +44,7 @@ vi.mock("echarts/components", () => ({
   DatasetComponent: {},
   MarkLineComponent: {},
   MarkAreaComponent: {},
+  AriaComponent: {},
 }));
 
 vi.mock("echarts/renderers", () => ({
@@ -88,4 +89,47 @@ test("registers SunburstChart with echarts.use", () => {
   // checks reference identity, to genuinely discriminate.
   expect(useMock).toHaveBeenCalledTimes(1);
   expect(useMock.mock.calls[0][0]).toContain(SunburstChart);
+});
+
+test("AUD-114 : rôle img + libellé, tableau alternatif et équivalent clavier du cross-filter", async () => {
+  const { default: userEvent } = await import("@testing-library/user-event");
+  const { screen } = await import("@testing-library/react");
+  const onClick = vi.fn();
+  render(
+    <EChart
+      onClick={onClick}
+      option={{
+        xAxis: { type: "category", data: ["Nord", "Sud"] },
+        series: [{ type: "bar", name: "Pop", data: [10, 20] }],
+      }}
+    />,
+  );
+  expect(screen.getByRole("img")).toHaveAccessibleName(/bar/);
+  const toggle = screen.getByRole("button", { name: "Voir en tableau" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await userEvent.click(toggle);
+  expect(screen.getByRole("table")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Filtrer sur Sud" }));
+  expect(onClick).toHaveBeenCalledWith({ name: "Sud", dataType: "main" });
+});
+
+test("AUD-114 : tableau alternatif d'un graphique dataset + encode", async () => {
+  const { chartTable } = await import("./chartTable");
+  expect(
+    chartTable({
+      dataset: {
+        source: [
+          { r: "Nord", p: 10 },
+          { r: "Sud", p: 20 },
+        ],
+      },
+      series: [{ type: "bar", name: "p", encode: { x: "r", y: "p" } }],
+    } as never),
+  ).toEqual({
+    head: ["", "p"],
+    rows: [
+      ["Nord", "10"],
+      ["Sud", "20"],
+    ],
+  });
 });

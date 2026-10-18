@@ -5,6 +5,9 @@ import { registerMessages } from "../index";
 
 export const map = {
   // MapEditorPage
+  "mapFeatureList.toggle": "Entités de la vue",
+  "mapFeatureList.empty": "Aucune entité visible dans la vue.",
+  "mapFeatureList.unnamed": "Entité sans nom",
   "mapEditor.notFound": "Carte introuvable.",
   "mapEditor.layersLabel": "Couches",
   "mapEditor.mapLabel": "Carte",
@@ -144,6 +147,8 @@ export const map = {
   "layersPanel.geojsonNotLoadedError": "La couche GeoJSON n'est pas encore chargée",
   "layersPanel.clusterEnable": "Regrouper les points",
   "layersPanel.clusterRadius": "Rayon de regroupement (pixels)",
+  "layersPanel.minZoom": "Zoom min",
+  "layersPanel.maxZoom": "Zoom max",
   "layersPanel.clusterMaxZoom": "Zoom max du regroupement",
   "layersPanel.clusterLabel": "Afficher le nombre de points",
   "layersPanel.clusterHeatmapWarning":

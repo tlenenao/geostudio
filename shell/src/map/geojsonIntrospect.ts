@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { compareText } from "../lib/format";
 import type { DataRecord, ItemClient } from "../api/types";
 import { isHostedCollectionUrl } from "./hostedCoreUrl";
 import type { SampleFieldFn, StatQueryFn } from "../builder/widgets/mapSymbology";
@@ -35,7 +36,7 @@ export function listFields(fc: GeoJSON.FeatureCollection): string[] {
   for (const feature of fc.features) {
     for (const key of Object.keys(feature.properties ?? {})) fields.add(key);
   }
-  return [...fields].sort();
+  return [...fields].sort(compareText);
 }
 
 function numericValues(fc: GeoJSON.FeatureCollection, field: string): number[] {

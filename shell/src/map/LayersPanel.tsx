@@ -157,6 +157,40 @@ function LayerSymbologyEditor({
 // REV-304 : champ date/datetime d'une couche, filtré par le lecteur temporel.
 // Sans collectionId (couche "feature" URL GeoJSON) le type des champs est
 // inconnu : on propose tous les champs introspectés.
+// AUD-051 : plage d'échelle — la couche n'est dessinée qu'entre ces deux niveaux de zoom.
+function LayerZoomRangeEditor({
+  layer,
+  onChangeLayer,
+}: {
+  layer: Extract<MapLayer, { kind: "vector" | "feature" }>;
+  onChangeLayer: (next: MapLayer) => void;
+}) {
+  const set = (key: "minZoom" | "maxZoom", v: string) => {
+    const { [key]: _drop, ...rest } = layer;
+    onChangeLayer(v === "" ? rest : { ...rest, [key]: Number(v) });
+  };
+  const field = (key: "minZoom" | "maxZoom", label: string) => (
+    <label className="flex items-center gap-1 text-xs">
+      {label}
+      <input
+        type="number"
+        min={0}
+        max={24}
+        step={0.5}
+        className="h-9 w-16 rounded border border-rule bg-surface px-1"
+        value={layer[key] ?? ""}
+        onChange={(e) => set(key, e.target.value)}
+      />
+    </label>
+  );
+  return (
+    <div className="flex flex-wrap gap-2">
+      {field("minZoom", t("layersPanel.minZoom"))}
+      {field("maxZoom", t("layersPanel.maxZoom"))}
+    </div>
+  );
+}
+
 function LayerTimeFieldEditor({
   layer,
   onChangeLayer,
@@ -629,6 +663,12 @@ export function LayersPanel({
                     }
                   />
                 )}
+                <LayerZoomRangeEditor
+                  layer={layer}
+                  onChangeLayer={(next) =>
+                    onChange(layers.map((l) => (l.id === layer.id ? next : l)))
+                  }
+                />
                 <LayerPopupEditor
                   layer={layer}
                   onChangeLayer={(next) =>

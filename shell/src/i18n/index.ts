@@ -20,6 +20,60 @@ export type MessageKey =
 // (REV-307 b : le catalogue n'est plus tout entier dans le chunk d'entrée).
 const messages: Record<string, string> = { ...fr };
 
+// AUD-019 / D8 : locale active. Le français (catalogue source) est le repli ; l'anglais
+// est un chunk chargé à la demande (jamais dans la charge initiale du français).
+export type Locale = "fr" | "en";
+export const LOCALES: readonly Locale[] = ["fr", "en"];
+const STORAGE_KEY = "gs.locale";
+let locale: Locale = "fr";
+let en: Record<string, string> = {};
+
+export function getLocale(): Locale {
+  return locale;
+}
+
+/** Préférence stockée, sinon langue du navigateur (fr/en), sinon français. */
+export function detectLocale(): Locale {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === "fr" || stored === "en") return stored;
+  } catch {
+    /* stockage indisponible : repli navigateur */
+  }
+  const nav = typeof navigator === "undefined" ? "" : navigator.language.toLowerCase();
+  return nav.startsWith("en") ? "en" : "fr";
+}
+
+/** Active une locale : charge le chunk anglais si besoin, pose `lang`/`dir` sur <html>. */
+export async function activateLocale(next: Locale): Promise<void> {
+  if (next === "en" && Object.keys(en).length === 0) {
+    en = (await import("./en/all")).enMessages;
+  }
+  locale = next;
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = next;
+    document.documentElement.dir = "ltr"; // aucune locale RTL livrée (AUD-115 : RTL reporté)
+  }
+}
+
+export function hasLocalePreference(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Mémorise la préférence puis recharge : `t()` n'est pas réactif (appelé au rendu). */
+export function setLocalePreference(next: Locale): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, next);
+  } catch {
+    /* préférence non persistée : rechargement quand même */
+  }
+  window.location.reload();
+}
+
 /** Appelé par chaque fichier `domains/*.ts` à son évaluation. */
 export function registerMessages(domain: Record<string, string>): void {
   Object.assign(messages, domain);
@@ -35,7 +89,7 @@ export function registerMessages(domain: Record<string, string>): void {
  * interdit par `domains.test.ts`) se comporte comme une clé inconnue.
  */
 export function t(key: MessageKey, params?: Record<string, string | number>): string {
-  const template: string = messages[key];
+  const template: string = (locale === "en" ? en[key] : undefined) ?? messages[key];
   if (params === undefined) return template;
   // Clé inconnue (domaine non enregistré) : clé brute plutôt qu'une TypeError.
   // Sans params, `undefined` est conservé (cf. index.test.ts).
@@ -51,7 +105,9 @@ export function t(key: MessageKey, params?: Record<string, string | number>): st
  * pour 0 et 1, pluriel à partir de 2 — « 0 élément », contrairement à l'anglais).
  */
 export function plural(n: number, one: MessageKey, many: MessageKey): MessageKey {
-  return n >= 0 && n < 2 ? one : many;
+  // Règle fr historique conservée (0 et 1,5 au singulier) ; `Intl.PluralRules` ailleurs.
+  if (locale === "fr") return n >= 0 && n < 2 ? one : many;
+  return new Intl.PluralRules(locale).select(n) === "one" ? one : many;
 }
 
 /**
@@ -64,3 +120,8 @@ export function plural(n: number, one: MessageKey, many: MessageKey): MessageKey
 export function resolveMessageKey(key: string, fallback: MessageKey): MessageKey {
   return Object.hasOwn(messages, key) ? (key as MessageKey) : fallback;
 }
+
+// Boot : la locale doit être active AVANT l'évaluation des modules qui appellent `t()` au
+// niveau module (tables de libellés) — d'où l'attente au niveau module. Les tests restent en fr
+// (jsdom annonce `en-US`) et pilotent `activateLocale` eux-mêmes.
+if (import.meta.env.MODE !== "test" && detectLocale() === "en") await activateLocale("en");

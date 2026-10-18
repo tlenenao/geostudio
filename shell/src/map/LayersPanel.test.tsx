@@ -618,3 +618,13 @@ test("cluster: pas d'avertissement sans heatmap sur les mêmes données", () => 
   renderPanel([{ ...pointLayer, cluster: {} } as MapLayer], vi.fn());
   expect(screen.queryByText(/incompatible avec une carte de chaleur/i)).toBeNull();
 });
+
+test("AUD-051 : la plage de zoom d'une couche s'édite et se vide", () => {
+  const onChange = vi.fn();
+  const one: MapLayer[] = [{ id: "a", title: "A", visible: true, kind: "feature", url: "u1" }];
+  renderPanel(one, onChange);
+  fireEvent.change(screen.getByLabelText(t("layersPanel.minZoom")), { target: { value: "6" } });
+  expect(onChange).toHaveBeenLastCalledWith([expect.objectContaining({ id: "a", minZoom: 6 })]);
+  fireEvent.change(screen.getByLabelText(t("layersPanel.maxZoom")), { target: { value: "12" } });
+  expect(onChange).toHaveBeenLastCalledWith([expect.objectContaining({ maxZoom: 12 })]);
+});

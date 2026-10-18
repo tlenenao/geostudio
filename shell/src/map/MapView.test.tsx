@@ -993,7 +993,39 @@ test("waits for every visible tiles3d tileset before onReady", () => {
   expect(onReady).toHaveBeenCalledTimes(1);
 });
 
-test("attaches a bearer token to a hosted (/tileset3d/) tiles3d layer's requests", () => {
+test("attaches a bearer token to a hosted (/tileset3d/) tiles3d layer's requests", async () => {
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      {
+        id: "bldg",
+        title: "Bâtiments",
+        visible: true,
+        kind: "tiles3d",
+        url: "https://core.test/tileset3d/item-1/tileset.json",
+      },
+    ],
+  };
+  let token = "secret-token";
+  render(
+    <MapView config={cfg} getAuthToken={() => token} getCoreUrl={() => "https://core.test"} />,
+  );
+  const layers = overlayInstances[0].props.layers;
+  // AUD-053 : `fetch` est une fonction qui relit le jeton à chaque requête.
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+  const call = async () => {
+    await (layers[0].props.loadOptions as { fetch: (u: string) => Promise<Response> }).fetch(
+      "https://core.test/tileset3d/item-1/tileset.json",
+    );
+    return new Headers((fetchSpy.mock.calls.at(-1)?.[1] as RequestInit).headers);
+  };
+  expect((await call()).get("Authorization")).toBe("Bearer secret-token");
+  token = "refreshed-token";
+  expect((await call()).get("Authorization")).toBe("Bearer refreshed-token");
+  fetchSpy.mockRestore();
+});
+
+test("a guest (share link) presents X-Share-Link-Token on a hosted tiles3d layer (AUD-053)", async () => {
   const cfg: MapConfig = {
     ...config,
     layers: [
@@ -1009,14 +1041,19 @@ test("attaches a bearer token to a hosted (/tileset3d/) tiles3d layer's requests
   render(
     <MapView
       config={cfg}
-      getAuthToken={() => "secret-token"}
       getCoreUrl={() => "https://core.test"}
+      getShareLinkToken={() => "share-abc"}
     />,
   );
   const layers = overlayInstances[0].props.layers;
-  expect(layers[0].props.loadOptions).toEqual({
-    fetch: { headers: { Authorization: "Bearer secret-token" } },
-  });
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+  await (layers[0].props.loadOptions as { fetch: (u: string) => Promise<Response> }).fetch(
+    "https://core.test/tileset3d/item-1/tileset.json",
+  );
+  const headers = new Headers((fetchSpy.mock.calls.at(-1)?.[1] as RequestInit).headers);
+  expect(headers.get("X-Share-Link-Token")).toBe("share-abc");
+  expect(headers.get("Authorization")).toBeNull();
+  fetchSpy.mockRestore();
 });
 
 test("does not attach a bearer token to an external tiles3d layer even when getAuthToken is provided", () => {
@@ -2569,6 +2606,48 @@ test("timeRange filters a vector layer with timeField through setFilter, without
 
   rerender(<MapView config={cfg} timeRange={null} />);
   expect(JSON.stringify(filterOf())).not.toContain("date");
+});
+
+// AUD-049 : les couches d'effet lisent la même source : elles suivent la fenêtre.
+test("timeRange filters the effect sublayers too (shadow/bloom)", () => {
+  const cfg = tiled({
+    geometryKind: "point",
+    timeField: "date",
+    symbology: { effects: { shadow: true, bloom: true } },
+  });
+  render(<MapView config={cfg} timeRange={{ from: "2024-01-01", to: "2024-01-07" }} />);
+  const map = mapInstances[0];
+  for (const id of ["communes__fx_shadow", "communes__fx_bloom"]) {
+    const filter = (map.getLayer(id) as { filter?: unknown }).filter;
+    expect(JSON.stringify(filter)).toContain("2024-01-07T23:59:59.999999");
+  }
+});
+
+// AUD-049 : couche GeoJSON à pkColumn texte : la sélection (onFeatureClick) fonctionne
+// via properties[pkColumn] (pas de promoteId : une PK absente des propriétés ferait perdre
+// l'id GeoJSON top-level, cf. e2e analytics-context SP-14h).
+test("a feature layer with a text pkColumn emits onFeatureClick from the property", () => {
+  const onFeatureClick = vi.fn();
+  const cfg: MapConfig = {
+    ...config,
+    layers: [
+      {
+        id: "a",
+        title: "A",
+        visible: true,
+        kind: "feature",
+        url: "https://fs/a",
+        pkColumn: "uid",
+      },
+    ],
+  };
+  render(<MapView config={cfg} onFeatureClick={onFeatureClick} />);
+  const map = mapInstances[0];
+  expect(map.getSource("a")).not.toMatchObject({ spec: { promoteId: expect.anything() } });
+  map.fireOnLayer("click", "a", {
+    features: [{ properties: { uid: "abc-1" }, geometry: { type: "Point", coordinates: [1, 2] } }],
+  });
+  expect(onFeatureClick).toHaveBeenCalledWith(expect.objectContaining({ id: "abc-1" }));
 });
 
 // REV-304 : les cellules `__agg` n'ont pas de champ temporel : masquées pendant la fenêtre,

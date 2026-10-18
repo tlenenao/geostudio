@@ -236,3 +236,13 @@ def test_xxe_payload_is_refused_cleanly():
     # defusedxml (via openpyxl) refuse l'entité : erreur propre, jamais de contenu local lu
     with pytest.raises(XlsFormError, match="illisible"):
         parse_xlsform(out.getvalue())
+
+
+def test_translated_label_choice_ignores_column_order():
+    """AUD-115 : sans `label`, le libellé retenu ne dépend pas de l'ordre des colonnes."""
+    from app.xlsform.parser import _label
+
+    assert _label({"label::english": "Name", "label::français": "Nom"}) == "Nom"
+    assert _label({"label::français": "Nom", "label::english": "Name"}) == "Nom"
+    assert _label({"label::german": "Name", "label::english": "Name en"}) == "Name en"
+    assert _label({"label": "Base", "label::français": "Nom"}) == "Base"

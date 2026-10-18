@@ -38,6 +38,7 @@ export default defineConfig({
   },
   build: {
     outDir: "dist-desktop",
+    target: "es2022", // attente au niveau module de i18n/index.ts
     rollupOptions: {
       input: resolve(__dirname, "index.desktop.html"),
     },

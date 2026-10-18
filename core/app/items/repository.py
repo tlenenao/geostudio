@@ -30,7 +30,7 @@ from app.roles.repository import get_role
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
 from app.sharing.authorization import Action, ItemAccessFacts, decide
-from app.sharing.models import GroupMember, ItemShare
+from app.sharing.models import GroupMember, ItemShare, share_active
 from app.sharing.repository import roles_for_items
 from app.tenants.repository import DEFAULT_TENANT_SLUG
 from app.users.models import User
@@ -391,6 +391,7 @@ def _visible_items_base_query(
         .where(
             ItemShare.item_id == Item.id,
             ItemShare.tenant_id == tenant_id,
+            share_active(ItemShare),
             GroupMember.user_id == current_user_id,
             GroupMember.tenant_id == tenant_id,
         )

@@ -6,6 +6,7 @@ import { AuthProvider as OidcProvider, useAuth as useOidcAuth } from "react-oidc
 import { WebStorageStateStore } from "oidc-client-ts";
 import { useEffect, useRef } from "react";
 import type { AppConfig } from "../config";
+import { getLocale, hasLocalePreference, setLocalePreference } from "../i18n";
 import { purgeLocalHistories, setStorageUser } from "../lib/userStorage";
 import { currentReturnTo, safeReturnTo } from "./returnTo";
 import { AuthContext, type AuthState } from "./useAuth";
@@ -29,6 +30,12 @@ function OidcBridge({
   children: React.ReactNode;
 }) {
   const oidc = useOidcAuth();
+  // AUD-019 : le claim OIDC `locale` amorce la langue au 1er login (jamais contre un choix explicite).
+  const claimLocale = String(oidc.user?.profile.locale ?? "").slice(0, 2);
+  useEffect(() => {
+    if (hasLocalePreference() || (claimLocale !== "fr" && claimLocale !== "en")) return;
+    if (claimLocale !== getLocale()) setLocalePreference(claimLocale);
+  }, [claimLocale]);
   const state: AuthState = {
     isLoading: oidc.isLoading,
     isAuthenticated: oidc.isAuthenticated,

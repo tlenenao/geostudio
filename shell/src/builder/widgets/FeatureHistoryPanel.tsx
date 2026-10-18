@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // ARC-15 : onglet « Historique » d'une entité (versions, auteur, champs modifiés, restauration).
+import { formatDateTime } from "../../lib/format";
 import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ItemClient, FeatureVersion } from "../../api/types";
@@ -77,7 +78,7 @@ export function FeatureHistoryPanel({
                 return (
                   <li key={v.id} className="flex flex-col rounded border border-rule p-1">
                     <span className="font-medium">
-                      {opLabels[v.op]} ·{new Date(v.at).toLocaleString("fr-FR")} ·{" "}
+                      {opLabels[v.op]} ·{formatDateTime(v.at)} ·{" "}
                       {v.actor?.username ?? t("featureHistory.unknownActor")}
                     </span>
                     {keys.length > 0 && (

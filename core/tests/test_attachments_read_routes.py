@@ -300,3 +300,21 @@ def test_accented_french_filename_survives_upload_to_download_intact(env):
     assert 'filename="Relev_t_.pdf"' in disposition
     # Valeur exacte, RFC 6266, comprise par tous les navigateurs modernes.
     assert f"filename*=UTF-8''{quote(filename, safe='')}" in disposition
+
+
+def test_sensitive_attachment_field_is_masked_for_a_plain_reader_but_not_the_owner(env):
+    """AUD-093 : un champ `attachment` déclaré sensible est masqué comme une
+    colonne sensible (liste, fichier) pour un lecteur sans privilège."""
+    api, Session, _tenant, owner, reader, attachment_id, _s3 = env
+    with Session() as session:
+        col = session.get(Collection, "col1")
+        col.attachment_fields = [{"key": "photos", "label": "Photos", "sensitive": True}]
+        session.commit()
+    base = "/v1/collections/col1/items/f1/attachments"
+    _authenticate_as(api, reader)
+    assert api.get(base).json()["attachments"] == []
+    assert api.get(f"{base}/{attachment_id}/file").status_code == 404
+    api.app.dependency_overrides.pop(get_current_user_optional)
+    _authenticate_as(api, owner)
+    assert len(api.get(base).json()["attachments"]) == 1
+    assert api.get(f"{base}/{attachment_id}/file").status_code == 200

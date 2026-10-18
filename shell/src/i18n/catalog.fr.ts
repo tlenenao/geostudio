@@ -66,6 +66,7 @@ export const fr = {
 
   // Palette de commandes ⌘K (D07, SP-C4/Task 21)
   "commandPalette.title": "Palette de commandes",
+  "commandPalette.empty": "Aucun résultat",
   "commandPalette.searchAria": "Rechercher une action",
   "commandPalette.newItemAction": "Nouvel élément",
   "commandPalette.triggerLabel": "Rechercher",
@@ -155,6 +156,9 @@ export const fr = {
   "settings.appearanceAuto": "Automatique (suit le système)",
   "settings.appearanceLight": "Clair",
   "settings.appearanceDark": "Sombre",
+  "settings.languageTitle": "Langue",
+  "settings.languageFr": "Français",
+  "settings.languageEn": "English",
   "settings.apiKeysTitle": "Clés d'API",
   "settings.apiKeysHelp":
     "Une clé d'API permet à un script ou à une intégration d'agir avec vos droits, ni plus ni moins. Elle expire au plus tard dans un an et se révoque à tout moment.",

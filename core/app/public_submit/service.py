@@ -20,7 +20,7 @@ from app.collections.models import Collection
 from app.notifications import repository as notifications_repo
 from app.outbox.emit import emit
 from app.public_submit.models import Submission, SubmissionToken
-from app.sharing.models import CollectionShare, GroupMember
+from app.sharing.models import CollectionShare, GroupMember, share_active
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +223,7 @@ def moderator_ids(session: Session, col: Collection) -> set[str]:
         .where(
             CollectionShare.collection_id == col.id,
             CollectionShare.role.in_(("editor", "manager")),
+            share_active(CollectionShare),
         )
     )
     ids.update(rows)

@@ -23,6 +23,7 @@ import { resolvePopupContent } from "./popupContent";
 import { clearViewport, publishViewport } from "./viewportTiles";
 import { t } from "../i18n";
 import { isHostedCollectionUrl, isHostedRasterUrl, isHostedTerrainUrl } from "./hostedCoreUrl";
+import { MapFeatureList } from "./MapFeatureList";
 import { aggregateDefaultColor, HIGHLIGHT_ID, highlightColor } from "./mapLayerBuild";
 import { onThemeChange } from "../lib/theme";
 import {
@@ -389,13 +390,19 @@ export const MapView = forwardRef<
       applyTimeFilters(map, layersRef.current, timeRangeRef.current, timeBaseFiltersRef.current);
       // Un changement de config ne doit pas attendre le prochain `idle` pour
       // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
-      refreshLabelSources(map, layersRef.current, lastLabelPayloadsRef.current);
+      refreshLabelSources(
+        map,
+        layersRef.current,
+        lastLabelPayloadsRef.current,
+        timeRangeRef.current,
+      );
       applyDeckLayers(
         overlay,
         layersRef.current,
         handleTilesetLoad,
         getAuthTokenRef.current,
         getCoreUrlRef.current,
+        getShareLinkTokenRef.current,
       );
       applyTerrain(map, terrainRef.current);
       // `once()` est typé `this | Promise<any>` côté maplibre-gl (le
@@ -417,7 +424,13 @@ export const MapView = forwardRef<
     const scheduleLabelRefresh = () => {
       clearTimeout(labelDebounce);
       labelDebounce = setTimeout(
-        () => refreshLabelSources(map, layersRef.current, lastLabelPayloadsRef.current),
+        () =>
+          refreshLabelSources(
+            map,
+            layersRef.current,
+            lastLabelPayloadsRef.current,
+            timeRangeRef.current,
+          ),
         150,
       );
     };
@@ -521,13 +534,14 @@ export const MapView = forwardRef<
     applyTimeFilters(map, layers, timeRangeRef.current, timeBaseFiltersRef.current);
     // Un changement de config ne doit pas attendre le prochain `idle` pour
     // repeupler les étiquettes d'une couche dont les tuiles sont déjà là.
-    refreshLabelSources(map, layers, lastLabelPayloadsRef.current);
+    refreshLabelSources(map, layers, lastLabelPayloadsRef.current, timeRangeRef.current);
     applyDeckLayers(
       overlay,
       layers,
       handleTilesetLoad,
       getAuthTokenRef.current,
       getCoreUrlRef.current,
+      getShareLinkTokenRef.current,
     );
   }, [layersKey, handleTilesetLoad, handlePopup]);
 
@@ -559,6 +573,8 @@ export const MapView = forwardRef<
     const map = mapRef.current;
     if (!map || !styleLoadedRef.current) return;
     applyTimeFilters(map, layersRef.current, timeRangeRef.current, timeBaseFiltersRef.current);
+    // AUD-049 : étiquettes et points de densité suivent aussi la fenêtre.
+    refreshLabelSources(map, layersRef.current, lastLabelPayloadsRef.current, timeRangeRef.current);
   }, [timeFrom, timeTo]);
 
   useEffect(() => {
@@ -632,6 +648,18 @@ export const MapView = forwardRef<
           onDownloadAttachment={(attachmentId, filename) =>
             void downloadPopupAttachment(attachmentId, filename)
           }
+        />
+      )}
+      {readyMap && config.layers.some((l) => "popup" in l && l.popup) && (
+        <MapFeatureList
+          map={readyMap}
+          popupLayerIds={config.layers.filter((l) => "popup" in l && l.popup).map((l) => l.id)}
+          onSelect={(it) => {
+            handlePopup(it.layerId, it.properties, it.lngLat, it.id);
+            if (it.id != null) {
+              onFeatureClickRef.current?.({ id: it.id, properties: it.properties, geometry: null });
+            }
+          }}
         />
       )}
       {interactiveTools && readyMap && (

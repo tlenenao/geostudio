@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  use: { baseURL: "http://localhost:4173" },
+  use: { baseURL: "http://localhost:4173", locale: "fr-FR" },
   retries: process.env.CI ? 2 : 0,
   // Tâche 36 (SP-C6, D16) : la suite existante n'avait aucun tableau
   // `projects` (un seul projet implicite, chromium desktop). On l'explicite

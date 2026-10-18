@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, field_validator
@@ -43,6 +44,8 @@ class ResolvedShareLink(BaseModel):
 class GroupShare(BaseModel):
     groupId: str
     role: Literal["viewer", "editor", "manager"]
+    # AUD-097 : échéance facultative (ISO 8601) ; passée = partage inerte.
+    expiresAt: datetime | None = None
     # Lecture seule (REV-277) : nom d'un groupe déjà partagé, ignoré à l'écriture.
     name: str | None = None
 

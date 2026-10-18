@@ -59,7 +59,7 @@ def get_usage(
         collectionCount=snapshot.collection_count,
         userCount=snapshot.user_count,
         storageBytes=snapshot.storage_bytes,
-        maxItems=max_items_per_tenant(),
-        maxCollections=max_collections_per_tenant(),
-        maxStorageBytes=max_storage_bytes_per_tenant(),
+        maxItems=max_items_per_tenant(session, user.tenant_id),
+        maxCollections=max_collections_per_tenant(session, user.tenant_id),
+        maxStorageBytes=max_storage_bytes_per_tenant(session, user.tenant_id),
     )

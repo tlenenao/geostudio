@@ -103,6 +103,8 @@ RESERVED_QUERY_PARAMS = {
     "filter-crs",
 }
 MAX_LIMIT = 1000
+MAX_OFFSET = 100_000
+READ_STATEMENT_TIMEOUT_MS = 15_000
 
 CONFORMANCE_CLASSES = [
     "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
@@ -414,7 +416,9 @@ def list_features(
     collection_id: str,
     request: Request,
     limit: int = Query(100, ge=1),
-    offset: int = Query(0, ge=0),
+    # AUD-099 : plafond d'offset (au-delà, le curseur keyset est la voie).
+    # ponytail: 100 000 ; à ajuster si un client légitime pagine plus loin par offset.
+    offset: int = Query(0, ge=0, le=MAX_OFFSET),
     cursor: str | None = None,
     bbox: str | None = None,
     geom_intersects: str | None = None,
@@ -476,6 +480,13 @@ def list_features(
     }
     try:
         with rls(session, col.tenant_id, masked=masked):
+            if session.get_bind().dialect.name == "postgresql":
+                # AUD-099 : une lecture n'occupe jamais le pool au-delà de ce budget
+                # (CQL2/sortby libres, offset profond).
+                session.execute(
+                    text("SELECT set_config('statement_timeout', :ms, true)"),
+                    {"ms": str(READ_STATEMENT_TIMEOUT_MS)},
+                )
             page = repo.select_features(
                 session,
                 info,
@@ -496,6 +507,10 @@ def list_features(
         raise _validation_error(
             [{"field": exc.field, "code": exc.code, "message": exc.message}]
         ) from exc
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) != "57014":  # query_canceled
+            raise
+        raise HTTPException(status_code=503, detail="query timed out; narrow the filter") from exc
     if out_srid is not None:
         response.headers["Content-Crs"] = f"<{crs_uri(out_srid)}>"
     body: dict = {"type": "FeatureCollection", "features": page.features}

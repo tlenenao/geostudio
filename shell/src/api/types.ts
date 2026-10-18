@@ -489,6 +489,9 @@ export type MapLayer =
       kind: "vector";
       tilesUrl: string;
       sourceLayer: string;
+      // AUD-051 : plage d'échelle (zoom MapLibre) hors de laquelle la couche est masquée.
+      minZoom?: number;
+      maxZoom?: number;
       // REV-304 : champ temporel filtré par le contexte temps global (widget carte).
       timeField?: string;
       paint?: Record<string, unknown>;
@@ -512,6 +515,9 @@ export type MapLayer =
       visible: boolean;
       kind: "feature";
       url: string;
+      // AUD-051 : plage d'échelle (zoom MapLibre) hors de laquelle la couche est masquée.
+      minZoom?: number;
+      maxZoom?: number;
       paint?: Record<string, unknown>;
       renderAs?: "fill" | "circle" | "line";
       cluster?: ClusterConfig;
@@ -551,6 +557,8 @@ export type PrintLayoutConfig = {
   // ARC-16 : éléments de gabarit (logo = data URI, jamais une URL).
   scaleBar?: boolean;
   northArrow?: boolean;
+  // AUD-058 : résolution de rendu de l'export (cœur : 150 par défaut).
+  dpi?: 96 | 150 | 300 | 600;
   freeText?: string | null;
   logo?: string | null;
   // ARC-30 : atlas = une page par entité de la source (apps/dashboards).
@@ -562,6 +570,8 @@ export type AtlasConfig = {
   titleTemplate?: string | null;
   fields: { label: string; template: string }[];
   maxPages: number;
+  // AUD-057 : `champ` ou `-champ` (décroissant) ; absent = ordre du cœur.
+  sortBy?: string | null;
 };
 
 export type PublicMapConfig = Pick<MapConfig, "basemap" | "view" | "layers" | "terrain">;
@@ -1037,7 +1047,7 @@ export interface ItemClient {
   // Optionnel : les clients sans cœur (export statique, desktop) ne l'ont pas.
   queryDataSourcePage?(
     source: DataSource,
-  ): Promise<{ records: DataRecord[]; total: number | null }>;
+  ): Promise<{ records: DataRecord[]; total: number | null; lake?: LakeFreshness }>;
   // Symétrique de sampleCollectionField, mais pour un hôte qui n'a qu'un
   // DataSource (pas déjà un collectionId résolu) : la couche `feature` du
   // widget carte de l'App Builder (Jenks, GAP-52 4/4). Résout collectionId
@@ -1435,6 +1445,8 @@ export type BookmarkCrossFilterEntry = {
   field: string;
   value: BookmarkCrossFilterValue;
   originSourceId: string;
+  // AUD-060 : géométrie GeoJSON du cross-filter spatial.
+  geometry?: unknown;
 };
 
 export type BookmarkPayload = {
@@ -1600,12 +1612,17 @@ export type DataRecord = {
   geometry?: unknown;
 };
 
+// AUD-061 : fraîcheur du lac derrière un agrégat (`asOf` = dernier état répliqué,
+// `pending` = collection pas encore répliquée : l'agrégat est vide, pas nul).
+export type LakeFreshness = { asOf: string | null; pending: boolean };
+
 export type DataSourceState = {
   loading: boolean;
   error: boolean;
   records: DataRecord[];
   // Total réel côté cœur (numberMatched), null/absent si inconnu.
   total?: number | null;
+  lake?: LakeFreshness;
   layer?: string;
   url?: string;
   datasetId?: string;

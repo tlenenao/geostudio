@@ -64,6 +64,7 @@ export function allowedBasemaps(all: Basemap[], externalEnabled: boolean): Basem
 }
 
 const XYZ_PREFIX = "xyz:";
+const XYZ_GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
 
 // Revue L6 I2 : style vierge en ligne — une URL "/basemaps/blank.json" sort du sous-chemin
 // d'un export statique (base "./") et devient file:///basemaps/… dans le desktop.
@@ -89,6 +90,10 @@ export function resolveBasemapStyle(style: string): string | StyleSpecification 
   const attribution = tiles.startsWith("https://data.geopf.fr/") ? "© IGN" : undefined;
   return {
     version: 8,
+    // AUD-049 : sans `glyphs`, étiquettes, comptes de cluster et mesures n'apparaissent
+    // pas. Un fond xyz est déjà un fond externe : polices libres de la démo MapLibre.
+    // (Le fond vierge, sans réseau, reste sans glyphs : voir REV-371.)
+    glyphs: XYZ_GLYPHS,
     sources: {
       basemap: {
         type: "raster",

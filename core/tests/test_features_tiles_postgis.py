@@ -173,10 +173,31 @@ def test_a_dense_tile_is_truncated_to_the_feature_cap(pg_app, monkeypatch):
         _insert(client, titre)
     r = client.get(TILE_PATH)
     assert r.status_code == 200
-    # P29.09 : les gardées sont les premières par PK (déterministe).
+    # P29.09 : sélection déterministe (hash de PK, AUD-055), identique d'un appel à l'autre.
     assert sum(1 for t in (b"Alpha", b"Bravo", b"Charlie") if t in r.content) == 2
-    assert b"Alpha" in r.content and b"Bravo" in r.content
-    assert b"Charlie" not in r.content
+    assert client.get(TILE_PATH).content == r.content
+
+
+def test_a_dense_tile_is_a_spatially_unbiased_sample_not_the_smallest_pks(pg_app, monkeypatch):
+    """AUD-055 : plus de coupe « PK les plus petites » : sur 60 lignes et un plafond
+    de 10, l'échantillon n'est pas le préfixe 1..10."""
+    from app.features import tiles as tiles_module
+
+    client, _, Session = pg_app
+    monkeypatch.setattr(tiles_module, "MAX_TILE_FEATURES", 10)
+    with Session() as s:
+        s.execute(
+            text(
+                "INSERT INTO demo_incidents (titre, geom) SELECT 'T' || lpad(g::text, 3, '0'), "
+                "ST_SetSRID(ST_MakePoint(2.0 + g * 0.001, 48.0), 4326) "
+                "FROM generate_series(1, 60) g"
+            )
+        )
+        s.commit()
+    r = client.get(TILE_PATH)
+    kept = {f"T{i:03d}".encode() for i in range(1, 61) if f"T{i:03d}".encode() in r.content}
+    assert len(kept) == 10
+    assert kept != {f"T{i:03d}".encode() for i in range(1, 11)}
 
 
 def test_a_tile_of_exactly_the_cap_is_not_flagged_truncated(pg_app, monkeypatch):

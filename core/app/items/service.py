@@ -79,7 +79,13 @@ def get_sharing_service(session: Session, *, item_id: str, user: User) -> Sharin
     return Sharing(
         public=facts.is_public,
         groups=[
-            GroupShare(groupId=s.group_id, role=s.role, name=names.get(s.group_id)) for s in shares
+            GroupShare(
+                groupId=s.group_id,
+                role=s.role,
+                name=names.get(s.group_id),
+                expiresAt=s.expires_at,
+            )
+            for s in shares
         ],
     )
 
@@ -188,7 +194,9 @@ def set_sharing_service(
         session,
         tenant_id=user.tenant_id,
         item_id=item_id,
-        shares=[(g.groupId, g.role) for g in sharing.groups],
+        shares=[
+            (g.groupId, g.role, sharing_repo.to_naive_utc(g.expiresAt)) for g in sharing.groups
+        ],
     )
     if not ok:
         raise HTTPException(status_code=404, detail="group not found")

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
 import re
 from typing import Annotated, Any, Literal
 
@@ -156,6 +157,15 @@ class MapLayer(BaseModel):
     # REV-304 : champ date filtré par le contexte temps (widget carte).
     timeField: str | None = None
     cluster: ClusterConfig | None = None
+    # AUD-051 : plage d'échelle (zoom MapLibre) de la couche.
+    minZoom: float | None = Field(default=None, ge=0, le=24)
+    maxZoom: float | None = Field(default=None, ge=0, le=24)
+
+    @model_validator(mode="after")
+    def _zoom_range_is_ordered(self) -> "MapLayer":
+        if self.minZoom is not None and self.maxZoom is not None and self.minZoom > self.maxZoom:
+            raise ValueError("minZoom must be <= maxZoom")
+        return self
 
 
 class MapTerrain(BaseModel):
@@ -285,6 +295,9 @@ class BookmarkTimeRange(BaseModel):
     to: str
 
 
+MAX_BOOKMARK_GEOMETRY_CHARS = 100_000
+
+
 class BookmarkCrossFilterEntry(BaseModel):
     field: str
     # The shell's CrossFilterValue mirror type (AnalyticsContext.tsx) also
@@ -293,6 +306,15 @@ class BookmarkCrossFilterEntry(BaseModel):
     # than inventing a second range type.
     value: str | list[str] | BookmarkTimeRange
     originSourceId: str
+    # AUD-060 : géométrie du cross-filter spatial (clic carte), jusque-là supprimée en silence.
+    geometry: dict[str, Any] | None = None
+
+    @field_validator("geometry")
+    @classmethod
+    def _bound_geometry(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is not None and len(json.dumps(v)) > MAX_BOOKMARK_GEOMETRY_CHARS:
+            raise ValueError("bookmark geometry is too large")
+        return v
 
 
 class BookmarkPayload(BaseModel):
@@ -591,8 +613,19 @@ class AlertRulePayload(BaseModel):
         return self
 
 
+class ReportRetry(BaseModel):
+    """AUD-058 : un rendu en erreur est rejoué (nouveau run) avant le prochain cron, puis
+    la panne est notifiée une seule fois, après le dernier essai."""
+
+    maxAttempts: int = Field(default=2, ge=1, le=5)  # essais au total, premier compris
+    delayMinutes: int = Field(default=15, ge=1, le=1440)
+
+
 class ReportSchedulePayload(BaseModel):
     bookmarkItemId: str
+    # AUD-058 : le rapport n'était que PDF.
+    format: Literal["pdf", "png"] = "pdf"
+    retry: ReportRetry | None = None
     refreshPolicy: (
         PipelineRefreshPolicy  # réutilisé tel quel, même forme que la planification pipeline/alerte
     )
@@ -634,6 +667,8 @@ class AtlasConfig(BaseModel):
     titleTemplate: str | None = Field(default=None, max_length=500)
     fields: list[AtlasField] = Field(default_factory=list, max_length=50)
     maxPages: int = Field(default=50, ge=1, le=200)
+    # AUD-057 : tri reproductible (`champ` ou `-champ` pour décroissant) ; absent = ordre du cœur.
+    sortBy: str | None = Field(default=None, max_length=128, pattern=r"^-?[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class PrintLayout(BaseModel):
@@ -647,6 +682,9 @@ class PrintLayout(BaseModel):
     # worker n'a alors aucune requête sortante à faire, donc pas de SSRF).
     scaleBar: bool = False
     northArrow: bool = False
+    # AUD-058 : résolution de rendu (la carte WebGL était figée à 96 dpi). Plafonnée côté
+    # worker (côté long <= 8192 px).
+    dpi: Literal[96, 150, 300, 600] = 150
     freeText: str | None = Field(default=None, max_length=2000)
     logo: str | None = Field(default=None, max_length=400_000)
     # ARC-30 : mise en page en série (atlas). Absent = export d'une seule page.

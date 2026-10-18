@@ -26,6 +26,18 @@ def page_pixels(layout: PrintLayout | None) -> tuple[int, int]:
     return (h, w) if layout.orientation == "landscape" else (w, h)
 
 
+# Côté long maximal du canevas en pixels physiques (mémoire du Chromium d'export).
+_MAX_RENDER_PX = 8192
+
+
+def export_scale(layout: PrintLayout | None) -> float:
+    """AUD-058 : facteur de pixels de l'appareil (dpi / 96), plafonné pour que le côté long
+    de la page reste <= 8192 px physiques ; jamais < 1."""
+    layout = layout or PrintLayout()
+    w, h = page_pixels(layout)
+    return max(1.0, min(layout.dpi / 96, _MAX_RENDER_PX / max(w, h)))
+
+
 class RenderPage(Protocol):
     def screenshot(self, *, full_page: bool) -> bytes: ...
     def pdf(

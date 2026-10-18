@@ -9,14 +9,18 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit import chain as audit_chain
+from app.audit.models import AuditLog
+from app.audit.retention import row_to_dict
 from app.audit.writer import write_audit
 from app.auth.dependency import forbid_api_key, get_current_user
+from app.compliance.export import export_user_data
 from app.compliance.models import PurgeReceipt
 from app.compliance.service import (
     AnonymizationLockoutError,
@@ -143,6 +147,7 @@ def request_tenant_purge(
             requested_at=datetime.now(UTC),
             counts={},
             status="pending",
+            purged_tenant_id=tenant.id,
         )
     )
     write_audit(
@@ -180,6 +185,10 @@ def get_purge_status(
 ) -> Any:
     require_privilege(session, user, Privilege.COMPLIANCE_MANAGE.value)
     receipt = session.get(PurgeReceipt, purge_id)
+    caller_tenant = session.get(Tenant, user.tenant_id)
+    # AUD-121/M1 : le reçu d'un autre tenant est indistinguable d'un id inconnu.
+    if receipt is not None and (caller_tenant is None or receipt.tenant_slug != caller_tenant.slug):
+        receipt = None
     if receipt is None:
         # Distinction impossible entre "encore en cours" et "jamais
         # déclenché" (purge_receipts n'a pas de FK vers tenants, donc pas
@@ -204,3 +213,82 @@ def get_purge_status(
         # (statut lisible), pas un problem+json ; completedAt reste null.
         return JSONResponse(status_code=202, content=body.model_dump(mode="json"))
     return body
+
+
+@router.get("/users/{user_id}/export", dependencies=[Depends(forbid_api_key)])
+def export_user(
+    user_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+) -> dict[str, Any]:
+    """Droit d'accès/portabilité (RGPD Art. 15/20, AUD-120) : « me » pour soi-même, sinon
+    `compliance.manage` (DPO). L'export est lui-même audité."""
+    target_id = user.id if user_id == "me" else user_id
+    if target_id != user.id:
+        require_privilege(session, user, Privilege.COMPLIANCE_MANAGE.value)
+    try:
+        dossier = export_user_data(session, tenant_id=user.tenant_id, user_id=target_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="user not found in this tenant") from exc
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="user.export",
+        object_type="user",
+        object_id=target_id,
+        payload={},
+    )
+    session.commit()
+    return dossier
+
+
+class AuditPage(BaseModel):
+    items: list[dict[str, Any]]
+    nextAfterId: int | None = None
+
+
+@router.get("/audit", response_model=AuditPage, dependencies=[Depends(forbid_api_key)])
+def export_audit(
+    afterId: int = Query(0, ge=0),
+    limit: int = Query(1000, ge=1, le=5000),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+) -> AuditPage:
+    """Export du journal d'audit du tenant, paginé par curseur d'id (DPO/SIEM, AUD-092)."""
+    require_privilege(session, user, Privilege.COMPLIANCE_MANAGE.value)
+    audit_chain.seal_all(session, user.tenant_id)
+    rows = session.scalars(
+        select(AuditLog)
+        .where(AuditLog.tenant_id == user.tenant_id, AuditLog.id > afterId)
+        .order_by(AuditLog.id)
+        .limit(limit + 1)
+    ).all()
+    page, more = rows[:limit], len(rows) > limit
+    session.commit()
+    return AuditPage(
+        items=[row_to_dict(r) for r in page], nextAfterId=page[-1].id if more and page else None
+    )
+
+
+class AuditVerification(BaseModel):
+    ok: bool
+    checked: int
+    lastSeq: int | None = None
+    headHash: str | None = None
+    brokenAtSeq: int | None = None
+    unsealed: int
+
+
+@router.get("/audit/verify", response_model=AuditVerification)
+def verify_audit(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+) -> dict[str, Any]:
+    """Recalcule la chaîne de hachage de l'audit du tenant (AUD-092)."""
+    require_privilege(session, user, Privilege.COMPLIANCE_MANAGE.value)
+    audit_chain.seal_all(session, user.tenant_id)
+    result = audit_chain.verify(session, user.tenant_id)
+    session.commit()
+    return result

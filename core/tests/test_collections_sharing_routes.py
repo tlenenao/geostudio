@@ -167,7 +167,7 @@ def test_put_sharing_unknown_group_is_404_and_keeps_existing(env):
     body = client.get("/v1/collections/incidents/sharing").json()
     assert body == {
         "public": False,
-        "groups": [{"groupId": group_id, "role": "viewer", "name": "equipe"}],
+        "groups": [{"groupId": group_id, "role": "viewer", "expiresAt": None, "name": "equipe"}],
     }
 
 
@@ -241,4 +241,6 @@ def test_get_sharing_returns_group_names_for_existing_shares(env):
         json={"public": False, "groups": [{"groupId": group_id, "role": "viewer"}]},
     )
     body = client.get("/v1/collections/incidents/sharing").json()
-    assert body["groups"] == [{"groupId": group_id, "role": "viewer", "name": "equipe"}]
+    assert body["groups"] == [
+        {"groupId": group_id, "role": "viewer", "expiresAt": None, "name": "equipe"}
+    ]

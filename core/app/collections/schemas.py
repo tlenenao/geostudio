@@ -70,6 +70,9 @@ class AttachmentFieldSpec(BaseModel):
 
     key: str
     label: str
+    # AUD-093 : champ sensible = pièces jointes masquées comme une colonne sensible
+    # (collections/sensitive.py::masked_attachment_keys).
+    sensitive: bool = False
 
 
 class FieldDomain(BaseModel):

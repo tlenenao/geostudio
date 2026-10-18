@@ -35,13 +35,48 @@ export function themeToCssVars(theme: Theme): CSSProperties {
   } as CSSProperties;
 }
 
+// AUD-126 : les états ok/warn/danger/accent/ai suivent le fond de l'APP, pas l'ambiance du studio
+// (valeurs de styles/tokens.css, blocs clair et sombre) — sinon en studio sombre un message
+// d'erreur rose pâle tombait sur fond blanc (~2,6:1).
+// gs-raw-color-ok-begin: jetons sémantiques recopiés de tokens.css pour la toile d'app
+const SEMANTIC_LIGHT = {
+  "--gs-accent": "#0b6e77",
+  "--gs-accent-soft": "#d9ebec",
+  "--gs-accent-ink": "#07545b",
+  "--gs-ai": "#6a4c93",
+  "--gs-ai-soft": "#eae3f4",
+  "--gs-ok": "#2a6a50",
+  "--gs-ok-soft": "#ddeee5",
+  "--gs-warn": "#85600f",
+  "--gs-warn-soft": "#f7ebd1",
+  "--gs-danger": "#9a2c45",
+  "--gs-danger-soft": "#f7e1e6",
+};
+const SEMANTIC_DARK = {
+  "--gs-accent": "#4fb3bc",
+  "--gs-accent-soft": "#0f3238",
+  "--gs-accent-ink": "#7fd2d9",
+  "--gs-ai": "#ab8fd4",
+  "--gs-ai-soft": "#241a33",
+  "--gs-ok": "#63c295",
+  "--gs-ok-soft": "#11291f",
+  "--gs-warn": "#d9a441",
+  "--gs-warn-soft": "#2c2311",
+  "--gs-danger": "#e58098",
+  "--gs-danger-soft": "#2f161c",
+};
+// gs-raw-color-ok-end
+
 // P33.02 : la toile d'une app porte son propre thème (clair par défaut) ; les
 // classes sémantiques du shell (text-ink-2, bg-surface…) qui s'y trouvent
 // doivent le suivre, sinon un shell en thème sombre y dépose du texte clair
 // sur fond clair. On rebranche donc les jetons du shell sur ceux de l'app.
 export function themeToShellTokens(theme: Theme): CSSProperties {
   const colors = { ...DEFAULT_THEME_COLORS, ...theme.colors };
+  const luminance = relativeLuminance(colors.background);
+  const semantic = luminance !== null && luminance < 0.4 ? SEMANTIC_DARK : SEMANTIC_LIGHT;
   return {
+    ...semantic,
     "--gs-background": colors.background,
     "--gs-surface": colors.surface,
     "--gs-raised": colors.background,

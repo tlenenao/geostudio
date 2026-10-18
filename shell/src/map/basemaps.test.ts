@@ -43,6 +43,11 @@ test("un fond xyz: devient un style raster minimal", () => {
   });
 });
 
+test("un fond xyz: déclare des glyphs (étiquettes, clusters, mesures) — AUD-049", () => {
+  const style = resolveBasemapStyle("xyz:https://h/{z}/{x}/{y}.png");
+  expect(typeof style === "object" && style.glyphs).toContain("{fontstack}/{range}.pbf");
+});
+
 test("le fond vierge est rendu en ligne, sans URL (export statique, desktop)", () => {
   const style = resolveBasemapStyle(BLANK_BASEMAP.style);
   expect(typeof style).toBe("object");

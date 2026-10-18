@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog } from "./Dialog";
 import { Input } from "./Input";
@@ -38,6 +38,7 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listId = useId();
 
   useEffect(() => {
     if (open) {
@@ -99,6 +100,8 @@ export function CommandPalette({
         role="combobox"
         aria-label={t("commandPalette.searchAria")}
         aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={filtered[activeIndex] ? `${listId}-${activeIndex}` : undefined}
         autoComplete="off"
         value={query}
         onChange={(e) => {
@@ -120,11 +123,17 @@ export function CommandPalette({
           }
         }}
       />
-      <ul role="listbox" className="mt-2 flex max-h-80 flex-col gap-0.5 overflow-y-auto">
+      <ul
+        id={listId}
+        role="listbox"
+        aria-label={t("commandPalette.title")}
+        className="mt-2 flex max-h-80 flex-col gap-0.5 overflow-y-auto"
+      >
         {filtered.map((item, index) => (
           <li key={item.id}>
             <button
               type="button"
+              id={`${listId}-${index}`}
               role="option"
               aria-selected={index === activeIndex}
               onClick={() => commit(item)}
@@ -139,6 +148,11 @@ export function CommandPalette({
           </li>
         ))}
       </ul>
+      {filtered.length === 0 && (
+        <p role="status" className="mt-2 px-2 py-1.5 text-sm text-ink-2">
+          {t("commandPalette.empty")}
+        </p>
+      )}
     </Dialog>
   );
 }

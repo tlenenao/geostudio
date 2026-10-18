@@ -87,7 +87,7 @@ test.describe("chrome sur téléphone (360 px)", () => {
     const box = await account.boundingBox();
     expect(box!.x + box!.width).toBeLessThanOrEqual(360);
     expect((await pageOverflow(page)).scrollWidth).toBeLessThanOrEqual(360);
-    const toggle = page.getByRole("button", { name: "Actions" });
+    const toggle = page.getByRole("button", { name: "Actions", exact: true });
     await expect(page.getByRole("button", { name: "Nouveau" })).toBeHidden();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await toggle.click();
@@ -112,7 +112,7 @@ test.describe("chrome sur téléphone (360 px)", () => {
       expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     }
     // Pointeur grossier : simple icône de recherche, pas de hint clavier (j12-013).
-    await page.getByRole("button", { name: "Actions" }).click();
+    await page.getByRole("button", { name: "Actions", exact: true }).click();
     await expect(page.getByText("⌘K")).toBeHidden();
     const search = page.getByRole("button", { name: "Rechercher" });
     expect((await search.boundingBox())!.height).toBeGreaterThanOrEqual(44);

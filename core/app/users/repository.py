@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import retry_on_sqlite_row_corruption
+from app.quotas.service import check_quota_or_raise
 from app.roles.repository import ensure_built_in_roles
 from app.users.models import User
 
@@ -53,6 +54,7 @@ def get_or_create_user(
             initial_role = roles["analyst"]
         else:
             initial_role = roles["creator"]
+        check_quota_or_raise(session, tenant_id=tenant_id, kind="users")  # AUD-098
         new_user = User(
             id=uuid.uuid4().hex,
             tenant_id=tenant_id,

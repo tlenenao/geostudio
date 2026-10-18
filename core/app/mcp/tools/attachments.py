@@ -9,6 +9,7 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context, FastMCP
 
 from app.attachments import repository as attachments_repo
+from app.collections.sensitive import masked_attachment_keys
 from app.db import request_scoped_session
 from app.mcp.tools.identity import refuse_geo_limited, require_collection_read, resolve_actor
 
@@ -51,6 +52,8 @@ def register(server: FastMCP, session_factory) -> None:
                 fid=fid,
                 field_key=fieldKey,
             )
+            hidden = masked_attachment_keys(session, user, col)  # AUD-093 (jumelle REST)
+            rows = [a for a in rows if a.field_key not in hidden]
             return json.dumps(
                 [
                     {

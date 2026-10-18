@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
+from datetime import datetime
 
 import procrastinate
 from sqlalchemy import delete, func, or_, select
@@ -12,7 +13,7 @@ from app.quotas.service import check_quota_or_raise
 from app.search.providers import get_embedding_provider
 from app.search.ranking import hybrid_search_ids
 from app.sharing.authorization import AccessFacts, Action, decide
-from app.sharing.models import CollectionShare, Group, GroupMember
+from app.sharing.models import CollectionShare, Group, GroupMember, share_active
 from app.sharing.repository import roles_for_collections
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,11 @@ def _visible_collections_stmt(*, tenant_id: str, user_id: str | None, can_see_al
             shared_ids = (
                 select(CollectionShare.collection_id)
                 .join(GroupMember, GroupMember.group_id == CollectionShare.group_id)
-                .where(GroupMember.user_id == user_id, CollectionShare.tenant_id == tenant_id)
+                .where(
+                    GroupMember.user_id == user_id,
+                    CollectionShare.tenant_id == tenant_id,
+                    share_active(CollectionShare),
+                )
             )
             stmt = stmt.where(
                 Collection.is_public.is_(True)
@@ -223,13 +228,13 @@ def set_collection_sharing(
     *,
     tenant_id: str,
     collection_id: str,
-    groups: list[tuple[str, str]],  # [(group_id, role)]
+    groups: list[tuple[str, str, datetime | None]],  # [(group_id, role, expires_at)]
 ) -> bool:
     """Replace all group shares for one collection. Returns False (no changes
     made) if any group_id doesn't belong to tenant_id — the caller must treat
     this as a 404 (never leak cross-tenant group existence). Same contract as
     app/sharing/repository.py::replace_shares for items."""
-    group_ids = [group_id for group_id, _role in groups]
+    group_ids = [group_id for group_id, _role, _exp in groups]
     if group_ids:
         matching = session.scalar(
             select(func.count())
@@ -245,10 +250,14 @@ def set_collection_sharing(
             CollectionShare.collection_id == collection_id,
         )
     )
-    for group_id, role in groups:
+    for group_id, role, expires_at in groups:
         session.add(
             CollectionShare(
-                collection_id=collection_id, group_id=group_id, tenant_id=tenant_id, role=role
+                collection_id=collection_id,
+                group_id=group_id,
+                tenant_id=tenant_id,
+                role=role,
+                expires_at=expires_at,
             )
         )
     session.flush()

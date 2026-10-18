@@ -1229,7 +1229,7 @@ test("a KPI shows a delta badge against the reference period", async ({ page }) 
       return route.fulfill({
         json: { categoryKey: "group", rows: [{ group: "Total", value: 120 }] },
       });
-    if (gte === "2025-12-01")
+    if (gte === "2025-11-30")
       return route.fulfill({
         json: { categoryKey: "group", rows: [{ group: "Total", value: 100 }] },
       });

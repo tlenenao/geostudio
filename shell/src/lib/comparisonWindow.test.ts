@@ -9,10 +9,14 @@ function addDays(iso: string, days: number): string {
   return new Date(new Date(iso).getTime() + days * MS_PER_DAY).toISOString().slice(0, 10);
 }
 
-test("referenceWindow(previous) shifts back by exactly the window's duration, contiguous with it", () => {
+test("referenceWindow(previous) has the same number of days and ends the day before the window (no shared day)", () => {
   expect(referenceWindow({ from: "2026-02-01", to: "2026-02-28" }, "previous")).toEqual({
-    from: "2026-01-05",
-    to: "2026-02-01",
+    from: "2026-01-04",
+    to: "2026-01-31",
+  });
+  expect(referenceWindow({ from: "2026-01-08", to: "2026-01-14" }, "previous")).toEqual({
+    from: "2026-01-01",
+    to: "2026-01-07",
   });
 });
 

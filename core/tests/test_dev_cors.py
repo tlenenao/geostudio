@@ -72,6 +72,8 @@ def test_swagger_ui_fetches_the_schema_relatively():
         "CORE_QUOTA_MAX_ITEMS_PER_TENANT",
         "CORE_QUOTA_MAX_COLLECTIONS_PER_TENANT",
         "CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT",
+        "CORE_QUOTA_MAX_USERS_PER_TENANT",
+        "CORE_QUOTA_MAX_ACTIVE_RUNS_PER_TENANT",
     ],
 )
 def test_malformed_quota_fails_fast_naming_the_variable(monkeypatch, var):

@@ -21,6 +21,7 @@ performance de ST_EstimatedExtent et son filtrage par tenant — ST_EstimatedExt
 ignore RLS par construction (pg_statistic n'est pas soumis aux policies)."""
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.collections.introspection import TableInfo
@@ -40,11 +41,35 @@ def _box_4326(session: Session, inner_sql: str, params: dict) -> list[float] | N
     return [row[0], row[1], row[2], row[3]] if row else None
 
 
+# AUD-095 : STAC/DCAT sont lisibles en anonyme et bouclent sur N collections ; un ST_Extent
+# n'a pas le droit de bloquer une connexion. Dépassement = repli sur l'emprise monde.
+EXTENT_STATEMENT_TIMEOUT_MS = 3_000
+
+
 def rls_scoped_bbox_4326(session: Session, info: TableInfo) -> list[float] | None:
     if info.geometry_column is None:
         return None
     srid = info.srid or 4326
     g = quote_ident(session, info.geometry_column)
-    # Sous limite géographique : emprise de la géométrie DÉCOUPÉE (aucune autre colonne lue).
-    with geo_source(session, info, columns=()) as src:
-        return _box_4326(session, f"SELECT ST_Extent({g}) FROM {src}", {"srid": srid})
+    postgres = session.get_bind().dialect.name == "postgresql"
+    try:
+        with session.begin_nested():  # le SAVEPOINT borne l'échec à ce seul calcul
+            previous = None
+            if postgres:
+                previous = session.scalar(text("SELECT current_setting('statement_timeout')"))
+                session.execute(
+                    text("SELECT set_config('statement_timeout', :ms, true)"),
+                    {"ms": str(EXTENT_STATEMENT_TIMEOUT_MS)},
+                )
+            # Sous limite géographique : emprise de la géométrie DÉCOUPÉE (aucune autre colonne).
+            with geo_source(session, info, columns=()) as src:
+                box = _box_4326(session, f"SELECT ST_Extent({g}) FROM {src}", {"srid": srid})
+            if previous is not None:  # le délai ne déborde pas sur le reste de la requête
+                session.execute(
+                    text("SELECT set_config('statement_timeout', :v, true)"), {"v": previous}
+                )
+            return box
+    except DBAPIError:
+        if not postgres:
+            raise
+        return None

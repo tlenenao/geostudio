@@ -6,8 +6,11 @@ l'app, même patron que app.pipelines/app.export). Le proxy de lecture
 
 import logging
 import os
+import threading
+import time
 import uuid
 import zipfile
+from collections import OrderedDict
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -50,6 +53,42 @@ _CONTENT_TYPES = {
     ".cmpt": "application/octet-stream",
     ".glb": "application/octet-stream",
 }
+
+
+# AUD-054 : le proxy servait chaque tuile en rouvrant le zip (HEAD + lecture de l'EOCD et
+# du répertoire central, jusqu'à 20 000 ZipInfo) et en rechargeant la config. Deux caches
+# bornés : (bucket, sourceKey) -> ZipFile ouvert (le zip source est immuable : la clé est
+# unique par téléversement ; ZipFile.open supporte les lecteurs concurrents) et
+# item_id -> sourceKey avec TTL court (config relue au plus toutes les 30 s ; l'accès
+# `can_read_item` reste vérifié à CHAQUE requête).
+# ponytail: LRU de 16 zips, TTL 30 s ; à régler si la mémoire des répertoires centraux gêne.
+_ZIP_CACHE_MAX = 16
+_SOURCE_KEY_TTL_SECONDS = 30.0
+_proxy_lock = threading.Lock()
+_zip_cache: OrderedDict[tuple[str, str], zipfile.ZipFile] = OrderedDict()
+_source_key_cache: dict[str, tuple[str, str, float]] = {}
+
+
+def reset_proxy_caches() -> None:
+    with _proxy_lock:
+        _zip_cache.clear()
+        _source_key_cache.clear()
+
+
+def _cached_zip(s3, bucket: str, key: str) -> zipfile.ZipFile:
+    with _proxy_lock:
+        zf = _zip_cache.get((bucket, key))
+        if zf is not None:
+            _zip_cache.move_to_end((bucket, key))
+            return zf
+    zf = zipfile.ZipFile(S3RangeFile(s3, bucket=bucket, key=key))
+    with _proxy_lock:
+        _zip_cache[(bucket, key)] = zf
+        while len(_zip_cache) > _ZIP_CACHE_MAX:
+            # Pas de close() : aucun descripteur OS (S3RangeFile), et fermer un zip
+            # évincé casserait un lecteur concurrent ; le GC le libère.
+            _zip_cache.popitem(last=False)
+    return zf
 
 
 def _content_type_for(path: str) -> str:
@@ -252,10 +291,29 @@ def read_tileset3d_entry(
 ) -> Response:
     if not can_read_item(session, user, guest, item_id):
         raise HTTPException(status_code=404, detail="item not found")
-    config = configs_repo.get_config_by_item(session, item_id)
-    if config is None or config.config.tileset3d is None:
-        raise HTTPException(status_code=404, detail="tileset not found")
-    payload = config.config.tileset3d
+    now = time.monotonic()
+    with _proxy_lock:
+        hit = _source_key_cache.get(item_id)
+    if hit is not None and hit[2] > now:
+        source_key, tileset_json_path = hit[0], hit[1]
+    else:
+        config = configs_repo.get_config_by_item(session, item_id)
+        if config is None or config.config.tileset3d is None:
+            raise HTTPException(status_code=404, detail="tileset not found")
+        source_key = config.config.tileset3d.sourceKey
+        tileset_json_path = config.config.tileset3d.tilesetJsonPath
+        with _proxy_lock:
+            _source_key_cache[item_id] = (
+                source_key,
+                tileset_json_path,
+                now + _SOURCE_KEY_TTL_SECONDS,
+            )
+    # AUD-054 : zip à dossier racine — les chemins demandés (relatifs au tileset.json)
+    # sont résolus sous ce dossier ; les URI relatives des tuiles restent valides.
+    base = tileset_json_path.rpartition("/")[0]
+    entry_name = f"{base}/{path}" if base else path
+    # Autorisation faite, aucune lecture DB ne suit : on rend la connexion avant le flux S3.
+    session.commit()
 
     # L'entrée est servie en flux : les tranches partent vers la réponse ASGI
     # au fur et à mesure, l'entrée décompressée n'est jamais matérialisée
@@ -265,9 +323,8 @@ def read_tileset3d_entry(
     # commencé, les en-têtes sont partis et plus aucun code de statut n'est
     # négociable.
     max_bytes = _max_proxy_read_bytes()
-    range_file = S3RangeFile(s3, bucket=bucket, key=payload.sourceKey)
     try:
-        zf = zipfile.ZipFile(range_file)
+        zf = _cached_zip(s3, bucket, source_key)
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
         # Archive stockée corrompue/tronquée (BadZipFile), entrée chiffrée
         # (RuntimeError « File is encrypted ») ou méthode de compression non
@@ -282,18 +339,15 @@ def read_tileset3d_entry(
         # puis échoue le contrôle CRC (BadZipFile). Le comparer au plafond de
         # service permet donc de rendre un 413 propre avant d'avoir décompressé
         # le moindre octet, plutôt qu'en cours de flux.
-        info = zf.getinfo(path)
-        entry = zf.open(path)
+        info = zf.getinfo(entry_name)
+        entry = zf.open(entry_name)
     except KeyError as exc:
-        zf.close()
         raise HTTPException(status_code=404, detail="entry not found") from exc
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
-        zf.close()
         raise HTTPException(status_code=422, detail="cannot read entry") from exc
 
     if info.file_size > max_bytes:
         entry.close()
-        zf.close()
         raise HTTPException(status_code=413, detail="entry too large")
 
     try:
@@ -304,11 +358,9 @@ def read_tileset3d_entry(
         first_chunk = entry.read(_READ_CHUNK_BYTES)
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
         entry.close()
-        zf.close()
         raise HTTPException(status_code=422, detail="cannot read entry") from exc
     except BaseException:
         entry.close()
-        zf.close()
         raise
 
     def _iter_entry():
@@ -335,7 +387,6 @@ def read_tileset3d_entry(
                 yield chunk
         finally:
             entry.close()
-            zf.close()
 
     return StreamingResponse(
         _iter_entry(),
