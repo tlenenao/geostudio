@@ -10,6 +10,12 @@ import type { Plugin, Rollup } from "vite";
 
 const OPTIONAL = ["/env-config.js", "/manifest.webmanifest", "/icons/icon.svg"];
 const COLLECT_PAGE = "/src/pages/CollectPage.tsx";
+// Chargés à la demande par le fournisseur de file : doivent exister hors-ligne dès la première visite.
+const OFFLINE_MODULES = [
+  "/src/offline/outbox.ts",
+  "/src/offline/sync.ts",
+  "/src/offline/transport.ts",
+];
 
 export function buildServiceWorker(
   template: string,
@@ -55,6 +61,18 @@ export function serviceWorkerPlugin(): Plugin {
       }
       walk(entry.fileName);
       walk(collect.fileName);
+      const isOffline = (c: Rollup.OutputChunk) =>
+        Object.keys(c.modules).some((m) =>
+          OFFLINE_MODULES.some((o) => m.replaceAll("\\", "/").endsWith(o)),
+        );
+      for (const c of chunks) if (isOffline(c)) walk(c.fileName);
+      // Chunks-façades (aucun module propre : simple réexport) du même import dynamique.
+      for (const c of chunks)
+        for (const d of c.dynamicImports) {
+          const t = byFile.get(d);
+          if (t && Object.keys(t.modules).length === 0 && t.imports.some((i) => files.has(i)))
+            walk(d);
+        }
       const index = bundle["index.html"];
       const indexSource = index && index.type === "asset" ? String(index.source) : "";
       const critical = ["/index.html", ...[...files].sort().map((f) => `/${f}`)];

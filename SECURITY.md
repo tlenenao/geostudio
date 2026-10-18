@@ -59,6 +59,12 @@ Accepted and documented trade-offs, not vulnerabilities to report:
   egress paths are IP-pinned).
 - **Blob secrets (Azure/GCS) stored before the stricter format must be
   recreated (REV-341).** They become unreadable instead of being migrated.
+- **Offline field collection stores entries unencrypted on the device (ADR
+  0029).** Pending entries and photos live in the browser's IndexedDB until
+  sent; anyone with access to the unlocked browser profile can read them.
+  The service worker is a strict allowlist (shell navigations and `/assets/`
+  only) and never caches API or authenticated responses. Public submissions
+  now require a proof of work; its used-challenge registry is per core process.
 - **No real screen reader or touch device in the test suite.** Accessibility
   and touch behaviour are verified through automated Playwright specs
   (accessibility tree, emulated touch events); NVDA/JAWS/VoiceOver and real

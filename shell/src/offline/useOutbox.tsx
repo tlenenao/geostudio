@@ -167,7 +167,14 @@ export function OutboxProvider({
   // Hors-ligne au rechargement, `me` échoue : on garde le dernier propriétaire connu pour que la
   // file reste visible. ponytail: le dernier propriétaire d'un poste partagé ; le serveur reste
   // juge à l'envoi (jeton), et `me` rétablit la bonne clé dès que le réseau revient.
-  const ownerKey = fresh ?? (me.isError ? lastOwnerKey() : null);
+  // React Query met `me` en pause (sans erreur) tant que le navigateur est hors-ligne.
+  // `onlineManager` démarre « en ligne » : après un chargement hors-ligne, `me` ne passe en erreur
+  // qu'après ses relances, d'où la lecture directe de `navigator.onLine`.
+  const unreachable =
+    me.isError ||
+    me.fetchStatus === "paused" ||
+    (typeof navigator !== "undefined" && navigator.onLine === false);
+  const ownerKey = fresh ?? (unreachable ? lastOwnerKey() : null);
   const [transport, setTransport] = useState<SyncTransport | null>(null);
   useEffect(() => {
     let live = true;

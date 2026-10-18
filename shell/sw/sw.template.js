@@ -17,6 +17,9 @@ const SHELL_CACHE = "gs-shell-" + BUILD_ID;
 // Chunks chargés à la demande (et fichiers de /assets/ non hachés) : par build, donc bornés.
 const ASSET_CACHE = "gs-assets-" + BUILD_ID;
 const NAV_TIMEOUT_MS = 4000;
+// Le précache est rempli par des requêtes sans `Origin` ; un module `crossorigin` en envoie un :
+// un `Vary: Origin` (vite preview, CDN) ferait manquer tout le cache hors-ligne.
+const MATCH = { ignoreVary: true };
 
 /** Routes du shell servies hors-ligne par repli sur `/index.html` (appli SPA). */
 function isShellNavigation(pathname) {
@@ -37,14 +40,14 @@ async function networkFirst(request) {
     if (res.ok) await cache.put(request, res.clone());
     return res;
   } catch (err) {
-    const hit = await cache.match(request);
+    const hit = await cache.match(request, MATCH);
     if (hit) return hit;
     throw err;
   }
 }
 
 async function cacheFirst(request) {
-  const hit = await self.caches.match(request);
+  const hit = await self.caches.match(request, MATCH);
   if (hit) return hit;
   const res = await fetch(request);
   if (res.ok) {
@@ -57,7 +60,7 @@ async function cacheFirst(request) {
 async function navigate(request) {
   const fallback = async () => {
     const cache = await self.caches.open(SHELL_CACHE);
-    return (await cache.match("/index.html")) || Response.error();
+    return (await cache.match("/index.html", MATCH)) || Response.error();
   };
   try {
     const res = await fetch(request, { signal: AbortSignal.timeout(NAV_TIMEOUT_MS) });

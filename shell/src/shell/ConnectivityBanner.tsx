@@ -49,6 +49,9 @@ export function ConnectivityBanner() {
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const online = useSyncExternalStore(subscribeOnline, isOnline, () => true);
   const unsent = useUnsentCount();
+  // `onlineManager` démarre « en ligne » et ne bouge qu'aux événements : un chargement fait
+  // hors-ligne (service worker) doit aussi lire `navigator.onLine`.
+  const offline = !online || (typeof navigator !== "undefined" && navigator.onLine === false);
 
   useEffect(() => {
     const unsubscribeQueries = queryClient.getQueryCache().subscribe((event) => {
@@ -97,15 +100,16 @@ export function ConnectivityBanner() {
     return () => clearInterval(id);
   }, [unreachable, mutationDown, queryClient]);
 
-  if (!online) {
-    // L8 : des saisies sont gardées sur l'appareil : message rassurant (pas une alerte).
-    if (unsent > 0) {
-      return (
-        <div role="status" className="w-full bg-sunken px-4 py-2 text-center text-sm text-ink">
-          {t("outbox.offlineBanner")}
-        </div>
-      );
-    }
+  // L8 : des saisies sont gardées sur l'appareil (réseau coupé ou cœur injoignable) : message
+  // rassurant (pas une alerte).
+  if ((offline || unreachable) && unsent > 0) {
+    return (
+      <div role="status" className="w-full bg-sunken px-4 py-2 text-center text-sm text-ink">
+        {t("outbox.offlineBanner")}
+      </div>
+    );
+  }
+  if (offline) {
     return (
       <div role="alert" className="w-full bg-danger-soft px-4 py-2 text-center text-sm text-danger">
         {t("connectivity.offline")}

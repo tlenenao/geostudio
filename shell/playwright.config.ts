@@ -41,6 +41,7 @@ export default defineConfig({
       command: "npm run build && npm run preview -- --port 4173",
       url: "http://localhost:4173",
       reuseExistingServer: false,
+      timeout: 240_000,
       env: {
         VITE_AUTH_MODE: "mock",
         VITE_CORE_URL: "https://core.test",
@@ -50,6 +51,7 @@ export default defineConfig({
       command: "node e2e/external-widget-server.mjs",
       url: "http://localhost:4174/widget.js",
       reuseExistingServer: false,
+      timeout: 240_000,
     },
   ],
 });
