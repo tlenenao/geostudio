@@ -949,6 +949,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/compliance/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Audit
+         * @description Export du journal d'audit du tenant, paginé par curseur d'id (DPO/SIEM, AUD-092).
+         */
+        get: operations["export_audit_v1_compliance_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/compliance/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify Audit
+         * @description Recalcule la chaîne de hachage de l'audit du tenant (AUD-092).
+         */
+        get: operations["verify_audit_v1_compliance_audit_verify_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/compliance/purges/{purge_id}": {
         parameters: {
             query?: never;
@@ -994,6 +1034,27 @@ export interface paths {
         put?: never;
         /** Erase User */
         post: operations["erase_user_v1_compliance_users__user_id__erase_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/compliance/users/{user_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export User
+         * @description Droit d'accès/portabilité (RGPD Art. 15/20, AUD-120) : « me » pour soi-même, sinon
+         *     `compliance.manage` (DPO). L'export est lui-même audité.
+         */
+        get: operations["export_user_v1_compliance_users__user_id__export_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3237,6 +3298,11 @@ export interface components {
             key: string;
             /** Label */
             label: string;
+            /**
+             * Sensitive
+             * @default false
+             */
+            sensitive: boolean;
         };
         /** AttachmentList */
         AttachmentList: {
@@ -3303,6 +3369,30 @@ export interface components {
              * @enum {string}
              */
             mode: "default" | "derived";
+        };
+        /** AuditPage */
+        AuditPage: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Nextafterid */
+            nextAfterId?: number | null;
+        };
+        /** AuditVerification */
+        AuditVerification: {
+            /** Brokenatseq */
+            brokenAtSeq?: number | null;
+            /** Checked */
+            checked: number;
+            /** Headhash */
+            headHash?: string | null;
+            /** Lastseq */
+            lastSeq?: number | null;
+            /** Ok */
+            ok: boolean;
+            /** Unsealed */
+            unsealed: number;
         };
         /**
          * AzureBlobCredentialsPayload
@@ -4280,6 +4370,8 @@ export interface components {
         };
         /** GroupShare */
         GroupShare: {
+            /** Expiresat */
+            expiresAt?: string | null;
             /** Groupid */
             groupId: string;
             /** Name */
@@ -8369,6 +8461,71 @@ export interface operations {
             };
         };
     };
+    export_audit_v1_compliance_audit_get: {
+        parameters: {
+            query?: {
+                afterId?: number;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_audit_v1_compliance_audit_verify_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditVerification"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_purge_status_v1_compliance_purges__purge_id__get: {
         parameters: {
             query?: never;
@@ -8462,6 +8619,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_user_v1_compliance_users__user_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
             /** @description Validation Error */
             422: {

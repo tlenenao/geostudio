@@ -832,6 +832,11 @@
           "label": {
             "title": "Label",
             "type": "string"
+          },
+          "sensitive": {
+            "default": false,
+            "title": "Sensitive",
+            "type": "boolean"
           }
         },
         "required": [
@@ -999,6 +1004,90 @@
           "expression"
         ],
         "title": "AttributeRule",
+        "type": "object"
+      },
+      "AuditPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextAfterId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextafterid"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AuditPage",
+        "type": "object"
+      },
+      "AuditVerification": {
+        "properties": {
+          "brokenAtSeq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokenatseq"
+          },
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "headHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headhash"
+          },
+          "lastSeq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseq"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "unsealed": {
+            "title": "Unsealed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "checked",
+          "unsealed"
+        ],
+        "title": "AuditVerification",
         "type": "object"
       },
       "AzureBlobCredentialsPayload": {
@@ -3909,6 +3998,18 @@
       },
       "GroupShare": {
         "properties": {
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
           "groupId": {
             "title": "Groupid",
             "type": "string"
@@ -13473,6 +13574,117 @@
         ]
       }
     },
+    "/v1/compliance/audit": {
+      "get": {
+        "description": "Export du journal d'audit du tenant, pagin\u00e9 par curseur d'id (DPO/SIEM, AUD-092).",
+        "operationId": "export_audit_v1_compliance_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "afterId",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Afterid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Audit",
+        "tags": [
+          "compliance"
+        ]
+      }
+    },
+    "/v1/compliance/audit/verify": {
+      "get": {
+        "description": "Recalcule la cha\u00eene de hachage de l'audit du tenant (AUD-092).",
+        "operationId": "verify_audit_v1_compliance_audit_verify_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditVerification"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Audit",
+        "tags": [
+          "compliance"
+        ]
+      }
+    },
     "/v1/compliance/purges/{purge_id}": {
       "get": {
         "operationId": "get_purge_status_v1_compliance_purges__purge_id__get",
@@ -13637,6 +13849,61 @@
           }
         },
         "summary": "Erase User",
+        "tags": [
+          "compliance"
+        ]
+      }
+    },
+    "/v1/compliance/users/{user_id}/export": {
+      "get": {
+        "description": "Droit d'acc\u00e8s/portabilit\u00e9 (RGPD Art. 15/20, AUD-120) : \u00ab me \u00bb pour soi-m\u00eame, sinon\n`compliance.manage` (DPO). L'export est lui-m\u00eame audit\u00e9.",
+        "operationId": "export_user_v1_compliance_users__user_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Export User V1 Compliance Users  User Id  Export Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export User",
         "tags": [
           "compliance"
         ]
