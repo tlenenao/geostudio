@@ -17,6 +17,7 @@ from app.collections.models import Collection
 from app.history.models import EntityHistory
 from app.items.models import Item
 from app.notifications.models import Notification
+from app.saved_queries.models import SavedQuery
 from app.sharing.models import Group, GroupMember
 from app.users.models import User
 
@@ -104,6 +105,15 @@ def export_user_data(session: Session, *, tenant_id: str, user_id: str) -> dict:
             lambda i, k, t, c: {"id": i, "kind": k, "itemTitle": t, "createdAt": _iso(c)},
             truncated,
             "notifications",
+        ),
+        "savedQueries": _section(  # AUD-062 : texte SQL écrit par la personne
+            session,
+            select(SavedQuery.id, SavedQuery.name, SavedQuery.sql, SavedQuery.created_at)
+            .where(SavedQuery.owner_id == user_id, SavedQuery.tenant_id == tenant_id)
+            .order_by(SavedQuery.created_at),
+            lambda i, n, s, c: {"id": i, "name": n, "sql": s, "createdAt": _iso(c)},
+            truncated,
+            "savedQueries",
         ),
         "auditLog": _section(
             session,
