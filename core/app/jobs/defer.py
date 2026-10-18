@@ -10,7 +10,7 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 
-def defer_resilient(call: Callable[[], None], *, attempts: int = 3, delay: float = 0.2) -> None:
+def defer_resilient(call: Callable[[], object], *, attempts: int = 3, delay: float = 0.2) -> None:
     for i in range(attempts):
         try:
             call()

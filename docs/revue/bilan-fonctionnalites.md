@@ -83,7 +83,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 
 | Domaine | Fonctionnalité | id | Santé | Δ | Priorité | tests | atteignabilité | garde | dette |
 |---|---|---|---|---|---|---|---|---|---|
-| Paramètres | Préférences utilisateur : langue et fuseau | `parametres-preferences-de-langue-et-fuseau` | 82.1 | — | moyenne (amorcée) | — | 100.0 | 50.0 | 100.0 |
+| Paramètres | Préférences utilisateur : langue et fuseau | `parametres-preferences-de-langue-et-fuseau` | 82.1 | = | moyenne (amorcée) | — | 100.0 | 50.0 | 100.0 |
 | Builder — Widgets | Widget Table (tri, pagination, cross-filter, action setFilter) | `builder-widgets-widget-table-tri-pagination-cross-filter-action-setfilter` | 91.2 | = | haute (amorcée) | 85.3 | — | — | 100.0 |
 | Interne | Galerie interne de composants du kit UI | `interne-galerie-interne-de-composants-du-kit-ui` | 74.4 | = | basse (amorcée) | 36.1 | 100.0 | — | 100.0 |
 | Builder — Widgets | Widget Indicateur (KPI) avec comparaison de periode et sparkline | `builder-widgets-widget-indicateur-kpi-avec-comparaison-de-periode-et-sparkline` | 93.0 | = | haute (amorcée) | 88.3 | — | — | 100.0 |
