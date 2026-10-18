@@ -19,6 +19,7 @@ import type { WidgetContext } from "../registry";
 import { plural, t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
+import { compressImage } from "../../offline/compressImage";
 import { FeatureHistoryPanel } from "./FeatureHistoryPanel";
 import { ACCURACY_WARN_M, GeometryInput, lineKind, type GeometryIssue } from "./GeometryInput";
 import { RelatedRecordsPanel } from "./RelatedRecordsPanel";
@@ -426,7 +427,8 @@ function AttachmentFieldInput({
 
   async function handleFiles(files: FileList | null) {
     if (!files || fid === null) return;
-    for (const file of Array.from(files)) {
+    for (const original of Array.from(files)) {
+      const file = kind === "image" ? await compressImage(original) : original;
       setFileStatus((s) => ({ ...s, [file.name]: "uploading" }));
       try {
         await uploadAttachment(client, collectionId, fid, fieldKey, file);
@@ -466,7 +468,12 @@ function AttachmentFieldInput({
           type="file"
           {...mediaAttrs(kind ?? "image")}
           aria-labelledby={labelledBy}
-          onChange={(e) => onQueue(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            const picked = e.target.files?.[0] ?? null;
+            // L8 : une photo est réduite dès le choix (file d'attente, quota, zone à faible débit).
+            if (picked && (kind ?? "image") === "image") void compressImage(picked).then(onQueue);
+            else onQueue(picked);
+          }}
         />
         {queued && (
           <p className="text-xs text-ink-2">
