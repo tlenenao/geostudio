@@ -3,6 +3,7 @@ export { useItemClient } from "./ItemClientProvider";
 
 export * from "./domains/identity.hooks";
 export * from "./domains/apiKeys.hooks";
+export * from "./domains/llmGovernance.hooks";
 export * from "./domains/notifications.hooks";
 export * from "./domains/items.hooks";
 export * from "./domains/collectionsAdmin.hooks";

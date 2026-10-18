@@ -218,6 +218,33 @@ export type ApiKeySummary = {
 /** Seule réponse qui porte le secret (`token`), affiché une seule fois. */
 export type ApiKeyCreated = ApiKeySummary & { token: string };
 
+export type LlmUsageDay = {
+  day: string;
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+};
+export type LlmUsageSummary = {
+  dailyLimit: number | null;
+  usedToday: number;
+  days: LlmUsageDay[];
+};
+/** AUD-149 : la clé d'API n'est jamais renvoyée (`hasApiKey`). */
+export type LlmSettings = {
+  configured: boolean;
+  model?: string | null;
+  apiUrl?: string | null;
+  hasApiKey: boolean;
+  dailyTokenLimit?: number | null;
+};
+/** `apiKey` absent = conserver la clé existante. */
+export type LlmSettingsWrite = {
+  model?: string | null;
+  apiUrl?: string | null;
+  apiKey?: string | null;
+  dailyTokenLimit?: number | null;
+};
+
 export type UsageTask = {
   id: number;
   actorId: string | null;
@@ -846,6 +873,10 @@ export interface ItemClient {
     readOnly?: boolean;
   }): Promise<ApiKeyCreated>;
   revokeApiKey(id: string): Promise<ApiKeySummary>;
+  getLlmUsage(): Promise<LlmUsageSummary>;
+  getLlmSettings(): Promise<LlmSettings>;
+  putLlmSettings(body: LlmSettingsWrite): Promise<LlmSettings>;
+  deleteLlmSettings(): Promise<void>;
   listUsageTasks(params: {
     page: number;
     pageSize: number;

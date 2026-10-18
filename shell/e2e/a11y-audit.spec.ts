@@ -587,6 +587,22 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await runAxeAudit(page, "ComplianceAdminPage");
   });
 
+  test("LlmGovernancePage (famille Administration — IA et consommation)", async ({ page }) => {
+    await mockCore(page);
+    await mockMe(page, ADMIN_ME);
+    await page.route("https://core.test/v1/copilot/usage", (route) =>
+      route.fulfill({ json: { dailyLimit: null, usedToday: 0, days: [] } }),
+    );
+    await page.route("https://core.test/v1/copilot/llm-settings", (route) =>
+      route.fulfill({ json: { configured: false, hasApiKey: false } }),
+    );
+    await page.goto("/admin/copilot");
+    await expect(
+      page.getByRole("heading", { name: "IA : consommation et fournisseur" }),
+    ).toBeVisible();
+    await runAxeAudit(page, "LlmGovernancePage");
+  });
+
   test("SettingsPage (Paramètres, profil courant)", async ({ page }) => {
     await mockCore(page);
     // Seule route que mockCore() ne fournit pas par défaut pour cette page

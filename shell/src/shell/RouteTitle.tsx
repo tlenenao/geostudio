@@ -28,6 +28,7 @@ const ROUTE_TITLES: [path: string, key: MessageKey][] = [
   ["/admin/users", "docTitle.adminUsers"],
   ["/admin/compliance", "docTitle.adminCompliance"],
   ["/admin/infrastructure", "docTitle.adminInfrastructure"],
+  ["/admin/copilot", "docTitle.adminCopilot"],
   ["/internal/kit-gallery", "docTitle.kitGallery"],
   ["/tasks", "docTitle.tasks"],
   ["/settings", "docTitle.settings"],
