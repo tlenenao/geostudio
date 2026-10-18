@@ -154,6 +154,10 @@ export class MockMap {
     const layer = this.layers.find((l) => l.id === id) as { paint?: Record<string, unknown> };
     if (layer) layer.paint = { ...layer.paint, [prop]: value };
   }
+  setLayerZoomRange(id: string, minzoom: number, maxzoom: number) {
+    const layer = this.layers.find((l) => l.id === id);
+    if (layer) Object.assign(layer, { minzoom, maxzoom });
+  }
   getSource(id: string) {
     return this.sources.find((s) => s.id === id);
   }
@@ -197,7 +201,7 @@ export class MockMap {
     return this.styleSettled;
   }
   getStyle() {
-    return { glyphs: this.glyphs };
+    return { glyphs: this.glyphs, layers: this.layers };
   }
   // MapView projette le point cliqué pour positionner le popup ; la valeur
   // exacte n'a pas de sens en test, seule sa propagation compte.

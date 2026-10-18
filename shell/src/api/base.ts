@@ -143,6 +143,8 @@ export type RawMapLayer = {
   pkColumn?: string | null;
   renderAs?: "fill" | "circle" | "line" | null;
   cluster?: ClusterConfig | null;
+  minZoom?: number | null;
+  maxZoom?: number | null;
   symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
 };
 

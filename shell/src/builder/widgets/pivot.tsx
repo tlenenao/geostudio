@@ -170,7 +170,7 @@ export function registerPivotWidget(): void {
                   )}
                   {grid.measures.map((m) => (
                     <td key={`total-${m}`} className={`${thCls} font-medium`}>
-                      {grid.rowTotal(row, m)}
+                      {grid.rowTotal(row, m) ?? "—"}
                     </td>
                   ))}
                 </tr>
@@ -182,13 +182,13 @@ export function registerPivotWidget(): void {
                 {grid.colValues.flatMap((col) =>
                   grid.measures.map((m) => (
                     <td key={`total-${col}-${m}`} className="p-1 font-medium">
-                      {grid.colTotal(col, m)}
+                      {grid.colTotal(col, m) ?? "—"}
                     </td>
                   )),
                 )}
                 {grid.measures.map((m) => (
                   <td key={`grand-${m}`} className="p-1 font-medium">
-                    {grid.grandTotal(m)}
+                    {grid.grandTotal(m) ?? "—"}
                   </td>
                 ))}
               </tr>

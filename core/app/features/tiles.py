@@ -117,7 +117,13 @@ def build_mvt_sql(quote: Callable[[str], str], info: TableInfo, src: str | None 
     # VACUUM/UPDATE). La ligne en trop ne part jamais dans la tuile (LIMIT max externe) :
     # elle sert seulement à prouver qu'il y a eu une vraie omission, donc une
     # collection d'exactement `max` entités n'est plus déclarée tronquée.
-    order = f"ORDER BY t.{quote(info.pk_column)}" if info.pk_column else ""
+    # AUD-055 : échantillon pseudo-aléatoire déterministe (hash de la PK) plutôt que les
+    # PK les plus petites : une tuile dense reste représentative de toute son emprise.
+    order = (
+        f"ORDER BY hashtextextended(t.{quote(info.pk_column)}::text, 0), t.{quote(info.pk_column)}"
+        if info.pk_column
+        else ""
+    )
     return (
         "WITH raw AS ("
         f"SELECT ST_AsMVTGeom(ST_Transform({geom}, 3857), "

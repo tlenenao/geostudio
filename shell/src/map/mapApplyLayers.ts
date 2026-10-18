@@ -28,6 +28,18 @@ import {
 } from "./mapLayerBuild";
 import "../i18n/domains/map";
 
+// AUD-051 : plage d'échelle par couche — posée sur le layer ET sur toutes ses sous-couches
+// (`<id>__outline`, `__icon`, étiquettes, clusters, effets...).
+function applyZoomRange(map: maplibregl.Map, layer: MapConfig["layers"][number]): void {
+  if (layer.kind !== "vector" && layer.kind !== "feature") return;
+  if (layer.minZoom == null && layer.maxZoom == null) return;
+  for (const styleLayer of map.getStyle()?.layers ?? []) {
+    if (styleLayer.id === layer.id || styleLayer.id.startsWith(`${layer.id}__`)) {
+      map.setLayerZoomRange(styleLayer.id, layer.minZoom ?? 0, layer.maxZoom ?? 24);
+    }
+  }
+}
+
 export function applyLayers(
   map: maplibregl.Map,
   layers: MapConfig["layers"],
@@ -334,14 +346,16 @@ export function applyLayers(
           applied.add(`${layer.id}__label`);
           applied.add(`${layer.id}__labels`);
         }
+        // AUD-049 : `pkColumn` transmis (sélection/cross-filter sur PK non numérique).
         const handler = makeFeatureClickHandler(
-          undefined,
+          layer.pkColumn,
           onFeatureClick,
           (properties, lngLat, featureId) => onPopup(layer.id, properties, lngLat, featureId),
         );
         map.on("click", layer.id, handler);
         clickHandlers.set(layer.id, handler);
       }
+      applyZoomRange(map, layer);
       applied.add(layer.id);
     } catch (err) {
       // Per spec §8: one bad layer must not break the whole map. Roll back any
@@ -444,8 +458,10 @@ export function refreshLabelSources(
   // module aurait alors partagé cette même entrée de garde entre les deux
   // instances (revue post-Task 14).
   lastLabelPayloads: Map<string, string>,
+  // AUD-049 : fenêtre du lecteur temps ; une entité hors fenêtre n'a ni étiquette ni point.
+  timeRange?: { from: string; to: string } | null,
 ) {
-  refreshDotSources(map, layers, lastLabelPayloads);
+  refreshDotSources(map, layers, lastLabelPayloads, timeRange);
   for (const layer of layers) {
     if (!layer.visible) continue;
     if (layer.kind !== "vector" && layer.kind !== "feature") continue;
@@ -461,10 +477,13 @@ export function refreshLabelSources(
     }
     // sourceLayer est OBLIGATOIRE sur une source vecteur (sinon la requête
     // renvoie zéro entité, sans erreur) et doit être ABSENT sur du GeoJSON.
-    const features =
+    const features = timeWindowed(
+      layer,
       layer.kind === "vector"
         ? map.querySourceFeatures(layer.id, { sourceLayer: layer.sourceLayer })
-        : map.querySourceFeatures(layer.id);
+        : map.querySourceFeatures(layer.id),
+      timeRange,
+    );
     const collection = buildLabelFeatureCollection(
       features.map((f) => ({
         id: f.id,
@@ -487,6 +506,20 @@ export function refreshLabelSources(
   }
 }
 
+// Couches `vector` à `timeField` : ne garde que les entités de la fenêtre (les `feature`
+// sont déjà filtrées côté cœur par `datetime=`).
+function timeWindowed<F extends { properties?: unknown }>(
+  layer: MapConfig["layers"][number],
+  features: F[],
+  range: { from: string; to: string } | null | undefined,
+): F[] {
+  if (!range || layer.kind !== "vector" || !layer.timeField) return features;
+  const field = layer.timeField;
+  return features.filter((f) =>
+    inTimeWindow(f.properties as Record<string, unknown> | null | undefined, field, range),
+  );
+}
+
 // ARC-17 : remplit les sources de points Dot Density depuis les polygones
 // chargés (même mécanique et même garde d'idempotence que les étiquettes ;
 // déterministe, donc un `idle` sur carte immobile ne repose rien).
@@ -494,6 +527,7 @@ function refreshDotSources(
   map: maplibregl.Map,
   layers: MapConfig["layers"],
   lastPayloads: Map<string, string>,
+  timeRange?: { from: string; to: string } | null,
 ) {
   for (const layer of layers) {
     if (!layer.visible || (layer.kind !== "vector" && layer.kind !== "feature")) continue;
@@ -502,10 +536,13 @@ function refreshDotSources(
     const sourceId = `${layer.id}__dotsrc`;
     const source = map.getSource(sourceId) as { setData?: (d: unknown) => void } | undefined;
     if (!source?.setData) continue;
-    const features =
+    const features = timeWindowed(
+      layer,
       layer.kind === "vector"
         ? map.querySourceFeatures(layer.id, { sourceLayer: layer.sourceLayer })
-        : map.querySourceFeatures(layer.id);
+        : map.querySourceFeatures(layer.id),
+      timeRange,
+    );
     const collection = generateDots(
       features.map((f) => ({
         id: f.id ?? (layer.kind === "vector" ? f.properties?.[layer.pkColumn ?? ""] : undefined),
@@ -539,8 +576,20 @@ export function mapRelevantLayer(layer: MapConfig["layers"][number]) {
 // applyLayers) pour ne jamais empiler les clauses temporelles ; MapView le
 // vide chaque fois que applyLayers recrée les couches. Les valeurs MVT d'une
 // date sont des chaînes ISO : la comparaison lexicographique est exacte, et
-// la borne haute couvre toute la journée `to`. Limite : les étiquettes
-// (querySourceFeatures) ne suivent pas ce filtre.
+// la borne haute couvre toute la journée `to`. Étiquettes et points de densité
+// (alimentés par querySourceFeatures) suivent via `inTimeWindow` (AUD-049).
+/** Vrai si l'entité tombe dans la fenêtre (même sémantique que le filtre MapLibre). */
+export function inTimeWindow(
+  properties: Record<string, unknown> | null | undefined,
+  timeField: string,
+  range: { from: string; to: string } | null | undefined,
+): boolean {
+  if (!range) return true;
+  const v = properties?.[timeField];
+  if (typeof v !== "string") return false;
+  return v >= range.from && v <= `${range.to}T23:59:59.999999`;
+}
+
 export function applyTimeFilters(
   map: maplibregl.Map,
   layers: MapConfig["layers"],
@@ -567,7 +616,10 @@ export function applyTimeFilters(
           : (bases.get(aggId) ?? null)) as maplibregl.FilterSpecification | null,
       );
     }
-    for (const id of roots.flatMap((r) => [r, `${r}__icon`, `${r}__outline`])) {
+    // AUD-049 : toutes les sous-couches dérivées lisent la même source MVT ; on filtre
+    // aussi les effets (ombre/halo/fusion), pas seulement la couche et son contour.
+    const derived = ["", "__icon", "__outline", "__fx_shadow", "__fx_bloom", "__fx_blend"];
+    for (const id of roots.flatMap((r) => derived.map((d) => `${r}${d}`))) {
       if (!map.getLayer(id)) continue;
       if (!bases.has(id)) bases.set(id, map.getFilter(id) ?? undefined);
       const base = bases.get(id);

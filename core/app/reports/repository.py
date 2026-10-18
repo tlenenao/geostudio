@@ -10,13 +10,15 @@ aucune fenêtre d'état intermédiaire bloqué à surveiller ; un rendu bloqué 
 lui-même est déjà couvert par export_repo.reclaim_stuck_jobs (SP-17a)."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import croniter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.configs import repository as configs_repo
+from app.configs.schemas import ReportSchedulePayload
+from app.export import repository as export_repo
 from app.items.models import Item
 from app.reports.models import ReportRun
 
@@ -125,6 +127,44 @@ def list_unnotified_runs(session: Session) -> list[ReportRun]:
     return list(rows)
 
 
+def _retry_state(
+    session: Session, run: ReportRun, payload: ReportSchedulePayload, now: datetime
+) -> tuple[bool, datetime]:
+    """AUD-058 : (essai de rattrapage encore permis ?, date du prochain essai) pour un run dont
+    le rendu est en erreur. Les essais se comptent dans la période cron courante (runs créés
+    depuis le dernier tick) : aucune colonne dédiée."""
+    never = (False, now)
+    # Pas de politique de rattrapage : aucune requête (list_due_reports reste en O(1) requête par
+    # rapport, GAP-64).
+    if run.export_job_id is None or payload.retry is None or not payload.refreshPolicy.enabled:
+        return never
+    job = export_repo.get_job(session, tenant_id=run.tenant_id, job_id=run.export_job_id)
+    if job is None or job.status != "error":
+        return never
+    period_start = croniter.croniter(payload.refreshPolicy.cron, now).get_prev(datetime)
+    attempts = session.execute(
+        select(func.count())
+        .select_from(ReportRun)
+        .where(
+            ReportRun.report_item_id == run.report_item_id,
+            ReportRun.tenant_id == run.tenant_id,
+            ReportRun.created_at > period_start.replace(tzinfo=None),
+        )
+    ).scalar_one()
+    created = run.created_at if run.created_at.tzinfo else run.created_at.replace(tzinfo=UTC)
+    return attempts < payload.retry.maxAttempts, created + timedelta(
+        minutes=payload.retry.delayMinutes
+    )
+
+
+def retry_scheduled(session: Session, run: ReportRun) -> bool:
+    """Vrai si ce run en erreur sera rejoué : sa panne ne doit pas être notifiée maintenant."""
+    config = configs_repo.get_config_by_item(session, run.report_item_id)
+    if config is None or config.config.report is None:
+        return False
+    return _retry_state(session, run, config.config.report, _now())[0]
+
+
 def list_due_reports(session: Session) -> list[tuple[str, str]]:
     """Sweep cross-tenant, consommé par l'étape de déclenchement de
     sweep_report_schedules_task. Jamais exposé via une route (même
@@ -155,4 +195,8 @@ def list_due_reports(session: Session) -> list[tuple[str, str]]:
         next_tick = croniter.croniter(policy.cron, created_at).get_next(datetime)
         if next_tick <= now:
             due.append((item_id, tenant_id))
+        elif latest is not None:
+            allowed, retry_at = _retry_state(session, latest, config.report, now)
+            if allowed and retry_at <= now:
+                due.append((item_id, tenant_id))
     return due

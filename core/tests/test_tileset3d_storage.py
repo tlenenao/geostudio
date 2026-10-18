@@ -45,7 +45,9 @@ def _zip_bytes(entries: dict[str, bytes]) -> bytes:
 
 
 def _valid_tileset_entries() -> dict[str, bytes]:
-    tileset_json = json.dumps({"asset": {"version": "1.0"}, "root": {}}).encode()
+    tileset_json = json.dumps(
+        {"asset": {"version": "1.0"}, "root": {"boundingVolume": {}}}
+    ).encode()
     return {"tileset.json": tileset_json, "tiles/0.b3dm": b"\x00" * 32}
 
 
@@ -99,11 +101,51 @@ def test_validate_tileset_zip_rejects_invalid_tileset_json_content():
 
 
 def test_validate_tileset_zip_rejects_tileset_json_missing_asset_version():
-    zip_bytes = _zip_bytes({"tileset.json": json.dumps({"root": {}}).encode()})
+    zip_bytes = _zip_bytes({"tileset.json": json.dumps({"root": {"boundingVolume": {}}}).encode()})
     client = _FakeS3Client({"k": zip_bytes})
     f = S3RangeFile(client, bucket="b", key="k")
     with pytest.raises(Tileset3DValidationError, match="asset.version"):
         validate_tileset_zip(f, max_entries=100, max_total_bytes=10_000, max_entry_bytes=10_000)
+
+
+_CAPS = {"max_entries": 100, "max_total_bytes": 10_000_000, "max_entry_bytes": 10_000_000}
+
+
+def _validate(entries: dict[str, bytes], **over):
+    client = _FakeS3Client({"k": _zip_bytes(entries)})
+    return validate_tileset_zip(S3RangeFile(client, bucket="b", key="k"), **{**_CAPS, **over})
+
+
+def test_validate_accepts_a_zip_with_a_root_folder_and_reports_its_path():
+    # AUD-054 : Cesium ion / Pix4D / Blender zippent un dossier racine.
+    entries = {f"ville/{n}": c for n, c in _valid_tileset_entries().items()}
+    assert _validate(entries).tileset_json_path == "ville/tileset.json"
+
+
+def test_validate_prefers_the_shallowest_tileset_json():
+    entries = {**_valid_tileset_entries(), "tiles/sub/tileset.json": b"{}"}
+    assert _validate(entries).tileset_json_path == "tileset.json"
+
+
+def test_validate_rejects_an_oversized_tileset_json_without_reading_it_whole():
+    entries = _valid_tileset_entries()
+    with pytest.raises(Tileset3DValidationError, match="trop volumineux"):
+        _validate(entries, max_tileset_json_bytes=10)
+
+
+def test_validate_rejects_an_unsupported_version_and_a_missing_bounding_volume():
+    bad_version = json.dumps({"asset": {"version": "9.9"}, "root": {"boundingVolume": {}}})
+    with pytest.raises(Tileset3DValidationError, match="version 3D Tiles"):
+        _validate({"tileset.json": bad_version.encode()})
+    no_bv = json.dumps({"asset": {"version": "1.1"}, "root": {}})
+    with pytest.raises(Tileset3DValidationError, match="boundingVolume"):
+        _validate({"tileset.json": no_bv.encode()})
+
+
+def test_validate_rejects_a_deeply_nested_tileset_json():
+    deep = b"[" * 100_000 + b"]" * 100_000
+    with pytest.raises(Tileset3DValidationError, match="JSON"):
+        _validate({"tileset.json": deep})
 
 
 def test_validate_tileset_zip_rejects_too_many_entries():

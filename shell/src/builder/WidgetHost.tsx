@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Component, type ReactNode } from "react";
-import type { Page, RenderMode, Theme, WidgetItem } from "../api/types";
+import type { LakeFreshness, Page, RenderMode, Theme, WidgetItem } from "../api/types";
+import { formatDateTime } from "../lib/format";
 import type { Breakpoint } from "./grid";
 import { getWidget } from "./registry";
 import { useDataStates } from "./DataContext";
@@ -31,6 +32,18 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode }, { failed: b
     }
     return this.props.children;
   }
+}
+
+// AUD-061 : au-delà de ce retard de réplication, l'agrégat est signalé comme décalé.
+export const LAKE_LAG_NOTICE_MS = 5 * 60_000;
+
+export function lakeNotice(lake: LakeFreshness | undefined, now = Date.now()): string | null {
+  if (!lake) return null;
+  if (lake.pending) return t("widgetHost.lakePending");
+  if (lake.asOf && now - new Date(lake.asOf).getTime() > LAKE_LAG_NOTICE_MS) {
+    return t("widgetHost.lakeStale", { date: formatDateTime(lake.asOf) });
+  }
+  return null;
 }
 
 export function WidgetHost({
@@ -84,7 +97,8 @@ export function WidgetHost({
     ctx: analyticsCtx,
   };
   const resolvedProps = resolveExprBindings(item.props, exprCtx) as Record<string, unknown>;
-  return (
+  const notice = lakeNotice(data?.lake);
+  const rendered = (
     <WidgetErrorBoundary>
       <Widget
         props={resolvedProps}
@@ -102,5 +116,15 @@ export function WidgetHost({
         }}
       />
     </WidgetErrorBoundary>
+  );
+  // Sans retard notable le DOM est inchangé : l'enveloppe n'existe que pour porter l'avis.
+  if (!notice) return rendered;
+  return (
+    <div className="flex h-full flex-col">
+      <div className="min-h-0 flex-1">{rendered}</div>
+      <p role="status" data-lake-notice className="shrink-0 text-xs text-warn">
+        {notice}
+      </p>
+    </div>
   );
 }

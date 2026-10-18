@@ -41,9 +41,11 @@ export function referenceWindow(
   if (mode === "sameLastYear") {
     return { from: toISODate(shiftYears(from, -1)), to: toISODate(shiftYears(to, -1)) };
   }
+  // AUD-059 : les deux bornes sont inclusives côté cœur — la référence finit la veille de
+  // `from` (sinon le jour `from` est compté dans les deux fenêtres) et dure autant de jours.
   const durationMs = to.getTime() - from.getTime();
-  const refTo = new Date(from.getTime());
-  const refFrom = new Date(from.getTime() - durationMs);
+  const refTo = new Date(from.getTime() - MS_PER_DAY);
+  const refFrom = new Date(refTo.getTime() - durationMs);
   return { from: toISODate(refFrom), to: toISODate(refTo) };
 }
 

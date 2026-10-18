@@ -232,6 +232,7 @@ export const widgets = {
   "widgetFeatureReport.empty": "Sélectionnez une entité pour afficher sa fiche.",
   "widgetFeatureReport.exportPdf": "Exporter la fiche (PDF)",
   "atlas.exportPdf": "Exporter l'atlas (PDF)",
+  "atlas.truncated": "Atlas tronqué : {shown} pages sur {total} entités (plafond maxPages).",
   "atlas.sourceError": "Source de données de l'atlas introuvable ou illisible.",
   "widgetTimePlayer.from": "Début de l'animation",
   "widgetTimePlayer.to": "Fin de l'animation",
@@ -522,6 +523,7 @@ export const widgets = {
   "printLayout.orientationAria": "Orientation",
   "printLayout.orientationPortrait": "Portrait",
   "printLayout.orientationLandscape": "Paysage",
+  "printLayout.dpiLabel": "Résolution d'export",
   "printLayout.titleLabel": "Titre",
   "printLayout.legendLabel": "Légende",
   "printLayout.cartoucheLabel": "Cartouche",
@@ -733,6 +735,9 @@ export const widgets = {
 
   // WidgetHost (builder)
   "widgetHost.crashedFallback": "Erreur du widget",
+  "widgetHost.lakePending":
+    "Réplication en cours : les agrégats de cette collection ne sont pas encore à jour.",
+  "widgetHost.lakeStale": "Agrégats à jour au {date} (réplication en retard).",
   "widgetHost.unknownWidget": "Widget inconnu : {widget}",
   "chartCompare.offsetLabel": "{unit} {n}",
   "chartCompare.unitHour": "Heure",

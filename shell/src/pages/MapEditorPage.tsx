@@ -255,6 +255,9 @@ export function MapEditorPage({ pk }: { pk: string }) {
               <Suspense fallback={<div className="text-xs text-ink-3">Carte…</div>}>
                 <MapView
                   ref={mapViewRef}
+                  // AUD-049 : MapView ne construit son style qu'au montage ; un autre fond
+                  // remonte la carte (la vue vient de `draft.view`, mise à jour au moveend).
+                  key={viewConfig.basemap.style}
                   config={viewConfig}
                   timeRange={timeRange}
                   onViewChange={setView}

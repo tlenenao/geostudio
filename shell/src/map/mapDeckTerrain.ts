@@ -42,13 +42,28 @@ export function buildTiles3DLayer(
   onTilesetLoad?: (key: string) => void,
   getAuthToken?: () => string | undefined,
   getCoreUrl?: () => string,
+  getShareLinkToken?: () => string | undefined,
 ) {
-  const token = isHostedTilesetUrl(layer.url, getCoreUrl?.()) ? getAuthToken?.() : undefined;
+  const hosted = isHostedTilesetUrl(layer.url, getCoreUrl?.());
   return new Tile3DLayer({
     id: layer.id,
     data: layer.url,
     loader: Tiles3DLoader,
-    loadOptions: token ? { fetch: { headers: { Authorization: `Bearer ${token}` } } } : undefined,
+    // AUD-053 : jeton relu À CHAQUE requête (un jeton OIDC figé à la construction
+    // périme pendant la navigation) ; un invité (lien de partage / embed) présente
+    // `X-Share-Link-Token`, comme le fait `transformRequest` de MapLibre.
+    loadOptions: hosted
+      ? {
+          fetch: (url: string, init?: RequestInit) => {
+            const headers = new Headers(init?.headers);
+            const token = getAuthToken?.();
+            const shareToken = getShareLinkToken?.();
+            if (token) headers.set("Authorization", `Bearer ${token}`);
+            else if (shareToken) headers.set("X-Share-Link-Token", shareToken);
+            return globalThis.fetch(url, { ...init, headers });
+          },
+        }
+      : undefined,
     // Fired once the root tileset has loaded. Deck.gl loads 3D Tiles entirely
     // outside MapLibre's knowledge, so this is the only signal that tells the
     // export worker the tileset is actually on screen (see onReady below).
@@ -62,13 +77,14 @@ export function applyDeckLayers(
   onTilesetLoad?: (key: string) => void,
   getAuthToken?: () => string | undefined,
   getCoreUrl?: () => string,
+  getShareLinkToken?: () => string | undefined,
 ) {
   const deckLayers = layers
     .filter((l): l is DeckLayer => l.visible && l.kind === "deck")
     .map(buildDeckLayer);
   const tiles3dLayers = layers
     .filter((l): l is Tiles3DMapLayer => l.visible && l.kind === "tiles3d")
-    .map((l) => buildTiles3DLayer(l, onTilesetLoad, getAuthToken, getCoreUrl));
+    .map((l) => buildTiles3DLayer(l, onTilesetLoad, getAuthToken, getCoreUrl, getShareLinkToken));
   overlay.setProps({ layers: [...deckLayers, ...tiles3dLayers] });
 }
 

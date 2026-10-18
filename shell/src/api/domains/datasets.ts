@@ -5,6 +5,7 @@ import type {
   CollectionSchema,
   CreateDatasetInput,
   DataRecord,
+  LakeFreshness,
   DataSource,
   DatasetConfig,
   Item,
@@ -146,7 +147,7 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
   // P29.05 : une seule logique de lecture ; `total` = numberMatched du cœur.
   async function queryPage(
     source: DataSource,
-  ): Promise<{ records: DataRecord[]; total: number | null }> {
+  ): Promise<{ records: DataRecord[]; total: number | null; lake?: LakeFreshness }> {
     const asPage = (records: DataRecord[]) => ({ records, total: null });
     const cachedDataset = source.datasetId ? await resolveDataset(source.datasetId) : null;
     if (cachedDataset?.source === "arcgis" && source.datasetId) {
@@ -180,10 +181,16 @@ export function createDatasetsMethods(base: ItemClientBase): DatasetsMethods {
       const data = await request<{
         categoryKey: string | string[];
         rows: Record<string, unknown>[];
+        asOf?: string | null;
+        pending?: boolean;
       }>("POST", `/collections/${resolved.layer}/aggregate`, body);
-      return asPage(
-        data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row })),
-      );
+      // AUD-061 : le retard du lac (réplication CDC) remonte jusqu'au widget.
+      return {
+        ...asPage(
+          data.rows.map((row) => ({ id: statRowId(row, data.categoryKey), properties: row })),
+        ),
+        lake: { asOf: data.asOf ?? null, pending: data.pending ?? false },
+      };
     }
     return fetchGeoJsonPage(buildFeaturesUrl(coreUrl, resolved));
   }

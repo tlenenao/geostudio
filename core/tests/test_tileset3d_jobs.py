@@ -53,7 +53,10 @@ class _FakeS3Client:
 def _valid_zip_bytes() -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("tileset.json", json.dumps({"asset": {"version": "1.0"}, "root": {}}))
+        zf.writestr(
+            "tileset.json",
+            json.dumps({"asset": {"version": "1.0"}, "root": {"boundingVolume": {}}}),
+        )
         zf.writestr("tiles/0.b3dm", b"\x00" * 16)
     return buf.getvalue()
 

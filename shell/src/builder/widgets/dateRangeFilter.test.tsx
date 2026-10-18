@@ -3,7 +3,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test } from "vitest";
 import { _resetRegistry, getWidget } from "../registry";
-import { AnalyticsContextProvider, useAnalyticsContext } from "../AnalyticsContext";
+import {
+  AnalyticsContextProvider,
+  EMPTY_ANALYTICS_CONTEXT,
+  useAnalyticsContext,
+} from "../AnalyticsContext";
 import { registerDateRangeFilterWidget } from "./dateRangeFilter";
 import type { WidgetContext } from "../registry";
 import { expectTokenizedClasses } from "../../ui/kit/testUtils";
@@ -56,4 +60,26 @@ test("is a no-op when interactions is manual", async () => {
   await userEvent.type(screen.getByLabelText("Date de début"), "2026-01-01");
   await userEvent.type(screen.getByLabelText("Date de fin"), "2026-02-01");
   expect(screen.getByText("timeRange:none")).toBeInTheDocument();
+});
+
+test("AUD-059 : affiche la plage restaurée du contexte, la conserve si on vide un champ, refuse from > to", async () => {
+  const DateRangeFilter = getWidget("dateRangeFilter")!.Component;
+  render(
+    <AnalyticsContextProvider
+      interactions="auto"
+      initialState={{
+        ...EMPTY_ANALYTICS_CONTEXT,
+        timeRange: { from: "2026-01-01", to: "2026-02-01" },
+      }}
+    >
+      <DateRangeFilter props={{ label: "Période" }} ctx={{ mode: "runtime" } as WidgetContext} />
+      <TimeRangeProbe />
+    </AnalyticsContextProvider>,
+  );
+  expect(screen.getByLabelText("Date de début")).toHaveValue("2026-01-01");
+  expect(screen.getByLabelText("Date de fin")).toHaveValue("2026-02-01");
+  await userEvent.clear(screen.getByLabelText("Date de fin"));
+  expect(screen.getByText("timeRange:2026-01-01..2026-02-01")).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Date de fin"), "2025-12-01");
+  expect(screen.getByText("timeRange:2026-01-01..2026-02-01")).toBeInTheDocument();
 });

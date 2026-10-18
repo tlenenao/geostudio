@@ -5,11 +5,19 @@ export type PivotGrid = {
   rowValues: string[];
   colValues: string[];
   measures: string[];
-  cell(row: string, col: string, measure: string): number;
-  rowTotal(row: string, measure: string): number;
-  colTotal(col: string, measure: string): number;
-  grandTotal(measure: string): number;
+  // AUD-059 : `null` = cellule absente (jamais un 0 inventé) ou total non additif (« — »).
+  cell(row: string, col: string, measure: string): number | null;
+  rowTotal(row: string, measure: string): number | null;
+  colTotal(col: string, measure: string): number | null;
+  grandTotal(measure: string): number | null;
 };
+
+// Le cœur nomme la colonne d'une mesure `<agg>_<champ>` (ou `<agg>`). Un total de moyennes,
+// médianes, centiles, écarts-types ou distincts n'est pas la somme des cellules : on le masque.
+// min/max se recomposent exactement ; le reste (libellé libre) reste additif comme avant.
+const NON_ADDITIVE = /^(avg|median|percentile[\d.]*|stddev|countDistinct)(_|$)/;
+const MIN = /^min(_|$)/;
+const MAX = /^max(_|$)/;
 
 const EMPTY_LABEL = "—";
 const KEY_SEP = "::";
@@ -48,27 +56,46 @@ export function buildPivotGrid(
     rowSet.add(rowVal);
     colSet.add(colVal);
     for (const measure of measures) {
-      const raw = Number(record.properties[measure] ?? 0);
-      const value = Number.isFinite(raw) ? raw : 0;
+      const rawValue = record.properties[measure];
+      if (rawValue === null || rawValue === undefined) continue;
+      const raw = Number(rawValue);
+      if (!Number.isFinite(raw)) continue;
       const key = cellKey(rowVal, colVal, measure);
-      values.set(key, (values.get(key) ?? 0) + value);
+      values.set(key, (values.get(key) ?? 0) + raw);
     }
   }
 
   const rowValues = [...rowSet].sort((a, b) => a.localeCompare(b));
   const colValues = [...colSet].sort((a, b) => a.localeCompare(b));
 
-  function cell(row: string, col: string, measure: string): number {
-    return values.get(cellKey(row, col, measure)) ?? 0;
+  function cell(row: string, col: string, measure: string): number | null {
+    return values.get(cellKey(row, col, measure)) ?? null;
   }
-  function rowTotal(row: string, measure: string): number {
-    return colValues.reduce((sum, col) => sum + cell(row, col, measure), 0);
+  function combine(measure: string, cells: (number | null)[]): number | null {
+    if (NON_ADDITIVE.test(measure)) return null;
+    const present = cells.filter((c): c is number => c !== null);
+    if (present.length === 0) return null;
+    if (MIN.test(measure)) return Math.min(...present);
+    if (MAX.test(measure)) return Math.max(...present);
+    return present.reduce((sum, c) => sum + c, 0);
   }
-  function colTotal(col: string, measure: string): number {
-    return rowValues.reduce((sum, row) => sum + cell(row, col, measure), 0);
+  function rowTotal(row: string, measure: string): number | null {
+    return combine(
+      measure,
+      colValues.map((col) => cell(row, col, measure)),
+    );
   }
-  function grandTotal(measure: string): number {
-    return rowValues.reduce((sum, row) => sum + rowTotal(row, measure), 0);
+  function colTotal(col: string, measure: string): number | null {
+    return combine(
+      measure,
+      rowValues.map((row) => cell(row, col, measure)),
+    );
+  }
+  function grandTotal(measure: string): number | null {
+    return combine(
+      measure,
+      rowValues.map((row) => rowTotal(row, measure)),
+    );
   }
 
   return { rowValues, colValues, measures, cell, rowTotal, colTotal, grandTotal };

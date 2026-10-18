@@ -101,6 +101,7 @@ def env(monkeypatch):
         lambda job_id, tenant_id: deferred.append((job_id, tenant_id))
     )
     client = TestClient(app)
+    tileset3d_routes.reset_proxy_caches()  # AUD-054 : mêmes clés S3 d'un test à l'autre
     return client, Session, tenant, alice, deferred, fake_s3
 
 
@@ -360,7 +361,10 @@ def test_get_upload_job_404_for_unknown_job(env):
 def _valid_zip_bytes() -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("tileset.json", json.dumps({"asset": {"version": "1.0"}, "root": {}}))
+        zf.writestr(
+            "tileset.json",
+            json.dumps({"asset": {"version": "1.0"}, "root": {"boundingVolume": {}}}),
+        )
         zf.writestr("tiles/0.b3dm", b"\x00" * 16)
     return buf.getvalue()
 
@@ -397,6 +401,61 @@ def test_read_tileset3d_entry_returns_tileset_json(env):
     assert r.status_code == 200, r.text
     assert r.headers["content-type"].startswith("application/json")
     assert json.loads(r.content)["asset"]["version"] == "1.0"
+
+
+def test_read_tileset3d_entry_opens_the_zip_once_across_tiles(env):
+    """AUD-054 : plus de HEAD + relecture du répertoire central à chaque tuile."""
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    with Session() as s:
+        item_id = _seed_hosted_tileset_item(
+            s, tenant_id=tenant.id, owner_id=alice.id, fake_s3=fake_s3
+        )
+        s.commit()
+    heads = []
+    original = fake_s3.head_object
+    fake_s3.head_object = lambda **kw: (heads.append(1), original(**kw))[1]
+    for _ in range(4):
+        assert client.get(f"/v1/tileset3d/{item_id}/tiles/0.b3dm").status_code == 200
+    assert client.get(f"/v1/tileset3d/{item_id}/tileset.json").status_code == 200
+    assert len(heads) == 1
+
+
+def test_read_tileset3d_entry_serves_a_zip_with_a_root_folder(env):
+    """AUD-054 : tilesetJsonPath imbriqué — les chemins demandés sont relatifs à son dossier."""
+    client, Session, tenant, alice, _deferred, fake_s3 = env
+    key = "tenant/x/nested.zip"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(
+            "ville/tileset.json",
+            json.dumps({"asset": {"version": "1.0"}, "root": {"boundingVolume": {}}}),
+        )
+        zf.writestr("ville/tiles/0.b3dm", b"\x01" * 8)
+    fake_s3.objects[key] = buf.getvalue()
+    from app.items import repository as items_repo
+
+    with Session() as s:
+        item = items_repo.create_item(
+            s, tenant_id=tenant.id, owner_id=alice.id, resource_type="tileset3d", title="V"
+        )
+        configs_repo.create_config(
+            s,
+            BuilderConfig(
+                kind="tileset3d",
+                tileset3d=Tileset3DPayload(
+                    sourceKey=key,
+                    tilesetJsonPath="ville/tileset.json",
+                    totalBytes=100,
+                    entryCount=2,
+                ),
+            ),
+            item_id=item.id,
+            tenant_id=tenant.id,
+        )
+        s.commit()
+        item_id = item.id
+    assert client.get(f"/v1/tileset3d/{item_id}/tileset.json").status_code == 200
+    assert client.get(f"/v1/tileset3d/{item_id}/tiles/0.b3dm").content == b"\x01" * 8
 
 
 def test_read_tileset3d_entry_returns_tile_binary(env):
@@ -453,7 +512,10 @@ def test_read_tileset3d_entry_404_for_unknown_item(env):
 def _zip_with_compressible_entry(size: int) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("tileset.json", json.dumps({"asset": {"version": "1.0"}, "root": {}}))
+        zf.writestr(
+            "tileset.json",
+            json.dumps({"asset": {"version": "1.0"}, "root": {"boundingVolume": {}}}),
+        )
         zf.writestr("tiles/big.b3dm", b"\x00" * size)
     return buf.getvalue()
 
@@ -518,7 +580,10 @@ def test_read_tileset3d_entry_streams_a_multi_chunk_entry_byte_for_byte(env, mon
     body = bytes(range(256)) * 400  # 102 400 octets, 25 tranches
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("tileset.json", json.dumps({"asset": {"version": "1.0"}, "root": {}}))
+        zf.writestr(
+            "tileset.json",
+            json.dumps({"asset": {"version": "1.0"}, "root": {"boundingVolume": {}}}),
+        )
         zf.writestr("tiles/multi.b3dm", body)
     fake_s3.objects["tenant/x/city.zip"] = buf.getvalue()
 

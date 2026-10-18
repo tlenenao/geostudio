@@ -97,7 +97,7 @@ export function DataProvider({
         queryFn: async () =>
           client.queryDataSourcePage
             ? client.queryDataSourcePage(merged)
-            : { records: await client.queryDataSource(merged), total: null },
+            : { records: await client.queryDataSource(merged), total: null, lake: undefined },
       };
     }),
   });
@@ -123,6 +123,7 @@ export function DataProvider({
       error: r.isError,
       records: r.data?.records ?? [],
       total: r.data?.total ?? null,
+      ...(r.data?.lake ? { lake: r.data.lake } : {}),
       layer: s.layer,
       url: s.type === "features" ? client.featuresUrl(merged) : undefined,
       datasetId: s.datasetId,

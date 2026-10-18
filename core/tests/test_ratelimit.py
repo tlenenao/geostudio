@@ -314,6 +314,9 @@ def test_costly_reads_and_jobs_have_budgets():
     assert (
         route_group("/v1/collections/c/tiles/WebMercatorQuad/1/2/3", "GET", _EXPORT_PATH_RE) is None
     )
+    # AUD-056 : tuiles MVT du cœur, groupe propre au budget large
+    assert route_group("/v1/collections/c/tiles/9/1/2.mvt", "GET", _EXPORT_PATH_RE) == "tiles"
+    assert _BUDGETS["tiles"] == 3000
     assert route_group("/v1/raster/i/zonal-stats", "POST", _EXPORT_PATH_RE) == "zonal"
     assert route_group("/v1/geocode/jobs", "POST", _EXPORT_PATH_RE) == "geocode"
     assert route_group("/v1/geocode/jobs/abc", "GET", _EXPORT_PATH_RE) is None

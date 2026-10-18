@@ -25,11 +25,28 @@ export function AtlasPages({
   const client = useItemClient();
   const source = dataSources.find((s) => s.id === atlas.dataSourceId);
   const query = useQuery({
-    queryKey: ["atlas", atlas.dataSourceId],
-    queryFn: () => client.queryDataSource(source as DataSource),
+    queryKey: ["atlas", atlas.dataSourceId, atlas.maxPages, atlas.sortBy ?? null, entityId ?? null],
+    // AUD-057 : le plafond et le tri sont poussés au cœur (jamais « tout lire puis couper »,
+    // et sans tri l'ordre des pages n'était pas reproductible). Une fiche seule lit la source.
+    queryFn: async () => {
+      const bounded =
+        entityId === undefined && source
+          ? {
+              ...source,
+              query: {
+                ...source.query,
+                limit: atlas.maxPages,
+                ...(atlas.sortBy ? { sortby: atlas.sortBy } : {}),
+              },
+            }
+          : (source as DataSource);
+      if (client.queryDataSourcePage) return client.queryDataSourcePage(bounded);
+      return { records: await client.queryDataSource(bounded), total: null };
+    },
     enabled: Boolean(source),
   });
-  const records = (query.data ?? [])
+  const total = query.data?.total ?? null;
+  const records = (query.data?.records ?? [])
     .filter((r) => entityId === undefined || String(r.id) === entityId)
     .slice(0, atlas.maxPages);
   const done = query.isSuccess || query.isError || !source;
@@ -46,6 +63,11 @@ export function AtlasPages({
   if (!query.isSuccess) return <LoadingState />;
   return (
     <div>
+      {entityId === undefined && total !== null && total > records.length ? (
+        <p role="status" data-atlas-truncated className="p-2 text-sm text-warn">
+          {t("atlas.truncated", { shown: records.length, total })}
+        </p>
+      ) : null}
       {records.map((r) => (
         <section key={String(r.id)} data-atlas-page className="break-after-page">
           <EntityFiche
