@@ -485,6 +485,20 @@ test("map widget builds a feature layer from the bound source url", async () => 
   expect(view).toHaveTextContent("url:https://fs/parcs/items.json");
 });
 
+test("AUD-002 : la carte annonce un échantillon quand la source `features` est plafonnée", async () => {
+  const Map = getWidget("map")!.Component;
+  const ctx = {
+    mode: "runtime",
+    data: state({
+      url: "https://fs/parcs/items.json",
+      records: [{ id: 1, properties: {} }],
+      total: 5000,
+    }),
+  } as WidgetContext;
+  render(withClient(<Map props={{ dataSourceId: "d" }} ctx={ctx} />));
+  expect(await screen.findByText("Échantillon : 1 sur 5000")).toBeInTheDocument();
+});
+
 test("SP-B12c : le message d'erreur n'a pas de couleur Tailwind codée en dur", () => {
   const Map = getWidget("map")!.Component;
   const { container } = render(
