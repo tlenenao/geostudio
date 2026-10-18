@@ -2,7 +2,7 @@
 
 **Généré le 2026-10-18** par `uv run python scripts/feature_health_cli.py --repo .. --write`. **Ne pas éditer à la main** : ce fichier est regénéré à chaque clôture de SP.
 
-342 fonctionnalités — santé médiane 98.8 sur 342 mesurables.
+343 fonctionnalités — santé médiane 98.8 sur 343 mesurables.
 
 La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** est déclarée (spec §4). Les deux ne sont jamais moyennées. Le tri est `priorité × (100 − santé)`.
 
@@ -57,6 +57,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 11 | **Features (OGC API)** | 98.5 |
 | 11 | **Fédération des données** | 96.6 |
 | 1 | **Gouvernance/Licences** | 100.0 |
+| 1 | **IA** | 100.0 |
 | 1 | **Interne** | 74.4 |
 | 4 | **Navigation** | 100.0 |
 | 1 | **Paramètres** | 98.1 |
@@ -155,7 +156,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Builder — Widgets | Edition de geometrie Point dans le widget Formulaire | `builder-widgets-edition-de-geometrie-point-dans-le-widget-formulaire` | 96.4 | = | moyenne (amorcée) | 94.0 | — | — | 100.0 |
 | Builder — Widgets | Erreurs de validation serveur par champ sur le Formulaire | `builder-widgets-erreurs-de-validation-serveur-par-champ-sur-le-formulaire` | 96.4 | = | moyenne (amorcée) | 94.0 | — | — | 100.0 |
 | Builder — Widgets | Overrides de champ (ordre par glisser-deposer, masquage, requis, contraintes) | `builder-widgets-overrides-de-champ-ordre-par-glisser-deposer-masquage-requis-con` | 96.4 | = | moyenne (amorcée) | 94.0 | — | — | 100.0 |
-| Conformité | Journal d'audit scellé (vérification) et export RGPD d'un utilisateur | `conformite-audit-scelle-et-export-rgpd` | 96.6 | — | moyenne (amorcée) | 88.5 | 100.0 | 100.0 | 100.0 |
+| Conformité | Journal d'audit scellé (vérification) et export RGPD d'un utilisateur | `conformite-audit-scelle-et-export-rgpd` | 96.6 | = | moyenne (amorcée) | 88.5 | 100.0 | 100.0 | 100.0 |
 | Catalogue | Menu d'actions sur un item (modifier/publier/miniature/partager/supprimer/programmer un rapport) | `catalogue-menu-d-actions-sur-un-item-modifier-publier-miniature-partager-supprim` | 96.6 | = | moyenne (amorcée) | 94.3 | — | — | 100.0 |
 | Catalogue/Portails publics | Résoudre un site publié par son slug | `catalogue-portails-publics-resoudre-un-site-publie-par-son-slug` | 96.6 | = | moyenne (amorcée) | 99.0 | 100.0 | 87.5 | 100.0 |
 | Fédération des données | Mode « copie » du moissonnage : matérialise le contenu distant en une collection propre au tenant (RLS, édition, etc.) | `federation-des-donnees-mode-copie-du-moissonnage-materialise-le-contenu-distant-` | 96.6 | = | moyenne (amorcée) | 94.4 | — | — | 100.0 |
@@ -424,3 +425,4 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Supervision | Détecter automatiquement un service en panne avant de router du trafic vers lui | `supervision-detecter-automatiquement-un-service-en-panne-avant-de-router-du-traf` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Supervision | Observabilité packagée (Grafana + Prometheus + Loki + Tempo, dashboards pré-provisionnés) | `supervision-observabilite-packagee-grafana-prometheus-loki-tempo-dashboards-pre-` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Supervision | Recevoir une alerte SLO par webhook (latence API/tuiles, backlog de jobs, taux de 5xx) | `supervision-recevoir-une-alerte-slo-par-webhook-latence-api-tuiles-backlog-de-jo` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
+| IA | Copilote gouverné : quota LLM, fournisseur par tenant, outils MCP de lecture | `copilote-quota-et-fournisseur-par-tenant` | 100.0 | — | moyenne (amorcée) | — | 100.0 | 100.0 | 100.0 |
