@@ -1,8 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
-// Formats d'affichage fr-FR, indépendants de la locale du navigateur (P34.10/13/21).
+// Formats d'affichage : seul point où une locale `Intl` ou un fuseau est nommé (AUD-115,
+// règle ESLint `no-restricted-syntax` sur les littéraux "fr-FR"/"Europe/Paris" ailleurs).
+// La locale suit la langue active de l'interface (i18n), le fuseau une préférence.
+import { getLocale } from "../i18n";
 
-/** Fuseau d'affichage unique (REV-285 g) : seule la locale était fixée, pas le fuseau. */
-export const APP_TIME_ZONE = "Europe/Paris";
+const TZ_STORAGE_KEY = "gs.timeZone";
+const DEFAULT_TIME_ZONE = "Europe/Paris";
+
+/** Locale `Intl` de la langue d'interface active (BCP 47 régionalisé). */
+export function intlLocale(): string {
+  return getLocale() === "en" ? "en-GB" : "fr-FR";
+}
+
+/** Fuseau d'affichage : préférence stockée (IANA valide) sinon Europe/Paris. */
+export function getTimeZone(): string {
+  try {
+    const stored = localStorage.getItem(TZ_STORAGE_KEY);
+    if (stored) {
+      new Intl.DateTimeFormat(undefined, { timeZone: stored }); // lève si non IANA
+      return stored;
+    }
+  } catch {
+    /* stockage indisponible ou fuseau invalide : défaut */
+  }
+  return DEFAULT_TIME_ZONE;
+}
+
+// Formateurs créés à la demande (la locale peut changer entre deux appels) et mis en cache.
+const numberCache = new Map<string, Intl.NumberFormat>();
+const dateCache = new Map<string, Intl.DateTimeFormat>();
+
+/** `Intl.NumberFormat` dans la locale active. */
+export function numberFormat(options: Intl.NumberFormatOptions = {}): Intl.NumberFormat {
+  const key = `${intlLocale()}|${JSON.stringify(options)}`;
+  let f = numberCache.get(key);
+  if (!f) numberCache.set(key, (f = new Intl.NumberFormat(intlLocale(), options)));
+  return f;
+}
+
+/** `Intl.DateTimeFormat` dans la locale active (fuseau explicite via `options.timeZone`). */
+export function dateFormat(options: Intl.DateTimeFormatOptions = {}): Intl.DateTimeFormat {
+  const key = `${intlLocale()}|${JSON.stringify(options)}`;
+  let f = dateCache.get(key);
+  if (!f) dateCache.set(key, (f = new Intl.DateTimeFormat(intlLocale(), options)));
+  return f;
+}
+
+/** Comparaison de textes : accents et chiffres respectés (« Étage » avant « Zone »). */
+export function compareText(a: string, b: string): number {
+  return a.localeCompare(b, intlLocale(), { numeric: true, sensitivity: "base" });
+}
 
 // REV-285(g) : une valeur absente ou non finie s'affiche « — », jamais « NaN »,
 // « ∞ » ni le 01/01/1970 de `new Date(null)`.
@@ -14,26 +61,27 @@ export function formatDateTime(iso: string | number | Date | null | undefined): 
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? String(iso)
-    : d.toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE });
+    : d.toLocaleString(intlLocale(), { timeZone: getTimeZone() });
 }
 
-/** Nombre fr-FR (« 1 234 567,75 ») ; au plus `maxDecimals` décimales (2 par défaut). */
+/** Nombre localisé (« 1 234 567,75 » en fr) ; au plus `maxDecimals` décimales (2 par défaut). */
 export function formatNumber(
   n: number | null | undefined,
   maxDecimals = 2,
   minDecimals = 0,
 ): string {
   if (typeof n !== "number" || !Number.isFinite(n)) return MISSING;
-  return n.toLocaleString("fr-FR", {
+  return numberFormat({
     maximumFractionDigits: maxDecimals,
     minimumFractionDigits: minDecimals,
-  });
+  }).format(n);
 }
 
-/** Taille en octets lisible (« 3 Ko », « 1,5 Mo ») : unité adaptée, séparateur décimal fr. */
+/** Taille en octets lisible (« 3 Ko » / « 3 KB ») : unité adaptée, séparateur décimal localisé. */
 export function formatBytes(bytes: number | null | undefined): string {
   if (typeof bytes !== "number" || !Number.isFinite(bytes)) return MISSING;
-  const units = ["o", "Ko", "Mo", "Go", "To"];
+  const units =
+    getLocale() === "en" ? ["B", "KB", "MB", "GB", "TB"] : ["o", "Ko", "Mo", "Go", "To"];
   let value = bytes;
   let i = 0;
   while (value >= 1024 && i < units.length - 1) {

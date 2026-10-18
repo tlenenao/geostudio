@@ -5,6 +5,9 @@ import { registerMessages } from "../index";
 
 export const map = {
   // MapEditorPage
+  "mapFeatureList.toggle": "Entités de la vue",
+  "mapFeatureList.empty": "Aucune entité visible dans la vue.",
+  "mapFeatureList.unnamed": "Entité sans nom",
   "mapEditor.notFound": "Carte introuvable.",
   "mapEditor.layersLabel": "Couches",
   "mapEditor.mapLabel": "Carte",

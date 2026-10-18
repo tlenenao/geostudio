@@ -47,7 +47,7 @@ export function TopBar({
           <Search aria-hidden className="hidden size-4 pointer-coarse:block" />
           <span className="pointer-coarse:sr-only">{t("commandPalette.triggerLabel")}</span>
           <span className="pointer-coarse:hidden">
-            <Kbd>⌘K</Kbd>
+            <Kbd>{/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K"}</Kbd>
           </span>
         </button>
         <Suspense fallback={null}>

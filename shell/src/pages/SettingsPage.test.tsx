@@ -160,3 +160,20 @@ test("P22.11 : chaque section qui échoue affiche une erreur avec Réessayer", a
   await userEvent.click(retries[0]);
   expect(await screen.findByText("alice")).toBeInTheDocument();
 });
+
+test("AUD-019 : choisir English mémorise la préférence et recharge", async () => {
+  mockMe();
+  mockPreference("all");
+  const reload = vi.fn();
+  const original = window.location;
+  Object.defineProperty(window, "location", { configurable: true, value: { ...original, reload } });
+  try {
+    renderPage();
+    await userEvent.click(await screen.findByRole("radio", { name: "English" }));
+    expect(localStorage.getItem("gs.locale")).toBe("en");
+    expect(reload).toHaveBeenCalled();
+  } finally {
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+    localStorage.removeItem("gs.locale");
+  }
+});

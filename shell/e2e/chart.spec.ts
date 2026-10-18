@@ -34,4 +34,9 @@ test("statistics source with a split field feeds a multi-series Chart in the run
   const chart = page.getByTestId("echart");
   await expect(chart).toHaveAttribute("data-chart-series", "2");
   await expect(chart.locator("canvas")).toBeVisible();
+
+  // AUD-114 : le graphique est exposé (role=img) et son tableau alternatif est atteignable.
+  await expect(chart).toHaveAttribute("role", "img");
+  await page.getByRole("button", { name: "Voir en tableau" }).click();
+  await expect(page.getByRole("table", { name: "Données du graphique" })).toBeVisible();
 });

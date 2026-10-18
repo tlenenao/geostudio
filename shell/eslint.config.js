@@ -86,6 +86,12 @@ export default tseslint.config(
           message:
             "dangerouslySetInnerHTML interdit hors richSection.tsx — passer par sanitizeMarkdown() d'abord.",
         },
+        {
+          // AUD-115 : locale et fuseau ne se nomment que dans lib/format.ts.
+          selector: "Literal[value=/^(fr-FR|en-GB|en-US|Europe\\/Paris)$/]",
+          message:
+            "Locale/fuseau en dur interdit : passer par lib/format.ts (formatNumber, formatDateTime, numberFormat, dateFormat).",
+        },
       ],
     },
   },
@@ -109,6 +115,20 @@ export default tseslint.config(
       "no-restricted-globals": [
         "error",
         { name: "fetch", message: "Passer par base.request/authFetch (src/api/base.ts)." },
+      ],
+    },
+  },
+  {
+    // lib/format.ts est le seul endroit autorisé à nommer locale et fuseau ; les tests aussi.
+    files: ["src/lib/format.ts", "**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message:
+            "dangerouslySetInnerHTML interdit hors richSection.tsx — passer par sanitizeMarkdown() d'abord.",
+        },
       ],
     },
   },

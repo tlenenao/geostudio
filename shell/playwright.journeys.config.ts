@@ -9,6 +9,7 @@ export default defineConfig({
   testDir: "./e2e/journeys",
   use: {
     baseURL: process.env.SHELL_URL ?? "http://localhost:8300",
+    locale: "fr-FR",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     // Le shell (:8300) appelle le cœur (:8200) en cross-origin, or le cœur n'a

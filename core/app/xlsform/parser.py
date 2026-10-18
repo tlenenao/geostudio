@@ -223,10 +223,13 @@ def _read_sheet(wb, name: str, max_rows: int) -> list[tuple[int, dict[str, str]]
 def _label(rec: dict[str, str]) -> str:
     if rec.get("label"):
         return rec["label"]
-    for k, v in rec.items():
-        if k.startswith("label::") and v:
-            return v
-    return ""
+    # AUD-115 : choix déterministe (indépendant de l'ordre des colonnes) — français d'abord
+    # (langue source du produit), puis ordre alphabétique de la langue.
+    translated = sorted(
+        ((k, v) for k, v in rec.items() if k.startswith("label::") and v),
+        key=lambda kv: (not kv[0].startswith(("label::fr", "label::fran")), kv[0]),
+    )
+    return translated[0][1] if translated else ""
 
 
 def _sanitize_name(raw: str) -> str:

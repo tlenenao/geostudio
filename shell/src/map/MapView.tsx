@@ -23,6 +23,7 @@ import { resolvePopupContent } from "./popupContent";
 import { clearViewport, publishViewport } from "./viewportTiles";
 import { t } from "../i18n";
 import { isHostedCollectionUrl, isHostedRasterUrl, isHostedTerrainUrl } from "./hostedCoreUrl";
+import { MapFeatureList } from "./MapFeatureList";
 import { aggregateDefaultColor, HIGHLIGHT_ID, highlightColor } from "./mapLayerBuild";
 import { onThemeChange } from "../lib/theme";
 import {
@@ -647,6 +648,18 @@ export const MapView = forwardRef<
           onDownloadAttachment={(attachmentId, filename) =>
             void downloadPopupAttachment(attachmentId, filename)
           }
+        />
+      )}
+      {readyMap && config.layers.some((l) => "popup" in l && l.popup) && (
+        <MapFeatureList
+          map={readyMap}
+          popupLayerIds={config.layers.filter((l) => "popup" in l && l.popup).map((l) => l.id)}
+          onSelect={(it) => {
+            handlePopup(it.layerId, it.properties, it.lngLat, it.id);
+            if (it.id != null) {
+              onFeatureClickRef.current?.({ id: it.id, properties: it.properties, geometry: null });
+            }
+          }}
         />
       )}
       {interactiveTools && readyMap && (

@@ -2,6 +2,8 @@
 // Mesure géodésique maison (SP-27 §3) : haversine (sphère, rayon moyen
 // terrestre) pour la distance, shoelace sphérique pour la surface. Aucune
 // bibliothèque — précédent jenksBreaks/popupTemplate.
+import { formatNumber } from "../lib/format";
+
 export type LngLat = { lng: number; lat: number };
 
 export type SketchShape =
@@ -68,23 +70,13 @@ export function sphericalPolygonAreaSquareMeters(points: LngLat[]): number {
 
 export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${(meters / 1000).toLocaleString("fr-FR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} km`;
+  return `${formatNumber(meters / 1000, 2, 2)} km`;
 }
 
 export function formatArea(squareMeters: number): string {
-  if (squareMeters < 10_000) return `${Math.round(squareMeters).toLocaleString("fr-FR")} m²`;
-  if (squareMeters < 1_000_000)
-    return `${(squareMeters / 10_000).toLocaleString("fr-FR", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })} ha`;
-  return `${(squareMeters / 1_000_000).toLocaleString("fr-FR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} km²`;
+  if (squareMeters < 10_000) return `${formatNumber(Math.round(squareMeters), 0)} m²`;
+  if (squareMeters < 1_000_000) return `${formatNumber(squareMeters / 10_000, 2, 2)} ha`;
+  return `${formatNumber(squareMeters / 1_000_000, 2, 2)} km²`;
 }
 
 export type SketchFeature = {

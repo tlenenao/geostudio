@@ -19,9 +19,10 @@ import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import duckdb
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.analytics.duckdb_conn import StatementTimeout, statement_timeout
 from app.analytics.snapshot import cut_seconds, latest_per_key, latest_snapshot
@@ -54,8 +55,20 @@ class AggregateRequestBody(BaseModel):
     bbox: tuple[float, float, float, float] | None = None
     geomIntersects: dict[str, Any] | None = None
     bucket: Literal["hour", "day", "week", "month", "quarter", "year"] | None = None
+    # AUD-115 : fuseau IANA dans lequel les buckets temporels sont tronqués (UTC par défaut).
+    timeZone: str | None = None
     bins: int | None = None
     sample: int | None = None
+
+    @field_validator("timeZone")
+    @classmethod
+    def _valid_time_zone(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except (ZoneInfoNotFoundError, ValueError, OSError) as exc:
+                raise ValueError(f"unknown time zone '{value}'") from exc
+        return value
 
 
 class UnknownAggregateField(Exception):
@@ -789,7 +802,8 @@ def _run_collection_aggregate(
         conn.execute("SET TimeZone='UTC'")
         cat_expr = (
             f"DATE_TRUNC({_sql_lit(request.bucket)}, "
-            f"TRY_CAST({_qi(single_field)} AS TIMESTAMPTZ) AT TIME ZONE 'UTC')"
+            f"TRY_CAST({_qi(single_field)} AS TIMESTAMPTZ) AT TIME ZONE "
+            f"{_sql_lit(request.timeZone or 'UTC')})"
         )
     else:
         cat_expr = _qi(single_field) if single_field else "'Total'"

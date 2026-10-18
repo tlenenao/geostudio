@@ -78,6 +78,11 @@ export const widgets = {
   "explorerMenu.exportFormat": "Exporter en {format}",
 
   // Widget Graphique (chart.tsx)
+  "echart.ariaLabel": "Graphique de type {type}, {count} séries",
+  "echart.showTable": "Voir en tableau",
+  "echart.hideTable": "Masquer le tableau",
+  "echart.tableCaption": "Données du graphique",
+  "echart.selectCategory": "Filtrer sur {name}",
   "widgetChart.paletteLabel": "Graphique",
   "widgetChart.typeBar": "Barres",
   "widgetChart.typeLine": "Lignes",

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts/core";
 import {
   BarChart,
@@ -28,9 +28,13 @@ import {
   DatasetComponent,
   MarkLineComponent,
   MarkAreaComponent,
+  AriaComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsOption } from "echarts";
+import { t } from "../i18n";
+import "../i18n/domains/widgets";
+import { chartTable } from "./chartTable";
 
 // Register a broad set once so the config-driven Chart widget (and the raw
 // "advanced option" escape hatch) can reach most panel families.
@@ -59,6 +63,7 @@ echarts.use([
   DatasetComponent,
   MarkLineComponent,
   MarkAreaComponent,
+  AriaComponent,
   CanvasRenderer,
 ]);
 
@@ -121,17 +126,88 @@ export function EChart({
   }, []);
 
   useEffect(() => {
-    chartRef.current?.setOption(option, true);
+    // AUD-114 : description générée par ECharts + motifs (decal) — la couleur n'est plus
+    // la seule voie de distinction entre séries.
+    chartRef.current?.setOption(
+      { aria: { enabled: true, decal: { show: true } }, ...option },
+      true,
+    );
   }, [option]);
 
   const series = seriesList(option);
+  const table = useMemo(() => chartTable(option), [option]);
+  const [showTable, setShowTable] = useState(false);
+  const tableId = useId();
   return (
-    <div
-      ref={containerRef}
-      data-testid="echart"
-      data-chart-type={series[0]?.type ?? ""}
-      data-chart-series={series.length}
-      className={className ?? "h-full w-full"}
-    />
+    <div className={`relative ${className ?? "h-full w-full"}`}>
+      <div
+        ref={containerRef}
+        role="img"
+        aria-label={t("echart.ariaLabel", {
+          type: series[0]?.type ?? "",
+          count: series.length,
+        })}
+        data-testid="echart"
+        data-chart-type={series[0]?.type ?? ""}
+        data-chart-series={series.length}
+        className="h-full w-full"
+      />
+      {table && (
+        <div className="text-xs">
+          <button
+            type="button"
+            className="absolute bottom-1 right-1 z-10 rounded bg-surface/80 px-1 text-accent hover:underline"
+            aria-expanded={showTable}
+            aria-controls={tableId}
+            onClick={() => setShowTable((v) => !v)}
+          >
+            {showTable ? t("echart.hideTable") : t("echart.showTable")}
+          </button>
+          <div
+            id={tableId}
+            hidden={!showTable}
+            className="absolute inset-x-0 bottom-7 z-10 max-h-40 overflow-auto bg-surface"
+          >
+            {showTable && (
+              <table className="w-full text-left">
+                <caption className="sr-only">{t("echart.tableCaption")}</caption>
+                <thead>
+                  <tr>
+                    {table.head.map((h, i) => (
+                      <th key={i} scope="col">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {table.rows.map((r, i) => (
+                    <tr key={i}>
+                      <th scope="row" className="font-normal">
+                        {onClick ? (
+                          <button
+                            type="button"
+                            className="text-accent hover:underline"
+                            aria-label={t("echart.selectCategory", { name: r[0] })}
+                            onClick={() => onClick({ name: r[0], dataType: "main" })}
+                          >
+                            {r[0]}
+                          </button>
+                        ) : (
+                          r[0]
+                        )}
+                      </th>
+                      {r.slice(1).map((c, j) => (
+                        <td key={j}>{c}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

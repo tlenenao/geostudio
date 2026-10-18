@@ -2,6 +2,7 @@
 import { expect, test } from "vitest";
 import {
   themeToCssVars,
+  themeToShellTokens,
   contrastRatio,
   DEFAULT_THEME_COLORS,
   DEFAULT_FONT,
@@ -72,4 +73,13 @@ test("contrastRatio : la couleur atténuée par défaut passe AA sur le fond par
   expect(
     contrastRatio(DEFAULT_THEME_COLORS.muted, DEFAULT_THEME_COLORS.background),
   ).toBeGreaterThanOrEqual(4.5);
+});
+
+test("AUD-126 : états sémantiques de l'app, contraste >= 4,5 sur son propre fond (clair et sombre)", () => {
+  const light = themeToShellTokens({}) as Record<string, string>;
+  expect(contrastRatio(light["--gs-danger"], DEFAULT_THEME_COLORS.background)).toBeGreaterThan(4.5);
+  expect(contrastRatio(light["--gs-warn"], DEFAULT_THEME_COLORS.background)).toBeGreaterThan(4.5);
+  const dark = themeToShellTokens({ colors: { background: "#0b0f14" } }) as Record<string, string>;
+  expect(contrastRatio(dark["--gs-danger"], "#0b0f14")).toBeGreaterThan(4.5);
+  expect(contrastRatio(dark["--gs-ok"], "#0b0f14")).toBeGreaterThan(4.5);
 });

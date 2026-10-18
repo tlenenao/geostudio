@@ -6,7 +6,7 @@ import { defineConfig } from "@playwright/test";
 // (SP-26/3.8, I13 revue de projet 2026-08-20).
 export default defineConfig({
   testDir: "./e2e-oidc",
-  use: { baseURL: process.env.OIDC_SHELL_URL ?? "http://localhost:8300" },
+  use: { baseURL: process.env.OIDC_SHELL_URL ?? "http://localhost:8300", locale: "fr-FR" },
   retries: process.env.CI ? 2 : 0,
   timeout: 30_000,
 });
