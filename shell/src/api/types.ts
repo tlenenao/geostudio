@@ -967,6 +967,7 @@ export interface ItemClient {
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
   createExtension(input: ExtensionCreateInput): Promise<void>;
+  updateExtension(id: string, patch: ExtensionPatchInput): Promise<void>;
   deleteExtension(id: string): Promise<void>;
   getMetadataCatalog(): Promise<MetadataCatalog>;
   listCollections(params?: { q?: string } & PageParams): Promise<CollectionAdmin[]>;
@@ -1509,15 +1510,34 @@ export type ExtensionManifest = {
   defaultSize: { w: number; h: number };
   permissions?: { collections: string[] | "all" };
   moduleUrl: string;
+  /** L10 (AUD-110) : version du contrat DOM du SDK (v1 = préversion, D5). */
+  sdkVersion?: number;
+  /** L10 (AUD-109) : SRI du module (sha384-…), vérifié par le navigateur avant exécution. */
+  integrity?: string | null;
+  /** Origines https déclarées ajoutées à la CSP (connect-src / img-src). */
+  connectHosts?: string[];
+  imgHosts?: string[];
 };
 
+/** Manifeste complet accepté par `POST /extensions` (validé côté cœur, `ExtensionCreate`). */
 export type ExtensionCreateInput = {
   id: string;
   tag: string;
   label: string;
   moduleUrl: string;
   defaultSize: { w: number; h: number };
+  props?: ExtensionManifest["props"];
+  events?: string[] | null;
+  actions?: string[] | null;
+  permissions?: { collections: string[] | "all" };
+  sdkVersion?: number;
+  integrity?: string | null;
+  connectHosts?: string[];
+  imgHosts?: string[];
 };
+
+/** `PATCH /extensions/{id}` : tout champ du manifeste sauf l'identifiant. */
+export type ExtensionPatchInput = Partial<Omit<ExtensionCreateInput, "id">>;
 
 export type AdminExtension = ExtensionManifest & { enabled: boolean };
 

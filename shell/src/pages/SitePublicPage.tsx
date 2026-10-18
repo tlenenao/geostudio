@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useItemClient } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
+import { useRegisterExtensions } from "../builder/extensions/useRegisterExtensions";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { useDocumentMeta } from "../shell/useDocumentMeta";
 import { t } from "../i18n";
@@ -13,6 +14,8 @@ registerBuiltinWidgets();
 
 export function SitePublicPage({ slug }: { slug: string }) {
   const client = useItemClient();
+  // AUD-107 : les widgets d'extension doivent être connus avant le rendu public.
+  const extensionsReady = useRegisterExtensions();
   const itemQuery = useQuery({
     queryKey: ["public-site", slug],
     queryFn: () => client.getItemBySlug(slug),
@@ -43,7 +46,7 @@ export function SitePublicPage({ slug }: { slug: string }) {
       : window.location.href,
   });
 
-  if (itemQuery.isLoading || (itemQuery.isSuccess && configQuery.isLoading)) {
+  if (!extensionsReady || itemQuery.isLoading || (itemQuery.isSuccess && configQuery.isLoading)) {
     return <LoadingState />;
   }
   if (itemQuery.isError || configQuery.isError || !configQuery.data) {

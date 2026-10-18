@@ -4,6 +4,7 @@ import { useItemClient as useItemClientInternal } from "../ItemClientProvider";
 import type {
   AdminToolName,
   ExtensionCreateInput,
+  ExtensionPatchInput,
   HarvestSourceCreateInput,
   HarvestSourcePatchInput,
 } from "../types";
@@ -48,6 +49,18 @@ export function useCreateExtension() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: ExtensionCreateInput) => client.createExtension(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["extensions"] });
+    },
+  });
+}
+
+export function useUpdateExtension() {
+  const client = useItemClientInternal();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: ExtensionPatchInput }) =>
+      client.updateExtension(id, patch),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["extensions"] });
     },

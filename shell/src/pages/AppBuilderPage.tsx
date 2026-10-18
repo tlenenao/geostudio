@@ -36,8 +36,7 @@ import { ThemePanel } from "../builder/ThemePanel";
 import { VariablesPanel } from "../builder/VariablesPanel";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerExampleWidgets } from "../builder/examples";
-import { useActiveExtensions } from "../api/hooks";
-import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
+import { useRegisterExtensions } from "../builder/extensions/useRegisterExtensions";
 import { getWidget } from "../builder/registry";
 import { BREAKPOINTS, nextFreePosition, nextOrdinal, type Breakpoint } from "../builder/grid";
 import { getPages, getPageLayout, setPageLayout } from "../builder/pages";
@@ -147,17 +146,8 @@ export function AppBuilderPage({ pk }: { pk: string }) {
   const { ConfirmLeaveDialog } = useDirtyGuard(hasUnsavedChanges);
   const isConflict = isConflictError(save.error);
 
-  const extensionsQuery = useActiveExtensions();
-  const [extensionsRegistered, setExtensionsRegistered] = useState(false);
-
-  useEffect(() => {
-    if (extensionsQuery.isLoading) return;
-    (extensionsQuery.data ?? []).forEach(registerExtensionWidget);
-    setExtensionsRegistered(true);
-    // Se déclenche une fois les données arrivées OU en erreur (fail-open :
-    // un /extensions en échec ne doit pas rendre le builder inutilisable) —
-    // jamais tant que isLoading est vrai.
-  }, [extensionsQuery.isLoading, extensionsQuery.data]);
+  // Fail-open : un /extensions en échec ne rend pas le builder inutilisable.
+  const extensionsRegistered = useRegisterExtensions();
 
   useEffect(() => {
     // Seed the draft once on first load. Re-seeding on every query.data change

@@ -6,6 +6,7 @@ import { loadRuntimeConfig } from "../config";
 import { createItemClient } from "../api/itemClient";
 import { ItemClientProvider } from "../api/ItemClientProvider";
 import { AppRenderer } from "../builder/AppRenderer";
+import { useRegisterExtensions } from "../builder/extensions/useRegisterExtensions";
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerExampleWidgets } from "../builder/examples";
 import { CoreUnreachableError } from "../api/CoreUnreachableError";
@@ -51,7 +52,9 @@ function EmbedApp({ itemId, token, title }: { itemId: string; token: string; tit
 
 function EmbedAppRenderer({ itemId, title }: { itemId: string; title: string }) {
   const query = useAppConfig(itemId, { mode: "runtime" });
-  if (query.isLoading) {
+  // AUD-107 : widgets d'extension enregistrés avant le rendu (client sans jeton, lien de partage).
+  const extensionsReady = useRegisterExtensions();
+  if (!extensionsReady || query.isLoading) {
     return <LoadingState />;
   }
   if (query.isError || !query.data) {

@@ -9,9 +9,9 @@ import { decodeAnalyticsContext, encodeAnalyticsContext } from "../lib/analytics
 import { registerBuiltinWidgets } from "../builder/widgets";
 import { registerExampleWidgets } from "../builder/examples";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useActiveExtensions, useCreateBookmark, useMe } from "../api/hooks";
+import { useCreateBookmark, useMe } from "../api/hooks";
 import { holdsAnyPrivilege } from "../auth/holdsAnyPrivilege";
-import { registerExtensionWidget } from "../builder/extensions/registerExtensionWidget";
+import { useRegisterExtensions } from "../builder/extensions/useRegisterExtensions";
 import { ApiError } from "../api/ApiError";
 import { useAuth } from "../auth/useAuth";
 import { Button } from "../ui/kit/Button";
@@ -51,14 +51,7 @@ export function AppRuntimePage({ pk, pageId }: { pk: string; pageId?: string }) 
   const instanceQuery = useInstanceInfo();
   const exportEnabled = instanceQuery.data?.exportEnabled === true;
 
-  const extensionsQuery = useActiveExtensions();
-  const [extensionsRegistered, setExtensionsRegistered] = useState(false);
-
-  useEffect(() => {
-    if (extensionsQuery.isLoading) return;
-    (extensionsQuery.data ?? []).forEach(registerExtensionWidget);
-    setExtensionsRegistered(true);
-  }, [extensionsQuery.isLoading, extensionsQuery.data]);
+  const extensionsRegistered = useRegisterExtensions();
 
   // Export/print chrome (SP-17a Task 10): the Playwright worker (Task 6)
   // navigates here with ?exportRender=1 (signal : cf. useExportReadiness

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { ExtensionManifest } from "../../api/types";
 import { makeWcHost } from "../wc/WcHost";
 import type { WidgetContext } from "../registry";
-import { ensureModuleLoaded } from "./moduleCache";
+import { ensureModuleLoaded, whenElementDefined } from "./moduleCache";
 
 function Placeholder({ text, tone }: { text: string; tone: "loading" | "error" }) {
   return (
@@ -27,7 +27,8 @@ export function makeLazyWcHost(manifest: ExtensionManifest) {
 
     useEffect(() => {
       let cancelled = false;
-      ensureModuleLoaded(manifest.moduleUrl)
+      ensureModuleLoaded(manifest.moduleUrl, undefined, manifest.integrity)
+        .then(() => whenElementDefined(manifest.tag))
         .then(() => {
           if (!cancelled) setStatus("ready");
         })
