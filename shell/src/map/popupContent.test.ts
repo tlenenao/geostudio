@@ -112,3 +112,13 @@ test("D35 : the `template` mode is never formatted, even with a schema in hand",
   expect(c.html).toContain("14000");
   expect(c.html).not.toContain(new Intl.NumberFormat("fr-FR").format(14000));
 });
+
+test("AUD-052 : le gabarit lit les variables d'app et l'utilisateur de l'hôte", () => {
+  const c = resolvePopupContent(
+    { template: "${vars.seuil} / ${user.name} / ${record.a}" },
+    { a: 1 },
+    undefined,
+    { vars: { seuil: 7 }, user: { name: "ana" } },
+  );
+  expect(c.html).toContain("7 / ana / 1");
+});

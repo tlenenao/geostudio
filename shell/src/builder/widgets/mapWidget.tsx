@@ -383,6 +383,11 @@ export function registerMapWidget(): void {
               ref={handle}
               config={config}
               timeRange={analyticsCtx.timeRange}
+              popupContext={{
+                vars: ctx.variables ?? {},
+                user: ctx.user ?? { name: "" },
+                ctx: analyticsCtx,
+              }}
               themeColors={ctx.theme?.colors}
               interactiveTools={ctx.mode !== "edit"}
               getAuthToken={client.getAuthToken}
