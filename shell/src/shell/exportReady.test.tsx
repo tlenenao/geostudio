@@ -96,4 +96,17 @@ describe("useExportReadiness (AUD-001 / D04-01)", () => {
     expect(document.body.dataset.exportIncomplete).toBe("true");
     done();
   });
+
+  it("décompte la minuterie du temps déjà écoulé depuis la navigation (budget worker commun)", () => {
+    vi.spyOn(performance, "now").mockReturnValue(EXPORT_TIMEOUT_MS - 1000);
+    const done = trackExportTask();
+    renderHook(() => useExportReadiness(true), { wrapper });
+    act(() => void vi.advanceTimersByTime(999));
+    expect(ready()).toBeNull();
+    act(() => void vi.advanceTimersByTime(2));
+    expect(ready()).toBe("true");
+    expect(document.body.dataset.exportIncomplete).toBe("true");
+    done();
+    vi.restoreAllMocks();
+  });
 });
