@@ -4700,6 +4700,21 @@ export interface components {
             /** Label */
             label: string;
         };
+        /**
+         * LayerFilterClause
+         * @description AUD-051 : clause de filtre par couche (ET entre clauses), compilée en filtre MapLibre.
+         */
+        LayerFilterClause: {
+            /** Field */
+            field: string;
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "in";
+            /** Value */
+            value: string | number | boolean | (string | number | boolean)[];
+        };
         /** LayerInfoOut */
         LayerInfoOut: {
             /** Featurecount */
@@ -4850,6 +4865,8 @@ export interface components {
             dataUrl?: string | null;
             /** Decktype */
             deckType?: string | null;
+            /** Filter */
+            filter?: components["schemas"]["LayerFilterClause"][] | null;
             /** Geometrykind */
             geometryKind?: ("point" | "line" | "polygon") | null;
             /** Id */

@@ -132,6 +132,20 @@ class ClusterConfig(BaseModel):
     label: bool | None = None
 
 
+class LayerFilterClause(BaseModel):
+    """AUD-051 : clause de filtre par couche (ET entre clauses), compilée en filtre MapLibre."""
+
+    field: str = Field(min_length=1)
+    op: Literal["eq", "ne", "gt", "gte", "lt", "lte", "in"]
+    value: str | float | bool | list[str | float | bool]
+
+    @model_validator(mode="after")
+    def _value_matches_op(self) -> "LayerFilterClause":
+        if (self.op == "in") != isinstance(self.value, list):
+            raise ValueError("value must be a list if and only if op is 'in'")
+        return self
+
+
 class MapLayer(BaseModel):
     id: str
     title: str
@@ -160,6 +174,8 @@ class MapLayer(BaseModel):
     # AUD-051 : plage d'échelle (zoom MapLibre) de la couche.
     minZoom: float | None = Field(default=None, ge=0, le=24)
     maxZoom: float | None = Field(default=None, ge=0, le=24)
+    # AUD-051 : filtre par couche (appliqué côté rendu aux sous-couches hors clusters).
+    filter: list[LayerFilterClause] | None = None
 
     @model_validator(mode="after")
     def _zoom_range_is_ordered(self) -> "MapLayer":

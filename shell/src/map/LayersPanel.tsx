@@ -9,6 +9,7 @@ import {
   makeSampleFieldFn,
   makeStatQueryFn,
 } from "./geojsonIntrospect";
+import { LayerFilterEditor } from "./LayerFilterEditor";
 import { LayerPicker } from "./LayerPicker";
 import { MapStyleTransfer } from "./MapStyleTransfer";
 import { isHostedCollectionUrl } from "./hostedCoreUrl";
@@ -664,6 +665,12 @@ export function LayersPanel({
                   />
                 )}
                 <LayerZoomRangeEditor
+                  layer={layer}
+                  onChangeLayer={(next) =>
+                    onChange(layers.map((l) => (l.id === layer.id ? next : l)))
+                  }
+                />
+                <LayerFilterEditor
                   layer={layer}
                   onChangeLayer={(next) =>
                     onChange(layers.map((l) => (l.id === layer.id ? next : l)))

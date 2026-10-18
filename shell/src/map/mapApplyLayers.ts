@@ -26,6 +26,7 @@ import {
   clusterSourceOptions,
   makeClusterClickHandler,
 } from "./mapLayerBuild";
+import { applyLayerFilter } from "./layerFilter";
 import "../i18n/domains/map";
 
 // AUD-051 : plage d'échelle par couche — posée sur le layer ET sur toutes ses sous-couches
@@ -356,6 +357,7 @@ export function applyLayers(
         clickHandlers.set(layer.id, handler);
       }
       applyZoomRange(map, layer);
+      if (layer.kind === "vector" || layer.kind === "feature") applyLayerFilter(map, layer);
       applied.add(layer.id);
     } catch (err) {
       // Per spec §8: one bad layer must not break the whole map. Roll back any

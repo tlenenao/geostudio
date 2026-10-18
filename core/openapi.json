@@ -4937,6 +4937,66 @@
         "title": "LanguageCatalogEntry",
         "type": "object"
       },
+      "LayerFilterClause": {
+        "description": "AUD-051 : clause de filtre par couche (ET entre clauses), compil\u00e9e en filtre MapLibre.",
+        "properties": {
+          "field": {
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "op",
+          "value"
+        ],
+        "title": "LayerFilterClause",
+        "type": "object"
+      },
       "LayerInfoOut": {
         "properties": {
           "featureCount": {
@@ -5406,6 +5466,20 @@
               }
             ],
             "title": "Decktype"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LayerFilterClause"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter"
           },
           "geometryKind": {
             "anyOf": [

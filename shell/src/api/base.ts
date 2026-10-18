@@ -145,6 +145,7 @@ export type RawMapLayer = {
   cluster?: ClusterConfig | null;
   minZoom?: number | null;
   maxZoom?: number | null;
+  filter?: import("./types").LayerFilterClause[] | null;
   symbology?: import("../builder/widgets/mapSymbology").LayerSymbology | null;
 };
 
