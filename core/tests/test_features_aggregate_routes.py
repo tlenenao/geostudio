@@ -151,6 +151,46 @@ def test_aggregate_returns_wide_rows_for_a_readable_collection(env):
     ]
 
 
+def test_aggregate_saturated_tenant_gets_429_with_retry_after(env, monkeypatch):
+    """AUD-099 : tous les créneaux du tenant occupés -> 429 réessayable, jamais 500."""
+    from app.analytics import aggregate as agg
+
+    app, client, admin, _r, tmp_path, tenant_id = env
+    col = _register(app, client, admin)
+    _write_partition(
+        tmp_path,
+        tenant_id=tenant_id,
+        collection_id=col["id"],
+        rows=[
+            {
+                "id": 1,
+                "region": "Nord",
+                "pop": 10,
+                "_op": "insert",
+                "_lsn": 1,
+                "_ts": 1.0,
+                "geometry": Point(0, 0),
+            }
+        ],
+    )
+    monkeypatch.setattr(agg, "_TENANT_SLOTS", 1)
+    monkeypatch.setattr(agg, "_SLOT_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(agg, "_slots", {})
+    with agg._tenant_slot(tenant_id):  # le seul créneau est pris
+        response = client.post(
+            f"/v1/collections/{col['id']}/aggregate",
+            json={"groupBy": "region", "agg": "count"},
+        )
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "5"
+    assert response.json()["code"] == "too_many_concurrent_aggregates"
+    # créneau rendu : la même requête passe
+    ok = client.post(
+        f"/v1/collections/{col['id']}/aggregate", json={"groupBy": "region", "agg": "count"}
+    )
+    assert ok.status_code == 200
+
+
 def test_aggregate_on_unregistered_collection_returns_404(env):
     _app, client, _admin, regular, _tmp_path, _tenant_id = env
     _as(_app, regular)

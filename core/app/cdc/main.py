@@ -116,6 +116,8 @@ def _write_and_upload(
 
 
 _UNMANAGED_RECHECK_SECONDS = 60.0
+# AUD-099 : lignes de backfill tenues en tampon avant d'écrire un segment Parquet.
+_BACKFILL_FLUSH_ROWS = 50_000
 
 
 def _purge_lake(collection_meta: dict, *, s3_client, bucket: str, marker_lsn: int) -> int:
@@ -180,19 +182,6 @@ def run() -> None:
     consumer.ensure_replication_slot(raw_dsn)
 
     buffer = CdcBufferManager()
-    with session_factory() as session:
-        boundary_lsn = backfill.current_wal_lsn(session)
-        for table_name, (_cid, _tid, geometry_column, _srid, pk_column) in collection_meta.items():
-            rows = backfill.backfill_table(
-                session,
-                table_name=table_name,
-                pk_column=pk_column,
-                geometry_column=geometry_column,
-                boundary_lsn=boundary_lsn,
-                flush_ts=time.time(),
-            )
-            for row in rows:
-                buffer.add(table_name, row)
 
     def _flush_table(table_name: str) -> None:
         collection_id, tenant_id, _geometry_column, srid, _pk_column = collection_meta[table_name]
@@ -211,6 +200,29 @@ def run() -> None:
             key=key,
         )
         state.record_flush(collection_id, time.time())
+
+    def _backfill_into_buffer(table_name: str, **kwargs) -> None:
+        # AUD-099 : le backfill est lu en flux et déversé en segments de _BACKFILL_FLUSH_ROWS
+        # lignes (même `_lsn` frontière : la réduction (pk, max(_lsn)) les tient pour équivalents).
+        pending = 0
+        for row in backfill.iter_backfill_rows(table_name=table_name, **kwargs):
+            buffer.add(table_name, row)
+            pending += 1
+            if pending >= _BACKFILL_FLUSH_ROWS:
+                _flush_table(table_name)
+                pending = 0
+
+    with session_factory() as session:
+        boundary_lsn = backfill.current_wal_lsn(session)
+        for table_name, (_cid, _tid, geometry_column, _srid, pk_column) in collection_meta.items():
+            _backfill_into_buffer(
+                table_name,
+                session=session,
+                pk_column=pk_column,
+                geometry_column=geometry_column,
+                boundary_lsn=boundary_lsn,
+                flush_ts=time.time(),
+            )
 
     def _do_flush():
         for table_name in buffer.tables_due_for_flush():
@@ -265,16 +277,14 @@ def run() -> None:
             meta_by_table.clear()
             meta_by_table.update(_meta_view())
             with session_factory() as session:
-                backfill_rows = backfill.backfill_table(
-                    session,
-                    table_name=table_name,
+                _backfill_into_buffer(
+                    table_name,
+                    session=session,
                     pk_column=fresh.pk_column,
                     geometry_column=fresh.geometry_column,
                     boundary_lsn=lsn - 1,
                     flush_ts=time.time(),
                 )
-            for row in backfill_rows:
-                buffer.add(table_name, row)
 
     consumer.stream_changes(
         raw_dsn,

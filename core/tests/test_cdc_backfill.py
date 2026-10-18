@@ -40,6 +40,27 @@ def test_current_wal_lsn_returns_positive_int(pg_session_factory):
     assert lsn > 0
 
 
+def test_iter_backfill_rows_is_a_lazy_stream(seeded_table, pg_session_factory):
+    """AUD-099 : générateur sur curseur serveur — équivalent à la version liste."""
+    import types
+
+    from app.cdc.backfill import iter_backfill_rows
+
+    with pg_session_factory() as session:
+        kwargs = dict(
+            table_name=seeded_table,
+            pk_column="id",
+            geometry_column="geom",
+            boundary_lsn=7,
+            flush_ts=1.0,
+        )
+        stream = iter_backfill_rows(session, **kwargs)
+        assert isinstance(stream, types.GeneratorType)
+        streamed = [r.pk_value for r in stream]
+        assert streamed == [r.pk_value for r in backfill_table(session, **kwargs)]
+    assert len(streamed) == 2
+
+
 def test_backfill_table_reads_all_rows_as_inserts(seeded_table, pg_session_factory):
     with pg_session_factory() as session:
         boundary = current_wal_lsn(session)

@@ -24,6 +24,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from app import db, observability
 from app.admin_tools import routes as admin_tools_routes
 from app.alerts import routes as alerts_routes
+from app.analytics.aggregate import AggregateBusy
 from app.apikeys import routes as apikeys_routes
 from app.appexport import routes as appexport_routes
 from app.attachments import routes as attachments_routes
@@ -379,6 +380,22 @@ def create_app() -> FastAPI:
             },
             # AUD-084 : les en-têtes de l'exception (Retry-After, WWW-Authenticate…) survivent.
             headers=getattr(exc, "headers", None),
+        )
+
+    @app.exception_handler(AggregateBusy)
+    async def _aggregate_busy_handler(request: Request, exc: AggregateBusy):
+        # AUD-099 : file d'agrégats du tenant saturée -> 429 réessayable, jamais 500.
+        return JSONResponse(
+            status_code=429,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": "Too Many Requests",
+                "status": 429,
+                "detail": "too many concurrent aggregates, retry shortly",
+                "code": "too_many_concurrent_aggregates",
+            },
+            headers={"Retry-After": "5"},
         )
 
     @app.exception_handler(QuotaExceededError)

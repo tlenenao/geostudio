@@ -13,6 +13,7 @@ GeoParquet directement comme un type GEOMETRY natif — ST_GeomFromWKB(...)
 n'est ni nécessaire ni correct ici (le plan présumait par défaut un WKB
 brut nécessitant conversion, corrigé après coup par le spike)."""
 
+import contextlib
 import copy
 import hashlib
 import json
@@ -665,6 +666,33 @@ def _has_any_file(
 # ne partagent jamais une entrée. ponytail: cache par processus (LRU 128 entrées, résultats
 # <= 2000 lignes) ; passer à un cache partagé si le coût de recalcul par réplica pèse.
 _CACHE_MAX_ENTRIES = 128
+
+# AUD-099 : au plus _TENANT_SLOTS agrégats DuckDB simultanés par tenant et par processus ; au-delà,
+# attente bornée puis AggregateBusy (429). Un tenant bavard ne prive plus les autres de threads.
+# ponytail: par processus (pas global aux réplicas), constantes sans variable d'env ; passer à un
+# verrou Postgres/une config si la borne doit varier par déploiement.
+_TENANT_SLOTS = 4
+_SLOT_WAIT_SECONDS = 10.0
+_slots: dict[str, threading.BoundedSemaphore] = {}
+_slots_lock = threading.Lock()
+
+
+class AggregateBusy(Exception):
+    """Trop d'agrégats simultanés pour ce tenant (le routeur répond 429 + Retry-After)."""
+
+
+@contextlib.contextmanager
+def _tenant_slot(tenant_id: str):
+    with _slots_lock:
+        sem = _slots.setdefault(tenant_id, threading.BoundedSemaphore(_TENANT_SLOTS))
+    if not sem.acquire(timeout=_SLOT_WAIT_SECONDS):
+        raise AggregateBusy(tenant_id)
+    try:
+        yield
+    finally:
+        sem.release()
+
+
 _CACHE_MAX_ROWS = 2000
 _result_cache: "OrderedDict[str, tuple[str | list[str], list[dict[str, Any]]]]" = OrderedDict()
 _cache_lock = threading.Lock()
@@ -748,15 +776,16 @@ def run_collection_aggregate(
                     _result_cache.move_to_end(key)
             if hit is not None:
                 return hit[0], copy.deepcopy(hit[1])
-            result = _run_collection_aggregate(
-                conn,
-                base_uri=base_uri,
-                tenant_id=tenant_id,
-                collection_id=collection_id,
-                table_info=table_info,
-                request=request,
-                masked_fields=masked_fields,
-            )
+            with _tenant_slot(tenant_id):
+                result = _run_collection_aggregate(
+                    conn,
+                    base_uri=base_uri,
+                    tenant_id=tenant_id,
+                    collection_id=collection_id,
+                    table_info=table_info,
+                    request=request,
+                    masked_fields=masked_fields,
+                )
             if len(result[1]) <= _CACHE_MAX_ROWS:
                 with _cache_lock:
                     _result_cache[key] = (result[0], copy.deepcopy(result[1]))

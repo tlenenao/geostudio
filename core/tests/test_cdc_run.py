@@ -23,7 +23,7 @@ class _FakeBuffer:
         return last_seen_lsn
 
 
-def test_run_end_to_end_with_stubs(monkeypatch):
+def _scenario(monkeypatch):
     """Élection, backfill initial, backfill paresseux d'une table inconnue
     (boundary_lsn = lsn-1), table sans collection (relecture espacée), flush."""
     from app.cdc import main
@@ -77,9 +77,9 @@ def test_run_end_to_end_with_stubs(monkeypatch):
 
     def fake_backfill(session, *, table_name, boundary_lsn, **kw):
         boundaries.append((table_name, boundary_lsn))
-        return [f"bf-{table_name}"]
+        return iter([f"bf-{table_name}"])
 
-    monkeypatch.setattr(main.backfill, "backfill_table", fake_backfill)
+    monkeypatch.setattr(main.backfill, "iter_backfill_rows", fake_backfill)
     monkeypatch.setattr(main, "CdcBufferManager", _FakeBuffer)
     monkeypatch.setattr(
         main.consumer,
@@ -104,8 +104,23 @@ def test_run_end_to_end_with_stubs(monkeypatch):
     monkeypatch.setattr(main.consumer, "stream_changes", fake_stream)
     main.run()
 
+    return boundaries, looked_up, uploads
+
+
+def test_run_end_to_end_with_stubs(monkeypatch):
+    boundaries, looked_up, uploads = _scenario(monkeypatch)
     assert boundaries == [("known", 100), ("fresh", 19)]
     assert looked_up == ["fresh", "ghost"]  # 2e « ghost » dans la minute : pas relu
     by_cid = {k.split("collection_id=")[1].split("/")[0]: (r, s) for k, r, s in uploads}
     assert by_cid["c1"] == (["bf-known", "live"], 4326)
     assert by_cid["c2"] == (["bf-fresh"], 4326)  # srid None -> 4326
+
+
+def test_backfill_flushes_in_segments(monkeypatch):
+    """AUD-099 : le backfill est déversé par segments de _BACKFILL_FLUSH_ROWS lignes."""
+    from app.cdc import main
+
+    monkeypatch.setattr(main, "_BACKFILL_FLUSH_ROWS", 1)
+    _b, _l, uploads = _scenario(monkeypatch)
+    # une ligne de backfill = un segment, avant même le premier message live
+    assert [rows for key, rows, _s in uploads if "collection_id=c1" in key][0] == ["bf-known"]
