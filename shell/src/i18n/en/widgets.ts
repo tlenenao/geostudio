@@ -69,6 +69,11 @@ export const widgetsEn: Record<keyof typeof widgets, string> = {
   "explorerMenu.viewRecords": "View features",
   "explorerMenu.exportFormat": "Export as {format}",
 
+  "echart.ariaLabel": "{type} chart, {count} series",
+  "echart.showTable": "View as table",
+  "echart.hideTable": "Hide table",
+  "echart.tableCaption": "Chart data",
+  "echart.selectCategory": "Filter on {name}",
   "widgetChart.paletteLabel": "Chart",
   "widgetChart.typeBar": "Bars",
   "widgetChart.typeLine": "Lines",

@@ -2,6 +2,9 @@
 import type { map } from "../domains/map";
 
 export const mapEn: Record<keyof typeof map, string> = {
+  "mapFeatureList.toggle": "Features in view",
+  "mapFeatureList.empty": "No feature visible in the view.",
+  "mapFeatureList.unnamed": "Unnamed feature",
   "mapEditor.notFound": "Map not found.",
   "mapEditor.layersLabel": "Layers",
   "mapEditor.mapLabel": "Map",
