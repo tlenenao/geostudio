@@ -316,6 +316,8 @@ export async function mockCore(page: Page) {
   await page.route("https://core.test/v1/basemaps", (route) => route.fulfill({ json: [] }));
   await page.route("https://core.test/v1/notifications**", (route) => {
     const url = route.request().url();
+    // Flux SSE indisponible par défaut : le shell retombe sur le sondage.
+    if (url.includes("/stream")) return route.fulfill({ status: 404, json: {} });
     if (url.includes("/unread-count")) return route.fulfill({ json: { count: 0 } });
     if (url.includes("/preference")) return route.fulfill({ json: { value: "all" } });
     return route.fulfill({ json: { notifications: [], total: 0 } });

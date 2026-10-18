@@ -878,6 +878,8 @@ export interface ItemClient {
     pageSize: number;
   }): Promise<{ notifications: NotificationSummary[]; total: number }>;
   getUnreadNotificationCount(): Promise<number>;
+  /** Flux SSE du compte de non-lues ; se résout à la fermeture du flux (reconnexion à l'appelant). */
+  subscribeNotifications(onUnread: (count: number) => void, signal: AbortSignal): Promise<void>;
   markNotificationRead(id: string): Promise<NotificationSummary>;
   markAllNotificationsRead(): Promise<void>;
   getNotificationPreference(): Promise<NotificationPreferenceValue>;
