@@ -354,3 +354,100 @@ test("supprimer une extension demande confirmation puis appelle DELETE (j08-009)
   await waitFor(() => expect(deleted).toBe(true));
   expect(await screen.findByText("Aucune extension enregistrée.")).toBeInTheDocument();
 });
+
+// --- L10 (AUD-110) : manifeste complet en JSON, édition, badge d'intégrité ----------------------
+const FULL_EXT = {
+  id: "acme.gauge",
+  tag: "gauge-extension-widget",
+  label: "Jauge",
+  moduleUrl: "https://example.com/gauge.js",
+  props: [{ name: "initial", type: "number", label: "Valeur", default: 0 }],
+  events: ["changed"],
+  actions: ["reset"],
+  defaultSize: { w: 2, h: 2 },
+  permissions: { collections: "all" },
+  sdkVersion: 1,
+  integrity: "sha384-" + "A".repeat(64),
+  connectHosts: ["https://api.example.org"],
+  imgHosts: [],
+  enabled: true,
+};
+
+test("affiche le badge d'intégrité épinglée ou absente", async () => {
+  server.use(
+    http.get("https://core.test/v1/extensions", () =>
+      HttpResponse.json({
+        extensions: [FULL_EXT, { ...FULL_EXT, id: "acme.bare", label: "Nue", integrity: null }],
+      }),
+    ),
+  );
+  render(<Harness />);
+  expect(await screen.findByText("Épinglée (SRI)")).toBeVisible();
+  expect(screen.getByText("Sans intégrité")).toBeVisible();
+});
+
+test("importe un manifeste JSON complet par POST et affiche l'erreur 422 du cœur", async () => {
+  const bodies: unknown[] = [];
+  server.use(
+    http.get("https://core.test/v1/extensions", () => HttpResponse.json({ extensions: [] })),
+    http.post("https://core.test/v1/extensions", async ({ request }) => {
+      const body = (await request.json()) as { sdkVersion?: number };
+      bodies.push(body);
+      if (body.sdkVersion === 2) {
+        return HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Unprocessable",
+            status: 422,
+            detail: "sdkVersion inconnu",
+          },
+          { status: 422, headers: { "content-type": "application/problem+json" } },
+        );
+      }
+      return HttpResponse.json({}, { status: 201 });
+    }),
+  );
+  render(<Harness />);
+  const area = await screen.findByLabelText("Manifeste JSON");
+  await userEvent.click(area);
+  await userEvent.paste(JSON.stringify({ ...FULL_EXT, sdkVersion: 2 }));
+  await userEvent.click(screen.getByRole("button", { name: "Importer le manifeste" }));
+  expect(await screen.findByText(/sdkVersion inconnu/)).toBeVisible();
+
+  await userEvent.clear(area);
+  await userEvent.click(area);
+  await userEvent.paste(JSON.stringify(FULL_EXT));
+  await userEvent.click(screen.getByRole("button", { name: "Importer le manifeste" }));
+  expect(await screen.findByText("Manifeste enregistré.")).toBeVisible();
+  expect(bodies[1]).toMatchObject({ id: "acme.gauge", integrity: FULL_EXT.integrity });
+
+  await userEvent.click(area);
+  await userEvent.paste("{pas du json");
+  await userEvent.click(screen.getByRole("button", { name: "Importer le manifeste" }));
+  expect(await screen.findByText("Le manifeste n'est pas un JSON valide.")).toBeVisible();
+});
+
+test("édite une extension existante par PATCH (identifiant verrouillé)", async () => {
+  let patched: unknown = null;
+  server.use(
+    http.get("https://core.test/v1/extensions", () =>
+      HttpResponse.json({ extensions: [FULL_EXT] }),
+    ),
+    http.patch("https://core.test/v1/extensions/acme.gauge", async ({ request }) => {
+      patched = await request.json();
+      return HttpResponse.json({});
+    }),
+  );
+  render(<Harness />);
+  await userEvent.click(await screen.findByRole("button", { name: "Modifier : Jauge" }));
+  const area = (await screen.findByLabelText("Manifeste JSON")) as HTMLTextAreaElement;
+  await waitFor(() => expect(area.value).toContain('"integrity"'));
+  const edited = { ...JSON.parse(area.value), label: "Jauge v2" };
+  await userEvent.clear(area);
+  await userEvent.click(area);
+  await userEvent.paste(JSON.stringify(edited));
+  await userEvent.click(screen.getByRole("button", { name: "Mettre à jour" }));
+  expect(await screen.findByText("Manifeste enregistré.")).toBeVisible();
+  expect(patched).toMatchObject({ label: "Jauge v2", sdkVersion: 1 });
+  expect(patched).not.toHaveProperty("id");
+});

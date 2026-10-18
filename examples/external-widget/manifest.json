@@ -4,10 +4,27 @@
   "label": "Compteur externe (exemple)",
   "moduleUrl": "https://widgets.example.com/external-counter/widget.js",
   "props": [
-    { "name": "initial", "type": "number", "label": "Valeur initiale", "default": 0 }
+    {
+      "name": "initial",
+      "type": "number",
+      "label": "Valeur initiale",
+      "default": 0
+    }
   ],
-  "events": ["changed"],
-  "actions": ["reset"],
-  "defaultSize": { "w": 2, "h": 2 },
-  "permissions": { "collections": "all" }
+  "events": [
+    "changed"
+  ],
+  "actions": [
+    "reset"
+  ],
+  "defaultSize": {
+    "w": 2,
+    "h": 2
+  },
+  "permissions": {
+    "collections": "all"
+  },
+  "sdkVersion": 1,
+  "connectHosts": [],
+  "imgHosts": []
 }
