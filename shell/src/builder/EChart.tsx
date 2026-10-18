@@ -139,7 +139,7 @@ export function EChart({
   const [showTable, setShowTable] = useState(false);
   const tableId = useId();
   return (
-    <div className={`flex flex-col ${className ?? "h-full w-full"}`}>
+    <div className={`relative ${className ?? "h-full w-full"}`}>
       <div
         ref={containerRef}
         role="img"
@@ -150,20 +150,24 @@ export function EChart({
         data-testid="echart"
         data-chart-type={series[0]?.type ?? ""}
         data-chart-series={series.length}
-        className="min-h-0 w-full flex-1"
+        className="h-full w-full"
       />
       {table && (
         <div className="text-xs">
           <button
             type="button"
-            className="text-accent hover:underline"
+            className="absolute bottom-1 right-1 z-10 rounded bg-surface/80 px-1 text-accent hover:underline"
             aria-expanded={showTable}
             aria-controls={tableId}
             onClick={() => setShowTable((v) => !v)}
           >
             {showTable ? t("echart.hideTable") : t("echart.showTable")}
           </button>
-          <div id={tableId} hidden={!showTable} className="max-h-40 overflow-auto">
+          <div
+            id={tableId}
+            hidden={!showTable}
+            className="absolute inset-x-0 bottom-7 z-10 max-h-40 overflow-auto bg-surface"
+          >
             {showTable && (
               <table className="w-full text-left">
                 <caption className="sr-only">{t("echart.tableCaption")}</caption>

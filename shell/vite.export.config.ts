@@ -22,6 +22,7 @@ export default defineConfig({
   },
   build: {
     outDir: "dist-export",
+    target: "es2022", // attente au niveau module de i18n/index.ts
     rollupOptions: {
       input: resolve(__dirname, "index.export.html"),
     },
