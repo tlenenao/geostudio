@@ -82,7 +82,7 @@ export function LayerFilterEditor({
       ))}
       <button
         type="button"
-        className="self-start text-xs underline"
+        className="self-start min-h-6 text-xs underline"
         onClick={() => commit([...clauses, { field: "", op: "eq", value: "" }])}
       >
         {t("layersPanel.filterAdd")}
