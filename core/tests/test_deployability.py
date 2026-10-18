@@ -1943,6 +1943,32 @@ def test_shell_nginx_serves_mjs_cache_and_404_for_assets():
     assert "rm -rf dist/.vite dist/fixtures" in (REPO / "shell/Dockerfile").read_text()
 
 
+def test_shell_service_worker_is_never_cached_and_allowed_by_the_csp():
+    """L8 (PWA de collecte) : un `sw.js` servi avec le Cache-Control du reste du shell (ou
+    pire, `immutable`) figerait les clients sur un ancien shell — c'est le seul fichier dont la
+    revalidation fait la mise à jour. Et la CSP (Traefik, puis Helm) doit autoriser le worker
+    même origine : sans `worker-src 'self'`, le navigateur refuse l'enregistrement en silence."""
+    conf = (REPO / "shell/nginx.conf").read_text()
+    block = conf.split("location = /sw.js {")[1].split("}")[0]
+    assert 'add_header Cache-Control "no-cache" always;' in block
+    assert "immutable" not in block
+    assert 'add_header Service-Worker-Allowed "/" always;' in block
+    assert "include /etc/nginx/snippets/security-headers.conf;" in block, (
+        "un add_header de location masque ceux du server : réinclure les en-têtes de sécurité"
+    )
+    assert "try_files $uri =404;" in block, "jamais de repli SPA (index.html) à la place du SW"
+    # Le SW est émis dans dist/ (donc dans l'image) ; son manifeste aussi.
+    assert (REPO / "shell/sw/sw.template.js").exists()
+    assert (REPO / "shell/public/manifest.webmanifest").exists()
+    from app.security.traefik_render import CspAllowlist, _build_csp_value
+
+    csp = _build_csp_value(CspAllowlist(), frame_ancestors=True)
+    assert "worker-src 'self'" in csp
+    assert "default-src 'self'" in csp  # couvre manifest-src
+    values = (REPO / "deploy/helm/geostudio/values.yaml").read_text()
+    assert "worker-src 'self'" in values
+
+
 def test_core_env_vars_extractor_has_not_silently_regressed_to_empty():
     """REV-076/F-tests-04 : core_env_vars() est la clé de voûte de
     test_every_core_env_var_is_wired_to_a_service — si elle régressait vers

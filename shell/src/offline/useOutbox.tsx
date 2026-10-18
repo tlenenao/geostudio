@@ -15,9 +15,12 @@ import {
 import { useItemClient } from "../api/ItemClientProvider";
 import { useMe } from "../api/domains/identity.hooks";
 import type { OutboxEntry } from "./db";
-import { deleteEntry, enqueue, listEntries, type NewEntry } from "./outbox";
-import { createSyncEngine, type SyncEngine, type SyncTransport } from "./sync";
-import { privateTransport } from "./transport";
+import type { NewEntry } from "./outbox";
+import type { SyncEngine, SyncTransport } from "./sync";
+
+// Le moteur (IndexedDB, synchro, transport) est chargé à la demande : ce module est dans le
+// chargement initial (pastille, bannière), pas le moteur (filet de taille du bundle).
+const loadOutbox = () => import("./outbox");
 
 const ACTIVE = new Set(["queued", "sending", "needs_photos"]);
 
@@ -71,7 +74,7 @@ export function useOutboxEngine(
   const refresh = useCallback(async () => {
     if (!ownerKey) return;
     try {
-      const rows = await listEntries(ownerKey);
+      const rows = await (await loadOutbox()).listEntries(ownerKey);
       setEntries(rows);
       setUnsent(rows.filter((e) => e.state !== "sent").length);
     } catch {
@@ -81,20 +84,26 @@ export function useOutboxEngine(
 
   useEffect(() => {
     if (!ownerKey || !transport) return;
-    const e = createSyncEngine({
-      ownerKey,
-      transport,
-      onChange: (s) => {
-        setPaused(s.paused);
-        void refresh();
-      },
-      onAuthRequired: () => authCb.current?.(),
+    let cancelled = false;
+    let started: SyncEngine | null = null;
+    void import("./sync").then(({ createSyncEngine }) => {
+      if (cancelled) return;
+      started = createSyncEngine({
+        ownerKey,
+        transport,
+        onChange: (s) => {
+          setPaused(s.paused);
+          void refresh();
+        },
+        onAuthRequired: () => authCb.current?.(),
+      });
+      engine.current = started;
+      void refresh();
+      started.start();
     });
-    engine.current = e;
-    void refresh();
-    e.start();
     return () => {
-      e.stop();
+      cancelled = true;
+      started?.stop();
       engine.current = null;
     };
   }, [ownerKey, transport, refresh]);
@@ -107,14 +116,14 @@ export function useOutboxEngine(
       pending: entries.filter((e) => ACTIVE.has(e.state)).length,
       paused,
       async enqueue(entry, now) {
-        await enqueue(ownerKey, entry, now);
+        await (await loadOutbox()).enqueue(ownerKey, entry, now);
         await refresh();
         void engine.current?.syncNow();
       },
       syncNow: () => void engine.current?.syncNow(),
       resume: () => void engine.current?.resume(),
       async remove(opId) {
-        await deleteEntry(ownerKey, opId);
+        await (await loadOutbox()).deleteEntry(ownerKey, opId);
         await refresh();
       },
     };
@@ -159,7 +168,16 @@ export function OutboxProvider({
   // file reste visible. ponytail: le dernier propriétaire d'un poste partagé ; le serveur reste
   // juge à l'envoi (jeton), et `me` rétablit la bonne clé dès que le réseau revient.
   const ownerKey = fresh ?? (me.isError ? lastOwnerKey() : null);
-  const transport = useMemo(() => privateTransport(client), [client]);
+  const [transport, setTransport] = useState<SyncTransport | null>(null);
+  useEffect(() => {
+    let live = true;
+    void import("./transport").then((m) => {
+      if (live) setTransport(m.privateTransport(client));
+    });
+    return () => {
+      live = false;
+    };
+  }, [client]);
   const api = useOutboxEngine(ownerKey, transport, onAuthRequired);
   return <OutboxContext.Provider value={api}>{children}</OutboxContext.Provider>;
 }

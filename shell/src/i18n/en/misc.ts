@@ -214,4 +214,7 @@ export const miscEn: Record<keyof typeof misc, string> = {
   "outbox.storageError":
     "Cannot save on this device (storage full or denied). Your entry stays open.",
   "outbox.offlineBanner": "Offline mode: your entries will be sent when the network returns.",
+  "sw.updateReady":
+    "A new version of GeoStudio is available. Finish your current entry before applying it.",
+  "sw.updateAction": "Update",
 };

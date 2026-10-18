@@ -255,6 +255,9 @@ export const misc = {
   "outbox.storageError":
     "Impossible d'enregistrer sur cet appareil (stockage plein ou refusé). Votre saisie reste ouverte.",
   "outbox.offlineBanner": "Mode hors-ligne : vos saisies seront envoyées au retour du réseau.",
+  "sw.updateReady":
+    "Une nouvelle version de GeoStudio est disponible. Terminez votre saisie en cours avant de l'appliquer.",
+  "sw.updateAction": "Mettre à jour",
 } as const;
 
 registerMessages(misc);
