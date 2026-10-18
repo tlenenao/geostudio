@@ -71,6 +71,7 @@ export const fr = {
   "commandPalette.newItemAction": "Nouvel élément",
   "commandPalette.triggerLabel": "Rechercher",
   "topbar.actions": "Actions",
+  "topbar.help": "Aide",
 
   // Motif partagé : bouton générique d'effacement d'un filtre/champ.
   "common.clear": "Effacer",
