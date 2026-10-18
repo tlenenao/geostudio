@@ -67,9 +67,9 @@ def check_domain_config(info: TableInfo, field_domains: dict, subtypes: dict) ->
         if col is None:
             problems.append(f"unknown field '{name}'")
         elif dom["type"] == "list":
-            if col.type not in _LIST_TYPES or not all(
-                _value_fits(col.type, v) for v in dom["values"]
-            ):
+            # L8 : une colonne tableau (select_multiple) porte un domaine sur ses éléments.
+            elem = col.list_item_type if col.type == "list" else col.type
+            if elem not in _LIST_TYPES or not all(_value_fits(elem, v) for v in dom["values"]):
                 problems.append(f"list domain on '{name}' does not fit type {col.type}")
         elif col.type not in _RANGE_TYPES:
             problems.append(f"range domain needs a numeric field, '{name}' is {col.type}")

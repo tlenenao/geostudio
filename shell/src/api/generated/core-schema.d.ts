@@ -4276,6 +4276,10 @@ export interface components {
          * @description ARC-13 : domaine `list` (valeurs admises) ou `range` (bornes incluses).
          */
         FieldDomain: {
+            /** Labels */
+            labels?: {
+                [key: string]: string;
+            } | null;
             /** Max */
             max?: number | null;
             /** Min */

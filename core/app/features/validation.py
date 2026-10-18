@@ -73,6 +73,8 @@ def _effective_domain(info: TableInfo, props: dict, name: str) -> dict | None:
 
 
 def _outside_domain(domain: dict, value) -> bool:
+    if isinstance(value, list):  # colonne tableau : chaque élément doit être dans le domaine
+        return any(_outside_domain(domain, v) for v in value)
     if domain["type"] == "list":
         return value not in domain["values"]
     if isinstance(value, bool) or not isinstance(value, (int, float)):

@@ -3624,6 +3624,20 @@
         "additionalProperties": false,
         "description": "ARC-13 : domaine `list` (valeurs admises) ou `range` (bornes incluses).",
         "properties": {
+          "labels": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
           "max": {
             "anyOf": [
               {

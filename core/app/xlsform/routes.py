@@ -75,6 +75,7 @@ async def import_xlsform(
     if problems:
         raise HTTPException(status_code=422, detail="; ".join(problems))
     col.attachment_fields = plan.attachment_fields
+    col.geometry_required = plan.geometry_required
     col.field_domains = domains
     col.attribute_rules = rules
     session.flush()
