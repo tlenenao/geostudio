@@ -30,6 +30,7 @@ from app.harvest import live_query
 from app.harvest import repository as harvest_repo
 from app.harvest import routes as harvest_routes
 from app.harvest.egress import EgressBlockedError
+from app.i18n_core import with_default_tz
 from app.items import repository as items_repo
 from app.mcp.tools.identity import (
     McpToolError,
@@ -133,7 +134,7 @@ def register(server: FastMCP, session_factory) -> None:
                             tenant_id=col.tenant_id,
                             collection_id=col.id,
                             table_info=info,
-                            request=query,
+                            request=with_default_tz(query, user.timezone),
                             masked_fields=masked_fields,
                         )
                     except UnknownAggregateField as exc:

@@ -13,6 +13,7 @@ import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { plural, t } from "../i18n";
 import "../i18n/domains/admin";
 import "../i18n/domains/misc";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 type Phase = "form" | "uploading" | "selecting-layer" | "selecting-geometry" | "polling" | "error";
 type LayerInfo = { name: string; featureCount: number; geometryType: string };
@@ -544,8 +545,8 @@ export function ImportFileButton() {
               <>
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("importFile.latColumn")}
-                  <select
-                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                  <NativeSelect
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
                   >
@@ -555,12 +556,12 @@ export function ImportFileButton() {
                         {h}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("importFile.lonColumn")}
-                  <select
-                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                  <NativeSelect
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
                   >
@@ -570,15 +571,15 @@ export function ImportFileButton() {
                         {h}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
               </>
             )}
             {geometryChoice === "wkt" && (
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("importFile.wktColumn")}
-                <select
-                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                <NativeSelect
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                   value={wktField}
                   onChange={(e) => setWktField(e.target.value)}
                 >
@@ -588,7 +589,7 @@ export function ImportFileButton() {
                       {h}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
             )}
             <div className="flex justify-end gap-2">
@@ -604,8 +605,8 @@ export function ImportFileButton() {
           <form onSubmit={(e) => void confirmLayer(e)} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">
               {t("importFile.layerColumn")}
-              <select
-                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+              <NativeSelect
+                className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                 value={layerName}
                 onChange={(e) => setLayerName(e.target.value)}
               >
@@ -622,7 +623,7 @@ export function ImportFileButton() {
                     )}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={close}>
@@ -651,8 +652,8 @@ export function ImportFileButton() {
               <>
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("importFile.latColumn")}
-                  <select
-                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                  <NativeSelect
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                     value={latField}
                     onChange={(e) => setLatField(e.target.value)}
                   >
@@ -662,12 +663,12 @@ export function ImportFileButton() {
                         {h}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("importFile.lonColumn")}
-                  <select
-                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                  <NativeSelect
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                     value={lonField}
                     onChange={(e) => setLonField(e.target.value)}
                   >
@@ -677,7 +678,7 @@ export function ImportFileButton() {
                         {h}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
               </>
             )}

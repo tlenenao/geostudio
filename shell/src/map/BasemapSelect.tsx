@@ -2,6 +2,7 @@
 import { useBasemaps } from "./useBasemaps";
 import { t } from "../i18n";
 import "../i18n/domains/map";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 export function BasemapSelect({
   value,
@@ -14,8 +15,8 @@ export function BasemapSelect({
   return (
     <label className="flex flex-col gap-1 text-sm">
       {t("basemapSelect.label")}
-      <select
-        className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+      <NativeSelect
+        className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -24,7 +25,7 @@ export function BasemapSelect({
             {b.label}
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </label>
   );
 }

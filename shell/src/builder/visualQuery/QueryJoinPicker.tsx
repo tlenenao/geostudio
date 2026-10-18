@@ -3,6 +3,7 @@ import type { CollectionSchema } from "../../api/types";
 import { JoinConfig } from "./inferSchema";
 import { t } from "../../i18n";
 import "../../i18n/domains/automation";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 export function QueryJoinPicker({
   baseSchema,
@@ -26,8 +27,8 @@ export function QueryJoinPicker({
     <div className="flex flex-col gap-2">
       <label className="flex flex-col gap-1 text-xs">
         {t("queryJoinPicker.collectionLabel")}
-        <select
-          className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink"
+        <NativeSelect
+          className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink w-auto"
           value={value.collectionId}
           onChange={(e) => onChange({ ...value, collectionId: e.target.value, on: "" })}
         >
@@ -37,7 +38,7 @@ export function QueryJoinPicker({
               {c.title}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       {joinedSchema && commonColumns.length === 0 && (
         <p className="text-xs text-danger">{t("queryJoinPicker.noCommonColumn")}</p>
@@ -45,8 +46,8 @@ export function QueryJoinPicker({
       {commonColumns.length > 0 && (
         <label className="flex flex-col gap-1 text-xs">
           {t("queryJoinPicker.joinColumnLabel")}
-          <select
-            className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink"
+          <NativeSelect
+            className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink w-auto"
             value={value.on}
             onChange={(e) => onChange({ ...value, on: e.target.value })}
           >
@@ -56,19 +57,19 @@ export function QueryJoinPicker({
                 {f.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       )}
       <label className="flex flex-col gap-1 text-xs">
         {t("queryJoinPicker.joinTypeLabel")}
-        <select
-          className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink"
+        <NativeSelect
+          className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink w-auto"
           value={value.how}
           onChange={(e) => onChange({ ...value, how: e.target.value as "inner" | "left" })}
         >
           <option value="inner">{t("queryJoinPicker.joinInnerOption")}</option>
           <option value="left">{t("queryJoinPicker.joinLeftOption")}</option>
-        </select>
+        </NativeSelect>
       </label>
     </div>
   );

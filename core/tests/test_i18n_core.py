@@ -54,3 +54,28 @@ def test_tr_templates_and_default_locale(monkeypatch):
     assert tr("report.subject", None, title="T") == "[GeoStudio] Report: T"
     monkeypatch.delenv("CORE_DEFAULT_LOCALE")
     assert tr("report.subject", None, title="T") == "[GeoStudio] Rapport : T"
+
+
+def test_with_default_tz_fills_only_when_absent():
+    from app.analytics.aggregate import AggregateRequestBody
+    from app.i18n_core import with_default_tz
+
+    body = AggregateRequestBody(agg="count")
+    assert with_default_tz(body, "Europe/Paris").timeZone == "Europe/Paris"
+    assert with_default_tz(body, None).timeZone is None
+    explicit = AggregateRequestBody(agg="count", timeZone="Asia/Tokyo")
+    assert with_default_tz(explicit, "Europe/Paris").timeZone == "Asia/Tokyo"
+
+
+def test_format_local_and_export_tz():
+    from datetime import UTC, datetime
+
+    from app.analytics.export import _xlsx_cell_value, export_filename
+    from app.i18n_core import format_local
+
+    moment = datetime(2026, 1, 15, 23, 30, tzinfo=UTC)
+    assert format_local(moment, "Europe/Paris", "fr") == "2026-01-16 00:30 (Europe/Paris)"
+    assert format_local(moment.replace(tzinfo=None), None, "fr") == "2026-01-15 23:30 (UTC)"
+    assert _xlsx_cell_value(moment, "Europe/Paris") == datetime(2026, 1, 16, 0, 30)
+    assert _xlsx_cell_value(moment) == datetime(2026, 1, 15, 23, 30)
+    assert export_filename("A", format="csv", tz="Asia/Tokyo").startswith("a-")

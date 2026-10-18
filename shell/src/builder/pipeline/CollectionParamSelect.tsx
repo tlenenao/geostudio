@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useCollectionsAdmin } from "../../api/hooks";
 import { hasPermission } from "../../auth/permissions";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 // Filtre d'affichage seulement (variant="writable" ne montre que les
 // collections avec permission "write") — jamais une frontière de sécurité : la vraie
@@ -27,9 +28,9 @@ export function CollectionParamSelect({
   );
 
   return (
-    <select
+    <NativeSelect
       aria-label={ariaLabel}
-      className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+      className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
@@ -40,6 +41,6 @@ export function CollectionParamSelect({
           {c.title}
         </option>
       ))}
-    </select>
+    </NativeSelect>
   );
 }

@@ -11,6 +11,7 @@ import { Button } from "../ui/kit/Button";
 import { RasterUploadButton } from "./RasterUploadButton";
 import { t } from "../i18n";
 import "../i18n/domains/map";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 export const RASTER_COLORMAPS = ["viridis", "magma", "terrain", "greys", "rdylgn"] as const;
 
@@ -69,9 +70,9 @@ export function RasterLayerForm({ onAdd }: { onAdd: (layer: MapLayer) => void })
     <div className="border-t border-rule pt-2">
       <p className="mb-1 text-xs font-medium text-ink-2">{t("rasterLayer.heading")}</p>
       <div className="flex flex-col gap-1">
-        <select
+        <NativeSelect
           aria-label={t("rasterLayer.itemAria")}
-          className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+          className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
           value={itemId}
           onChange={(e) => setItemId(e.target.value)}
         >
@@ -81,10 +82,10 @@ export function RasterLayerForm({ onAdd }: { onAdd: (layer: MapLayer) => void })
               {s.title}
             </option>
           ))}
-        </select>
-        <select
+        </NativeSelect>
+        <NativeSelect
           aria-label={t("rasterLayer.colormapAria")}
-          className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+          className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
           value={colormap}
           onChange={(e) => setColormap(e.target.value)}
         >
@@ -93,7 +94,7 @@ export function RasterLayerForm({ onAdd }: { onAdd: (layer: MapLayer) => void })
               {c}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         <div className="flex gap-1">
           <input
             aria-label={t("rasterLayer.minAria")}

@@ -11,6 +11,7 @@ Constraints)."""
 import hashlib
 import logging
 import os
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -33,7 +34,7 @@ from app.configs import repository as configs_repo
 from app.configs.alert_condition import evaluate_condition
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook, AlertRulePayload
 from app.db import request_scoped_session
-from app.i18n_core import tr
+from app.i18n_core import format_local, tr, with_default_tz
 from app.items import repository as items_repo
 from app.items.models import Item
 from app.job_errors import INTERNAL_ERROR_MESSAGE
@@ -44,7 +45,7 @@ from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
 from app.sharing.repository import share_recipient_ids
 from app.users.models import User
-from app.users.repository import user_locale
+from app.users.repository import user_locale, user_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +213,7 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
                 tenant_id=col.tenant_id,
                 collection_id=col.id,
                 table_info=table_info,
-                request=query,
+                request=with_default_tz(query, user.timezone),
                 masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
@@ -332,7 +333,12 @@ def _notify(
                         rule=rule_name,
                         state=state,
                     ),
-                    body=message,
+                    body=message
+                    + tr(
+                        "mail.at",
+                        user_locale(session, actor_id),
+                        at=format_local(datetime.now(UTC), user_timezone(session, actor_id), None),
+                    ),
                 )
             success = True
         except NotifyError as exc:

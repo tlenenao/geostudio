@@ -15,6 +15,7 @@ import { ItemCard } from "../ui/kit/ItemCard";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
 import "../i18n/domains/misc";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 // Types servis par GET /public/items (core/app/items/repository.py::PUBLIC_KINDS).
 const PUBLIC_TYPES: ResourceType[] = ["site", "app", "dashboard", "map", "dataset"];
@@ -76,8 +77,8 @@ export function PublicCatalogPage() {
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("publicCatalog.typeLabel")}
-          <select
-            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+          <NativeSelect
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
             value={type ?? ""}
             onChange={(e) => setParam("type", e.target.value)}
           >
@@ -87,7 +88,7 @@ export function PublicCatalogPage() {
                 {RESOURCE_TYPE_LABELS[p]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("publicCatalog.tagLabel")}

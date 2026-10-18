@@ -10,6 +10,7 @@ import {
 import { t } from "../i18n";
 import { formatNumber } from "../lib/format";
 import "../i18n/domains/widgets";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 const FONTS: [string, string][] = [
   [DEFAULT_FONT, t("themePanel.fontSystem")],
@@ -80,8 +81,8 @@ export function ThemePanel({
       ))}
       <label className="flex flex-col gap-1">
         {t("themePanel.fontLabel")}
-        <select
-          className="h-9 rounded-md border border-rule px-2"
+        <NativeSelect
+          className="h-9 rounded-md border border-rule px-2 w-auto"
           value={theme.font ?? DEFAULT_FONT}
           onChange={(e) => onChange({ ...theme, font: e.target.value })}
         >
@@ -90,12 +91,12 @@ export function ThemePanel({
               {label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <label className="flex flex-col gap-1">
         {t("themePanel.radiusFieldLabel")}
-        <select
-          className="h-9 rounded-md border border-rule px-2"
+        <NativeSelect
+          className="h-9 rounded-md border border-rule px-2 w-auto"
           value={theme.radius ?? DEFAULT_RADIUS}
           onChange={(e) => onChange({ ...theme, radius: e.target.value })}
         >
@@ -104,12 +105,12 @@ export function ThemePanel({
               {label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <label className="flex flex-col gap-1">
         {t("themePanel.spaceLabel")}
-        <select
-          className="h-9 rounded-md border border-rule px-2"
+        <NativeSelect
+          className="h-9 rounded-md border border-rule px-2 w-auto"
           value={theme.space ?? DEFAULT_SPACE}
           onChange={(e) => onChange({ ...theme, space: e.target.value })}
         >
@@ -118,7 +119,7 @@ export function ThemePanel({
               {label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
     </div>
   );

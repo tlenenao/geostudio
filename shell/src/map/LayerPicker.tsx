@@ -10,6 +10,7 @@ import { Button } from "../ui/kit/Button";
 import { RasterLayerForm } from "./RasterLayerForm";
 import { plural, t, type MessageKey } from "../i18n";
 import "../i18n/domains/map";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 const KIND_LABEL_KEYS = {
   vector: "layerPicker.kindVector",
@@ -222,16 +223,16 @@ export function LayerPicker({ onAdd }: { onAdd: (layer: MapLayer) => void }) {
             value={deckTitle}
             onChange={(e) => setDeckTitle(e.target.value)}
           />
-          <select
+          <NativeSelect
             aria-label={t("layerPicker.deckTypeAria")}
-            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
             value={deckType}
             onChange={(e) => setDeckType(e.target.value as "heatmap" | "hexbin" | "column")}
           >
             <option value="heatmap">{t("layerPicker.deckHeatmapOption")}</option>
             <option value="hexbin">{t("layerPicker.deckHexbinOption")}</option>
             <option value="column">{t("layerPicker.deckColumnOption")}</option>
-          </select>
+          </NativeSelect>
           <input
             aria-label={t("layerPicker.deckUrlAria")}
             type="text"

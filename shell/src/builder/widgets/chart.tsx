@@ -382,6 +382,7 @@ export function registerChartWidget(): void {
                 agg,
                 field: valueField || undefined,
               },
+              data?.resolvedSource,
             )
           : null;
       const currentQuery = useQuery({
@@ -403,6 +404,7 @@ export function registerChartWidget(): void {
                 agg,
                 field: valueField || undefined,
               },
+              data?.resolvedSource,
             )
           : null;
       const referenceQuery = useQuery({

@@ -21,6 +21,7 @@ import { ANALYTICS_AGGREGATES, aggregateNeedsP, DEFAULT_PERCENTILE } from "./agg
 import { PercentileInput } from "./PercentileInput";
 import { formatDateTime } from "../lib/format";
 import "../i18n/domains/automation";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 // GET /alerts/{id}/evaluations pagine déjà côté cœur (limit/offset, SP-50)
 // mais cette ligne tronquait silencieusement l'historique à la limite par
@@ -253,8 +254,8 @@ export function AlertRuleEditor({
         </label>
         <label className="flex flex-col gap-1">
           {t("alertRule.channelLabel")}
-          <select
-            className="h-9 rounded border border-control bg-surface px-2 text-ink"
+          <NativeSelect
+            className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
             value={channel.kind}
             onChange={(e) =>
               setChannel(
@@ -266,7 +267,7 @@ export function AlertRuleEditor({
           >
             <option value="webhook">{t("alertRule.channelWebhookOption")}</option>
             <option value="email">{t("alertRule.channelEmailOption")}</option>
-          </select>
+          </NativeSelect>
         </label>
         {channel.kind === "webhook" && (
           <>
@@ -316,8 +317,8 @@ export function AlertRuleEditor({
         )}
         <label className="flex flex-col gap-1">
           {t("alertRule.aggregateLabel")}
-          <select
-            className="h-9 rounded border border-control bg-surface px-2 text-ink"
+          <NativeSelect
+            className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
             value={agg}
             onChange={(e) => setAgg(e.target.value)}
           >
@@ -326,7 +327,7 @@ export function AlertRuleEditor({
                 {a.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         {agg !== "count" && (
           <label className="flex flex-col gap-1">

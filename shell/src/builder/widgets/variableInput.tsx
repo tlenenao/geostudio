@@ -4,6 +4,7 @@ import { useVariableDefs, useVariables, useSetVariable } from "../VariablesConte
 import type { Variable } from "../../api/types";
 import { t } from "../../i18n";
 import "../../i18n/domains/widgets";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 type Props = { variableId: string; label: string };
 
@@ -79,8 +80,8 @@ export function registerVariableInputWidget(): void {
         <div className="flex flex-col gap-2 text-sm">
           <label className="flex flex-col gap-1">
             {t("widgetVariableInput.variableAria")}
-            <select
-              className="h-9 rounded-md border border-rule px-2"
+            <NativeSelect
+              className="h-9 rounded-md border border-rule px-2 w-auto"
               value={variableId}
               onChange={(e) => onChange({ variableId: e.target.value, label })}
             >
@@ -92,7 +93,7 @@ export function registerVariableInputWidget(): void {
                     {v.name}
                   </option>
                 ))}
-            </select>
+            </NativeSelect>
           </label>
           <label className="flex flex-col gap-1">
             {t("widgetVariableInput.labelAria")}

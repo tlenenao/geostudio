@@ -28,6 +28,7 @@ import { LoadingState } from "../ui/kit/LoadingState";
 import { formatDateTime } from "../lib/format";
 import "../i18n/domains/admin";
 import "../i18n/domains/misc";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 const MAX_SHARE_LINK_TTL_DAYS = 30;
 
@@ -530,9 +531,9 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                     />
                     {g.title}
                   </label>
-                  <select
+                  <NativeSelect
                     aria-label={t("sharePanel.roleAria", { group: g.title })}
-                    className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+                    className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
                     disabled={!roles[g.id]}
                     value={roles[g.id] ?? "viewer"}
                     onChange={(e) =>
@@ -542,7 +543,7 @@ export function ShareForm({ item, onDone }: { item: Item; onDone: () => void }) 
                     <option value="viewer">{t("sharePanel.roleViewer")}</option>
                     <option value="editor">{t("sharePanel.roleEditor")}</option>
                     <option value="manager">{t("sharePanel.roleManager")}</option>
-                  </select>
+                  </NativeSelect>
                 </div>
                 {g.canManage && (
                   <>

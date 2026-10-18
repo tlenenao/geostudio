@@ -10,6 +10,7 @@ import {
 import { t } from "../i18n";
 import { Button } from "../ui/kit/Button";
 import "../i18n/domains/admin";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 /** Limite géographique de lecture par groupe (GAP-27). Masquée sans le privilège
  *  admin.collections.manage : la route répond 403, la requête échoue, rien n'est rendu. */
@@ -76,8 +77,8 @@ export function GeoLimitsSection({ collectionId }: { collectionId: string }) {
       <GroupSearchField state={gs} />
       <label className="flex flex-col gap-1 text-sm text-ink">
         {t("geoLimits.groupLabel")}
-        <select
-          className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+        <NativeSelect
+          className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
           value={groupId}
           onChange={(e) => setGroupId(e.target.value)}
         >
@@ -87,7 +88,7 @@ export function GeoLimitsSection({ collectionId }: { collectionId: string }) {
               {g.title}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <label className="flex flex-col gap-1 text-sm text-ink">
         {t("geoLimits.geometryLabel")}

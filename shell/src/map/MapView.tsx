@@ -12,7 +12,12 @@ import {
 } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { FilterSpecification } from "maplibre-gl";
-import { resolveBasemapStyle } from "./basemaps";
+import {
+  BLANK_BACKGROUND_ID,
+  BLANK_BASEMAP,
+  blankBackgroundColor,
+  resolveBasemapStyle,
+} from "./basemaps";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import type { DataRecord, MapConfig, ThemeColors } from "../api/types";
 import { MapLegend } from "./MapLegend";
@@ -223,6 +228,8 @@ export const MapView = forwardRef<
   const onViewChangeRef = useRef(onViewChange);
   const onFeatureClickRef = useRef(onFeatureClick);
   const onReadyRef = useRef(onReady);
+  const basemapStyleRef = useRef(config.basemap.style);
+  basemapStyleRef.current = config.basemap.style;
   const getAuthTokenRef = useRef(getAuthToken);
   const getCoreUrlRef = useRef(getCoreUrl);
   const getShareLinkTokenRef = useRef(getShareLinkToken);
@@ -557,6 +564,10 @@ export const MapView = forwardRef<
       onThemeChange(() => {
         const map = mapRef.current;
         if (!map || !styleLoadedRef.current) return;
+        // AUD-126 : le fond vierge souverain suit le thème (jeton --gs-map-land).
+        if (map.getLayer(BLANK_BACKGROUND_ID) && basemapStyleRef.current === BLANK_BASEMAP.style) {
+          map.setPaintProperty(BLANK_BACKGROUND_ID, "background-color", blankBackgroundColor());
+        }
         if (map.getLayer(HIGHLIGHT_ID)) {
           map.setPaintProperty(HIGHLIGHT_ID, "line-color", highlightColor());
         }

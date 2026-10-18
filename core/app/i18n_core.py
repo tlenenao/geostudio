@@ -40,6 +40,25 @@ def negotiate_locale(accept_language: str | None) -> str | None:
     return min(ranked)[2] if ranked else None
 
 
+def with_default_tz(body, tz: str | None):
+    """Complète `timeZone` d'une requête d'agrégat avec le fuseau du demandeur (AUD-115) ;
+    un `timeZone` explicite l'emporte. Duck-typé : module feuille, aucun import de domaine."""
+    if tz and getattr(body, "timeZone", None) is None:
+        return body.model_copy(update={"timeZone": tz})
+    return body
+
+
+def format_local(moment, tz: str | None, locale: str | None) -> str:
+    """Instant UTC (naïf = UTC) rendu dans le fuseau `tz` : `2026-10-18 14:05 (Europe/Paris)`."""
+    from datetime import UTC
+    from zoneinfo import ZoneInfo
+
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    zone = ZoneInfo(tz or "UTC")
+    return f"{moment.astimezone(zone):%Y-%m-%d %H:%M} ({zone.key})"
+
+
 def default_locale() -> str:
     return normalize_locale(os.environ.get("CORE_DEFAULT_LOCALE")) or "fr"
 
@@ -153,6 +172,7 @@ _MAILS = {
         "report.body": "Rapport « {title} » : {status}.",
         "report.link": " Lien : {url}",
         "report.error": " Erreur : {error}",
+        "mail.at": "\n\nÉmis le {at}.",
     },
     "en": {
         "alert.subject": "[GeoStudio] {rule}: {state}",
@@ -160,6 +180,7 @@ _MAILS = {
         "report.body": 'Report "{title}": {status}.',
         "report.link": " Link: {url}",
         "report.error": " Error: {error}",
+        "mail.at": "\n\nSent on {at}.",
     },
 }
 

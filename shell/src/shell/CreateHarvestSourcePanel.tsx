@@ -7,6 +7,7 @@ import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
 import "../i18n/domains/automation";
 import "../i18n/domains/misc";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 const COPY_TYPES: HarvestSourceType[] = ["stac", "arcgis", "wfs", "ckan", "udata"];
 
@@ -43,8 +44,8 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
       <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("catalog.typeLabel")}
-          <select
-            className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+          <NativeSelect
+            className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
             value={type}
             onChange={(e) => {
               const next = e.target.value as HarvestSourceType;
@@ -61,7 +62,7 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
             <option value="ogc-records">{t("harvest.typeOgcRecords")}</option>
             <option value="ckan">{t("harvest.typeCkan")}</option>
             <option value="udata">{t("harvest.typeUdata")}</option>
-          </select>
+          </NativeSelect>
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("harvest.columnUrl")}
@@ -69,8 +70,8 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("harvest.columnMode")}
-          <select
-            className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+          <NativeSelect
+            className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
             value={mode}
             onChange={(e) => setMode(e.target.value as "reference" | "copy")}
           >
@@ -78,7 +79,7 @@ export function CreateHarvestSourcePanel({ onClose }: { onClose: () => void }) {
             <option value="copy" disabled={!copyAllowed}>
               {t("harvest.modeCopy")}
             </option>
-          </select>
+          </NativeSelect>
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("harvest.intervalLabel")}

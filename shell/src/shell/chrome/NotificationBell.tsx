@@ -16,6 +16,7 @@ import { t } from "../../i18n";
 import { formatDateTime } from "../../lib/format";
 import type { MessageKey } from "../../i18n";
 import { useOpenItem } from "../useOpenItem";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 // j09-007 : « Charger plus » agrandit la page (pas de page++ : la liste reste unique).
 const PAGE_SIZE = 20;
@@ -127,9 +128,9 @@ export function NotificationBell() {
       <div className="flex w-72 flex-col gap-2">
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
-            <select
+            <NativeSelect
               aria-label={t("notifications.preference")}
-              className="rounded border border-control bg-surface px-1 py-0.5 text-xs text-ink"
+              className="rounded border border-control bg-surface px-1 py-0.5 text-xs text-ink w-auto"
               value={preferenceQuery.data ?? "all"}
               onChange={(e) =>
                 updatePreference.mutate(e.target.value as NotificationPreferenceValue)
@@ -140,7 +141,7 @@ export function NotificationBell() {
                   {t(PREFERENCE_LABEL_KEYS[value])}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <button
               className="text-xs text-ink-2 hover:text-ink"
               onClick={() => markAllRead.mutate()}

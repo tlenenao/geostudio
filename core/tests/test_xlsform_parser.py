@@ -440,3 +440,20 @@ def test_to_cel_matches_xpath_reference_values(xpath, props, expected):
 def test_today_has_no_cel_equivalent_and_is_refused():
     with pytest.raises(Exception, match="today"):
         to_cel("today()", {})
+
+
+def test_translations_kept_in_form_field():
+    """AUD-115 c : `label::en` / `hint::en` conservés ; langue hors fr/en ignorée."""
+    plan = parse_xlsform(
+        _book(
+            [
+                ("type", "name", "label", "label::English (en)", "label::de", "hint::en"),
+                ("text", "nom", "Nom", "Name", "Nachname", "Your name"),
+            ]
+        )
+    )
+    field = plan.form_fields[0]
+    assert field["label"] == "Nom"
+    assert field["labels"] == {"en": "Name"}
+    assert field["hints"] == {"en": "Your name"}
+    assert any(r.code == "ignored" and "label::de" in r.message for r in plan.report)

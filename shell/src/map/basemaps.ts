@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { StyleSpecification } from "maplibre-gl";
+import { readToken } from "../lib/theme";
 
 /** `external` : fond servi par un tiers (masqué quand l'instance coupe les fonds externes,
  * AUD-122). */
@@ -68,22 +69,31 @@ const XYZ_GLYPHS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf"
 
 // Revue L6 I2 : style vierge en ligne — une URL "/basemaps/blank.json" sort du sous-chemin
 // d'un export statique (base "./") et devient file:///basemaps/… dans le desktop.
-const BLANK_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {},
-  layers: [
-    {
-      id: "background",
-      type: "background",
-      paint: { "background-color": "#f2efe9" /* gs-raw-color-ok: fond cartographique neutre */ },
-    },
-  ],
-};
+// AUD-126 : le fond vierge suit l'ambiance (jeton `--gs-map-land`, clair/sombre) ; MapView
+// repeint `background` au changement de thème (setPaintProperty, sans recréer la carte).
+export const BLANK_BACKGROUND_ID = "background";
+export function blankBackgroundColor(): string {
+  return readToken("--gs-map-land", "#f2efe9" /* gs-raw-color-ok: repli hors navigateur réel */);
+}
+
+function blankStyle(): StyleSpecification {
+  return {
+    version: 8,
+    sources: {},
+    layers: [
+      {
+        id: BLANK_BACKGROUND_ID,
+        type: "background",
+        paint: { "background-color": blankBackgroundColor() },
+      },
+    ],
+  };
+}
 
 /** REV-367 i : un fond `xyz:<gabarit {z}/{x}/{y}>` devient un style raster minimal ;
  * toute autre valeur (URL de style.json) est transmise telle quelle à MapLibre. */
 export function resolveBasemapStyle(style: string): string | StyleSpecification {
-  if (style === BLANK_BASEMAP.style) return BLANK_STYLE;
+  if (style === BLANK_BASEMAP.style) return blankStyle();
   if (!style.startsWith(XYZ_PREFIX)) return style;
   const tiles = style.slice(XYZ_PREFIX.length);
   // Licence ouverte Etalab 2.0 : l'attribution IGN est requise.
