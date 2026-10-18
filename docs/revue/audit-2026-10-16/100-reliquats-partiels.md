@@ -8,26 +8,38 @@ Effort : S < 0,5 j, M 0,5 à 2 j, L > 2 j.
 
 ## A. Faisables sans décision ni rejeu
 
-| AUD | Reste | Effort |
-|---|---|---|
-| 051 | Filtre CEL par couche vers MapLibre / `ST_AsMVT` | M |
-| 052 | Contexte du popup CEL jusqu'à `MapView` ; sanitisation markdown | M |
-| 056 | Cache de tuiles ; `AsyncClient` + `Semaphore` | M |
-| 057 | Séries cartographiques, mise en page composable, pied de page PDF | L |
-| 059 | Comparaison conserve filtres et mesure ; cross-filter multi-entrées ; filtre au clic | M |
-| 099 | Pré-agrégation/cache/backfill/index | L |
-| 014 | Lecture en flux OGR/GeoParquet/XML | L |
-| 029 | Arrêt d'un code Python bloquant en cours de nœud | M |
-| 115 | Erreurs/e-mails/DCAT localisés, `users.locale`/`timezone`, timeZone alertes/rapports/exports | L |
-| 119 | Recherche d'items/récents dans ⌘K, `HelpHint` | M |
-| 126/127 | Fonds de carte thémés, contrôles vers le kit | M |
-| 097 | `expires_at` : partage expiré encore listé dans GET sharing | S |
-| SP-L4 | `/admin/usage` sans `maxUsers`/`maxActiveRuns` ; API d'écriture de `tenant_limits` | S/M |
-| L12 | `jobs/common.py` hors contrat de couches (cycle items/notifications) ; `jobs/__init__`, `recovery.py` hors strict | M |
-| L12 | Découper MapView (991 kB) / deck.gl : marge de bundle 10 Ko sur 640 | M |
-| L12 | Seed de démo : pipeline et alerte | S |
-| L1b/L6 | Jumelles `.defer()` sans balayage (alerts/service, geocoding/routes, harvest/routes, quality/routes, compliance/routes, embeddings) ; DROP des TEMP TABLE | M |
-| SP-L0 | Matérialisation datasets arcgis/SQL/pipeline ; `invalidGeometry` + `ST_MakeValid` des intersections ; bowtie MultiPolygon ; fan-out `detectChanges` ; ctx > 16000 car. ; minuterie 90 s vs 120 s ; `entity_history` non 4326 ; `mapWidget.tsx` ~271 ; tolérance <= 0 | M chacun, S pour les deux derniers |
+Statut après relecture du code (couloir C, 2e mission). « Fait » = commit dans la branche du
+couloir ; « Déjà fait » = l'inventaire était périmé (piège n°12).
+
+| AUD | Reste | Effort | Statut |
+|---|---|---|---|
+| 051 | Filtre CEL par couche vers MapLibre / `ST_AsMVT` | M | Ouvert (non traité) |
+| 052 | Contexte du popup CEL jusqu'à `MapView` ; sanitisation markdown | M | Ouvert (non traité) |
+| 056 | Cache de tuiles ; `AsyncClient` + `Semaphore` | M | Partiel : la session DB est déjà rendue avant l'appel TiTiler/terrain (`session.commit()` avant `httpx.get`, déjà fait) ; cache serveur et sémaphore restent ouverts |
+| 057 | Séries cartographiques, mise en page composable, pied de page PDF | L | Cadré dans `101-reliquats-L-cadrage.md` |
+| 059 | Comparaison conserve filtres et mesure ; cross-filter multi-entrées ; filtre au clic | M | Ouvert (non traité) |
+| 099 | Pré-agrégation/cache/backfill/index | L | Cadré dans `101` |
+| 014 | Lecture en flux OGR/GeoParquet/XML | L | Cadré dans `101` |
+| 029 | Arrêt d'un code Python bloquant en cours de nœud | M | Ouvert (non traité) |
+| 115 | Erreurs/e-mails/DCAT localisés, `users.locale`/`timezone`, timeZone alertes/rapports/exports | L | Cadré dans `101` |
+| 119 | Recherche d'items/récents dans ⌘K, `HelpHint` | M | Partiel : recherche d'items du catalogue faite (palette) ; récents et `HelpHint` ouverts |
+| 126/127 | Fonds de carte thémés, contrôles vers le kit | M | Ouvert (non traité) |
+| 097 | `expires_at` : partage expiré encore listé dans GET sharing | S | Fait (`list_shares` et `get_collection_sharing` filtrent par `share_active`) |
+| SP-L4 | `/admin/usage` sans `maxUsers`/`maxActiveRuns` ; API d'écriture de `tenant_limits` | S/M | Partiel : `maxUsers`/`maxActiveRuns` exposés et affichés ; API d'écriture de `tenant_limits` ouverte |
+| L12 | `jobs/common.py` hors contrat de couches (cycle items/notifications) ; `jobs/__init__`, `recovery.py` hors strict | M | Ouvert : 32 importeurs de `jobs.common`, refonte par injection (rappel de notification) à planifier |
+| L12 | Découper MapView (991 kB) / deck.gl : marge de bundle 10 Ko sur 640 | M | Ouvert (non traité) |
+| L12 | Seed de démo : pipeline et alerte | S | Fait (+ jeu de données ; pipeline derrière `CORE_ETL_ENABLED`) |
+| L1b/L6 | Jumelles `.defer()` sans balayage | M | Fait pour alerts/service, harvest/routes, quality/routes (`defer_resilient`) et balayages tolérants par élément ; déjà traité (relus) : geocoding/routes (balayage `sweep_geocode_jobs_task`), compliance/routes (reçu clos en échec si le defer échoue), embeddings (defer après commit + balayages) ; DROP des TEMP TABLE non traité |
+| SP-L0 | Matérialisation datasets arcgis/SQL/pipeline | M | Ouvert : `appexport/datasets.py` refuse proprement (message français) les datasets non adossés à une collection ; la matérialisation demande une décision de périmètre (snapshot au moment de l'export) |
+| SP-L0 | `ST_MakeValid` des intersections | M | Fait (`transform.intersection`, `spatialJoin`) ; paramètre `invalidGeometry` + rapport par fid : ouvert |
+| SP-L0 | bowtie MultiPolygon sur colonne Polygon | M | Déjà fait : rejet `geometry_mismatch` dans le rapport d'ajout (test ajouté) |
+| SP-L0 | fan-out `detectChanges` | M | Déjà fait : erreur « clé dupliquée » dans le compilateur |
+| SP-L0 | ctx > 16000 car. | M | Fait (message dédié à l'export, 422) |
+| SP-L0 | minuterie 90 s vs 120 s | M | Fait (décompte depuis la navigation) |
+| SP-L0 | `entity_history` non 4326 | M | Déjà fait : instantanés et écritures en lon/lat 4326 (`get_feature` sans `out_srid`) |
+| SP-L0 | `mapWidget.tsx` ~271 | S | Fait (le badge d'échantillon est affiché) |
+| SP-L0 | tolérance <= 0 | S | Fait (`snapToLayer` déjà ; `simplify` : `ge=0`, fini) |
+| SP-L0 | mini-serveur d'export, lac en SRID natif | S | Fait (reprojection 4326, ajouté pendant la relecture) |
 
 ## B. Demandent une décision de Tanguy
 
