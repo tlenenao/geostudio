@@ -8,7 +8,13 @@ import { useInstanceInfo } from "../../api/hooks";
 import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
 import { ApiError } from "../../api/ApiError";
-import type { CollectionSchema, DataRecord, DataSource, FieldDomain } from "../../api/types";
+import type {
+  AttachmentKind,
+  CollectionSchema,
+  DataRecord,
+  DataSource,
+  FieldDomain,
+} from "../../api/types";
 import type { WidgetContext } from "../registry";
 import { plural, t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
@@ -42,7 +48,27 @@ export type FormField = {
   options?: { value: string | number; label: string }[];
   // L8 (XLSForm `select_multiple`) : plusieurs valeurs parmi `options`, stockées en tableau.
   multiple?: boolean;
+  // L8 : nature d'un champ média (reprise du schéma courant si absente de la config).
+  kind?: AttachmentKind;
 };
+
+// L8 : `accept`/`capture` du sélecteur de fichier selon la nature du média. `capture` ouvre
+// directement la caméra/le micro sur mobile ; un fichier générique n'en impose aucun.
+export function mediaAttrs(kind: AttachmentKind | undefined): {
+  accept?: string;
+  capture?: "environment" | "user";
+} {
+  switch (kind) {
+    case "image":
+      return { accept: "image/*", capture: "environment" };
+    case "video":
+      return { accept: "video/*", capture: "environment" };
+    case "audio":
+      return { accept: "audio/*", capture: "user" };
+    default:
+      return {};
+  }
+}
 
 // ARC-13 : champs enrichis des domaines/sous-types du schéma courant ; le domaine du sous-type
 // sélectionné l'emporte sur celui du champ. Une plage devient min/max (validés par validateField).
@@ -76,6 +102,13 @@ export function applyDomains(
   });
 }
 
+function schemaKind(
+  schema: CollectionSchema | undefined,
+  name: string,
+): AttachmentKind | undefined {
+  return schema?.fields.find((x) => x.name === name)?.kind;
+}
+
 function fieldsFromSchema(schema: CollectionSchema): FormField[] {
   return schema.fields.map((f, i) => ({
     name: f.name,
@@ -86,6 +119,7 @@ function fieldsFromSchema(schema: CollectionSchema): FormField[] {
     required: f.required,
     ...(f.maxLength !== undefined ? { maxLength: f.maxLength } : {}),
     ...(f.values !== undefined ? { values: f.values } : {}),
+    ...(f.kind ? { kind: f.kind } : {}),
   }));
 }
 
@@ -368,7 +402,9 @@ function AttachmentFieldInput({
   labelledBy,
   queued,
   onQueue,
+  kind,
 }: {
+  kind?: AttachmentKind;
   collectionId: string;
   fid: string | null;
   fieldKey: string;
@@ -428,8 +464,7 @@ function AttachmentFieldInput({
       <div className="flex flex-col gap-1">
         <input
           type="file"
-          accept="image/*"
-          capture="environment"
+          {...mediaAttrs(kind ?? "image")}
           aria-labelledby={labelledBy}
           onChange={(e) => onQueue(e.target.files?.[0] ?? null)}
         />
@@ -486,6 +521,7 @@ function AttachmentFieldInput({
       <input
         type="file"
         multiple
+        {...(kind ? { accept: mediaAttrs(kind).accept } : {})}
         aria-label={t("widgetForm.addFilesAria")}
         disabled={Object.values(fileStatus).some((s) => s === "uploading")}
         onChange={(e) => void handleFiles(e.target.files)}
@@ -1141,6 +1177,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
               fieldKey={f.name}
               client={client}
               labelledBy={`field-${f.name}-label`}
+              {...((f.kind ?? schemaKind(schemaQuery.data, f.name))
+                ? { kind: (f.kind ?? schemaKind(schemaQuery.data, f.name))! }
+                : {})}
               {...(mobile
                 ? {
                     queued: pendingFiles[f.name] ?? null,

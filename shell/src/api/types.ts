@@ -630,6 +630,8 @@ export type CollectionSubtypes = {
   }[];
 };
 
+export type AttachmentKind = "image" | "audio" | "video" | "file";
+
 export type CollectionSchemaField = {
   name: string;
   type: CollectionFieldType;
@@ -639,6 +641,8 @@ export type CollectionSchemaField = {
   itemType?: CollectionFieldType;
   label?: string;
   domain?: FieldDomain;
+  // L8 : nature d'un champ média (`type: "attachment"`), pilote accept/capture du formulaire.
+  kind?: AttachmentKind;
 };
 
 export type CollectionSchema = {

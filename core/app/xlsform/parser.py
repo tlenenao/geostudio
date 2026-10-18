@@ -532,6 +532,7 @@ def parse_xlsform(content: bytes) -> XlsFormPlan:
                 {"key": name, "label": label, "kind": _FILE_KIND.get(typ, "file")}
             )
             entry["type"] = "attachment"
+            entry["kind"] = _FILE_KIND.get(typ, "file")
             if entry["required"]:
                 rep.append(
                     ReportItem(

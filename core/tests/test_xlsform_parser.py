@@ -395,6 +395,13 @@ def test_media_kinds_are_typed():
         "v": "video",
         "f": "file",
     }
+    # le champ du formulaire porte la même nature (pilote accept/capture côté shell)
+    assert {f["name"]: f["kind"] for f in plan.form_fields} == {
+        "p": "image",
+        "a": "audio",
+        "v": "video",
+        "f": "file",
+    }
 
 
 # Parité : valeur de référence XPath (calculée à la main) contre l'évaluation CEL réelle.
