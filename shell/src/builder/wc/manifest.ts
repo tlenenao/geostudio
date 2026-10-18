@@ -13,4 +13,6 @@ export type WcWidgetManifest = {
   actions?: readonly string[];
   defaultSize: { w: number; h: number };
   permissions?: { collections: string[] | "all" };
+  /** Contrat DOM du SDK (absent = 1). */
+  sdkVersion?: number;
 };

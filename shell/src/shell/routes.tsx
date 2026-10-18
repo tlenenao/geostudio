@@ -92,6 +92,9 @@ const RolesAdminPage = lazy(() =>
 const ComplianceAdminPage = lazy(() =>
   import("../pages/ComplianceAdminPage").then((m) => ({ default: m.ComplianceAdminPage })),
 );
+const LlmGovernancePage = lazy(() =>
+  import("../pages/LlmGovernancePage").then((m) => ({ default: m.LlmGovernancePage })),
+);
 const UsersAdminPage = lazy(() =>
   import("../pages/UsersAdminPage").then((m) => ({ default: m.UsersAdminPage })),
 );
@@ -349,6 +352,17 @@ function routeElements() {
               deniedMessage={t("routes.complianceOnly")}
             >
               <ComplianceAdminPage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
+          path="/admin/copilot"
+          element={
+            <RequirePrivilege
+              privilege="settings.instance.manage"
+              deniedMessage={t("routes.adminOnly")}
+            >
+              <LlmGovernancePage />
             </RequirePrivilege>
           }
         />

@@ -16,6 +16,7 @@ from app.mapicons.models import TenantBasemap
 from app.security.csp_hosts import (
     extract_basemap_hosts,
     extract_config_external_hosts,
+    extract_extension_declared_hosts,
     extract_extension_hosts,
     extract_harvest_hosts,
 )
@@ -75,8 +76,9 @@ def compute_csp_allowlist(session: Session) -> CspAllowlist:
     tile_hosts |= extract_basemap_hosts(list(session.scalars(select(TenantBasemap.style)).all()))
     if is_external_basemaps_enabled():
         tile_hosts |= BUILTIN_BASEMAP_ORIGINS
+    ext_connect, ext_img = extract_extension_declared_hosts(list(extensions))
     return CspAllowlist(
-        img_hosts=set(tile_hosts),
-        connect_hosts=set(tile_hosts),
+        img_hosts=set(tile_hosts) | ext_img,
+        connect_hosts=set(tile_hosts) | ext_connect,
         script_hosts=extract_extension_hosts(extensions),
     )

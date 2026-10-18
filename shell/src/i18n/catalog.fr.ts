@@ -42,6 +42,7 @@ export const fr = {
   "docTitle.adminUsers": "Utilisateurs",
   "docTitle.adminCompliance": "Conformité",
   "docTitle.adminInfrastructure": "Infrastructure",
+  "docTitle.adminCopilot": "IA et consommation",
   "docTitle.kitGallery": "Galerie du kit",
   "docTitle.tasks": "Tâches",
   "docTitle.settings": "Paramètres",

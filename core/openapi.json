@@ -3280,6 +3280,16 @@
             ],
             "title": "Actions"
           },
+          "connectHosts": {
+            "items": {
+              "maxLength": 253,
+              "pattern": "^https://[a-z0-9.-]+(:[0-9]{1,5})?$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Connecthosts",
+            "type": "array"
+          },
           "defaultSize": {
             "$ref": "#/components/schemas/ExtensionSize"
           },
@@ -3302,6 +3312,29 @@
             "minLength": 1,
             "title": "Id",
             "type": "string"
+          },
+          "imgHosts": {
+            "items": {
+              "maxLength": 253,
+              "pattern": "^https://[a-z0-9.-]+(:[0-9]{1,5})?$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Imghosts",
+            "type": "array"
+          },
+          "integrity": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "pattern": "^sha(256|384|512)-[A-Za-z0-9+/]+={0,2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integrity"
           },
           "label": {
             "minLength": 1,
@@ -3327,6 +3360,12 @@
             },
             "title": "Props",
             "type": "array"
+          },
+          "sdkVersion": {
+            "const": 1,
+            "default": 1,
+            "title": "Sdkversion",
+            "type": "integer"
           },
           "tag": {
             "minLength": 1,
@@ -3360,6 +3399,23 @@
               }
             ],
             "title": "Actions"
+          },
+          "connectHosts": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 253,
+                  "pattern": "^https://[a-z0-9.-]+(:[0-9]{1,5})?$",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connecthosts"
           },
           "defaultSize": {
             "anyOf": [
@@ -3395,6 +3451,36 @@
               }
             ],
             "title": "Events"
+          },
+          "imgHosts": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 253,
+                  "pattern": "^https://[a-z0-9.-]+(:[0-9]{1,5})?$",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imghosts"
+          },
+          "integrity": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "pattern": "^sha(256|384|512)-[A-Za-z0-9+/]+={0,2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integrity"
           },
           "label": {
             "anyOf": [
@@ -3444,6 +3530,18 @@
               }
             ],
             "title": "Props"
+          },
+          "sdkVersion": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sdkversion"
           },
           "tag": {
             "anyOf": [

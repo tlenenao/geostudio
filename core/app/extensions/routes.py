@@ -25,6 +25,10 @@ def _extension_json(ext) -> dict:
         "actions": ext.actions,
         "defaultSize": ext.default_size,
         "permissions": ext.permissions,
+        "sdkVersion": ext.sdk_version,
+        "integrity": ext.integrity,
+        "connectHosts": ext.connect_hosts,
+        "imgHosts": ext.img_hosts,
         "enabled": ext.enabled,
     }
 
@@ -51,6 +55,10 @@ def register_extension(
         actions=body.actions,
         default_size=body.defaultSize.model_dump(),
         permissions=body.permissions.model_dump(),
+        sdk_version=body.sdkVersion,
+        integrity=body.integrity,
+        connect_hosts=body.connectHosts,
+        img_hosts=body.imgHosts,
     )
     write_audit(
         session,
@@ -81,6 +89,17 @@ def patch_extension(
         fields["default_size"] = fields.pop("defaultSize")
     if "moduleUrl" in fields:
         fields["module_url"] = fields.pop("moduleUrl")
+    for api_name, column in (
+        ("sdkVersion", "sdk_version"),
+        ("connectHosts", "connect_hosts"),
+        ("imgHosts", "img_hosts"),
+    ):
+        if api_name in fields:
+            fields[column] = fields.pop(api_name)
+    # null explicite = valeur par défaut des colonnes NOT NULL (jamais NULL en base).
+    for column, default in (("sdk_version", 1), ("connect_hosts", []), ("img_hosts", [])):
+        if column in fields and fields[column] is None:
+            fields[column] = default
     repo.update_extension(session, ext, **fields)
     write_audit(
         session,

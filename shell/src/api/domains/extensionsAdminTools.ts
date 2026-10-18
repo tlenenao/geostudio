@@ -3,6 +3,7 @@ import type {
   AdminExtension,
   AdminToolName,
   ExtensionCreateInput,
+  ExtensionPatchInput,
   ExtensionManifest,
   HarvestSource,
   HarvestSourceCreateInput,
@@ -21,6 +22,7 @@ type ExtensionsAdminToolsMethods = Pick<
   | "listAllExtensions"
   | "setExtensionEnabled"
   | "createExtension"
+  | "updateExtension"
   | "deleteExtension"
   | "launchAdminTool"
   | "getInstanceStatus"
@@ -33,6 +35,14 @@ type ExtensionsAdminToolsMethods = Pick<
   | "listHarvestSourceRecords"
 >;
 
+// Ligne renvoyée par GET /extensions (`_extension_json` côté cœur).
+type ExtensionRow = Omit<ExtensionManifest, "type"> & { id: string };
+
+function toManifest(e: ExtensionRow): ExtensionManifest {
+  const { id, ...rest } = e;
+  return { ...rest, type: id };
+}
+
 export function createExtensionsAdminToolsMethods(
   base: ItemClientBase,
 ): ExtensionsAdminToolsMethods {
@@ -41,61 +51,17 @@ export function createExtensionsAdminToolsMethods(
     async listActiveExtensions(): Promise<ExtensionManifest[]> {
       const res = await authFetch(`${coreUrl}/extensions`);
       await ensureOk(res);
-      const data = (await res.json()) as {
-        extensions?: Array<{
-          id: string;
-          tag: string;
-          label: string;
-          moduleUrl: string;
-          props: ExtensionManifest["props"];
-          events?: string[];
-          actions?: string[];
-          defaultSize: { w: number; h: number };
-          permissions?: { collections: string[] | "all" };
-        }>;
-      };
-      return (data.extensions ?? []).map((e) => ({
-        type: e.id,
-        tag: e.tag,
-        label: e.label,
-        moduleUrl: e.moduleUrl,
-        props: e.props,
-        events: e.events,
-        actions: e.actions,
-        defaultSize: e.defaultSize,
-        permissions: e.permissions,
-      }));
+      const data = (await res.json()) as { extensions?: ExtensionRow[] };
+      return (data.extensions ?? []).map(toManifest);
     },
 
     async listAllExtensions(): Promise<AdminExtension[]> {
       const res = await authFetch(`${coreUrl}/extensions?all=true`);
       await ensureOk(res);
       const data = (await res.json()) as {
-        extensions?: Array<{
-          id: string;
-          tag: string;
-          label: string;
-          moduleUrl: string;
-          props: ExtensionManifest["props"];
-          events?: string[];
-          actions?: string[];
-          defaultSize: { w: number; h: number };
-          permissions?: { collections: string[] | "all" };
-          enabled: boolean;
-        }>;
+        extensions?: Array<ExtensionRow & { enabled: boolean }>;
       };
-      return (data.extensions ?? []).map((e) => ({
-        type: e.id,
-        tag: e.tag,
-        label: e.label,
-        moduleUrl: e.moduleUrl,
-        props: e.props,
-        events: e.events,
-        actions: e.actions,
-        defaultSize: e.defaultSize,
-        permissions: e.permissions,
-        enabled: e.enabled,
-      }));
+      return (data.extensions ?? []).map((e) => ({ ...toManifest(e), enabled: e.enabled }));
     },
 
     async setExtensionEnabled(id: string, enabled: boolean): Promise<void> {
@@ -104,6 +70,10 @@ export function createExtensionsAdminToolsMethods(
 
     async createExtension(input: ExtensionCreateInput): Promise<void> {
       await request<void>("POST", `/extensions`, input);
+    },
+
+    async updateExtension(id: string, patch: ExtensionPatchInput): Promise<void> {
+      await request<void>("PATCH", `/extensions/${encodeURIComponent(id)}`, patch);
     },
 
     async deleteExtension(id: string): Promise<void> {

@@ -10,6 +10,9 @@ export type WidgetContext = {
   navigate?: (pageId: string) => void;
   pages?: Page[];
   variables?: Record<string, unknown>;
+  /** SDK v1 (L10) : écriture d'une variable d'app / d'un filtre de source, fournies par le host. */
+  setVariable?: (name: string, value: unknown) => void;
+  setFilter?: (sourceId: string, query: Record<string, unknown>) => void;
   data?: DataSourceState;
   bus?: ActionBus;
   widgetId?: string;
@@ -50,6 +53,10 @@ export function registerWidget(def: WidgetDefinition): void {
     console.warn(`registerWidget: overwriting an already-registered widget type "${def.type}"`);
   }
   registry.set(def.type, def);
+}
+/** L10 (AUD-109) : retire un type (extension désactivée/supprimée) du catalogue. */
+export function unregisterWidget(type: string): void {
+  registry.delete(type);
 }
 export function getWidget(type: string): WidgetDefinition | undefined {
   return registry.get(type);

@@ -638,6 +638,21 @@ export function createDesktopItemClient(connection: {
     async revokeApiKey(..._args: unknown[]) {
       return unsupported();
     },
+    async getLlmUsage(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getLlmSettings(..._args: unknown[]) {
+      return unsupported();
+    },
+    async putLlmSettings(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteLlmSettings(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateExtension(..._args: unknown[]) {
+      return unsupported();
+    },
     async geocode(..._args: unknown[]) {
       return unsupported();
     },

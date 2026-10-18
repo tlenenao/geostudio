@@ -218,6 +218,33 @@ export type ApiKeySummary = {
 /** Seule réponse qui porte le secret (`token`), affiché une seule fois. */
 export type ApiKeyCreated = ApiKeySummary & { token: string };
 
+export type LlmUsageDay = {
+  day: string;
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+};
+export type LlmUsageSummary = {
+  dailyLimit: number | null;
+  usedToday: number;
+  days: LlmUsageDay[];
+};
+/** AUD-149 : la clé d'API n'est jamais renvoyée (`hasApiKey`). */
+export type LlmSettings = {
+  configured: boolean;
+  model?: string | null;
+  apiUrl?: string | null;
+  hasApiKey: boolean;
+  dailyTokenLimit?: number | null;
+};
+/** `apiKey` absent = conserver la clé existante. */
+export type LlmSettingsWrite = {
+  model?: string | null;
+  apiUrl?: string | null;
+  apiKey?: string | null;
+  dailyTokenLimit?: number | null;
+};
+
 export type UsageTask = {
   id: number;
   actorId: string | null;
@@ -848,6 +875,10 @@ export interface ItemClient {
     readOnly?: boolean;
   }): Promise<ApiKeyCreated>;
   revokeApiKey(id: string): Promise<ApiKeySummary>;
+  getLlmUsage(): Promise<LlmUsageSummary>;
+  getLlmSettings(): Promise<LlmSettings>;
+  putLlmSettings(body: LlmSettingsWrite): Promise<LlmSettings>;
+  deleteLlmSettings(): Promise<void>;
   listUsageTasks(params: {
     page: number;
     pageSize: number;
@@ -938,6 +969,7 @@ export interface ItemClient {
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
   createExtension(input: ExtensionCreateInput): Promise<void>;
+  updateExtension(id: string, patch: ExtensionPatchInput): Promise<void>;
   deleteExtension(id: string): Promise<void>;
   getMetadataCatalog(): Promise<MetadataCatalog>;
   listCollections(params?: { q?: string } & PageParams): Promise<CollectionAdmin[]>;
@@ -1480,15 +1512,34 @@ export type ExtensionManifest = {
   defaultSize: { w: number; h: number };
   permissions?: { collections: string[] | "all" };
   moduleUrl: string;
+  /** L10 (AUD-110) : version du contrat DOM du SDK (v1 = préversion, D5). */
+  sdkVersion?: number;
+  /** L10 (AUD-109) : SRI du module (sha384-…), vérifié par le navigateur avant exécution. */
+  integrity?: string | null;
+  /** Origines https déclarées ajoutées à la CSP (connect-src / img-src). */
+  connectHosts?: string[];
+  imgHosts?: string[];
 };
 
+/** Manifeste complet accepté par `POST /extensions` (validé côté cœur, `ExtensionCreate`). */
 export type ExtensionCreateInput = {
   id: string;
   tag: string;
   label: string;
   moduleUrl: string;
   defaultSize: { w: number; h: number };
+  props?: ExtensionManifest["props"];
+  events?: string[] | null;
+  actions?: string[] | null;
+  permissions?: { collections: string[] | "all" };
+  sdkVersion?: number;
+  integrity?: string | null;
+  connectHosts?: string[];
+  imgHosts?: string[];
 };
+
+/** `PATCH /extensions/{id}` : tout champ du manifeste sauf l'identifiant. */
+export type ExtensionPatchInput = Partial<Omit<ExtensionCreateInput, "id">>;
 
 export type AdminExtension = ExtensionManifest & { enabled: boolean };
 

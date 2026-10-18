@@ -133,3 +133,22 @@ def test_one_bad_layer_does_not_hide_the_good_ones():
         ]
     }
     assert extract_config_external_hosts(body) == {"https://ok.example"}
+
+
+class _FakeExt:
+    def __init__(self, connect, img):
+        self.connect_hosts = connect
+        self.img_hosts = img
+
+
+def test_extract_extension_declared_hosts_keeps_only_safe_origins():
+    from app.security.csp_hosts import extract_extension_declared_hosts
+
+    connect, img = extract_extension_declared_hosts(
+        [
+            _FakeExt(["https://api.example.org", "https://bad host"], ["https://cdn.example.org"]),
+            _FakeExt([], ["javascript:alert(1)", "https://cdn2.example.org:8443/x"]),
+        ]
+    )
+    assert connect == {"https://api.example.org"}
+    assert img == {"https://cdn.example.org", "https://cdn2.example.org:8443"}

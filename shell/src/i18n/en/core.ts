@@ -33,6 +33,7 @@ export const coreEn: Record<keyof typeof fr, string> = {
   "docTitle.adminUsers": "Users",
   "docTitle.adminCompliance": "Compliance",
   "docTitle.adminInfrastructure": "Infrastructure",
+  "docTitle.adminCopilot": "AI and usage",
   "docTitle.kitGallery": "Kit gallery",
   "docTitle.tasks": "Tasks",
   "docTitle.settings": "Settings",

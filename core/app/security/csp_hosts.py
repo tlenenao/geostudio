@@ -87,6 +87,22 @@ class _ExtensionLike(Protocol):
     module_url: str
 
 
+class _ExtensionHostsLike(Protocol):
+    connect_hosts: list[str]
+    img_hosts: list[str]
+
+
+def extract_extension_declared_hosts(
+    extensions: Sequence[_ExtensionHostsLike],
+) -> tuple[set[str], set[str]]:
+    """(connect-src, img-src) déclarés par les manifestes (AUD-109) : seule la
+    déclaration explicite élargit la CSP, jamais l'origine du module. Entrées
+    malformées ignorées (`_origin`), comme partout ici."""
+    connect = {o for e in extensions for h in e.connect_hosts or [] if (o := _origin(h))}
+    img = {o for e in extensions for h in e.img_hosts or [] if (o := _origin(h))}
+    return connect, img
+
+
 def extract_extension_hosts(extensions: Sequence[_ExtensionLike]) -> set[str]:
     hosts: set[str] = set()
     for extension in extensions:

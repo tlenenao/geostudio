@@ -114,3 +114,94 @@ test("unregisters the bus action and stops relaying events on unmount", () => {
   bus.emit("emitter", "go");
   expect(el.resetCalls).toEqual([]);
 });
+
+// --- Contrat DOM v1 (L10, AUD-110) ---------------------------------------------------------
+type V1Element = HTMLElement & {
+  variables: Record<string, unknown>;
+  theme: unknown;
+  mode: string;
+  breakpoint: unknown;
+  sdkVersion: number;
+  setVariable: (name: string, value: unknown) => void;
+  setFilter: (sourceId: string, query: Record<string, unknown>) => void;
+};
+
+test("contrat v1 : assigne variables/theme/mode/breakpoint/sdkVersion", () => {
+  const WcHost = makeWcHost(manifest);
+  const ctx = {
+    mode: "preview",
+    variables: { region: "nord" },
+    theme: { colors: {} },
+    breakpoint: "md",
+  } as unknown as WidgetContext;
+  const { container } = render(<WcHost props={{}} ctx={ctx} />);
+  const el = container.querySelector("test-wc-host-widget") as V1Element;
+  expect(el.variables).toEqual({ region: "nord" });
+  expect(el.theme).toEqual({ colors: {} });
+  expect(el.mode).toBe("preview");
+  expect(el.breakpoint).toBe("md");
+  expect(el.sdkVersion).toBe(1);
+});
+
+test("contrat v1 : setVariable écrit une variable connue, ignore (avec avertissement) une inconnue", () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const setVariable = vi.fn();
+  const WcHost = makeWcHost(manifest);
+  const ctx = { mode: "runtime", variables: { region: "nord" }, setVariable } as WidgetContext;
+  const { container } = render(<WcHost props={{}} ctx={ctx} />);
+  const el = container.querySelector("test-wc-host-widget") as V1Element;
+  el.setVariable("region", "sud");
+  el.setVariable("inconnue", 1);
+  expect(setVariable).toHaveBeenCalledTimes(1);
+  expect(setVariable).toHaveBeenCalledWith("region", "sud");
+  expect(warn).toHaveBeenCalled();
+  warn.mockRestore();
+});
+
+test("contrat v1 : setVariable/setFilter sont inertes en mode edit", () => {
+  const setVariable = vi.fn();
+  const setFilter = vi.fn();
+  const WcHost = makeWcHost(manifest);
+  const ctx = { mode: "edit", variables: { region: "" }, setVariable, setFilter } as WidgetContext;
+  const { container } = render(<WcHost props={{}} ctx={ctx} />);
+  const el = container.querySelector("test-wc-host-widget") as V1Element;
+  el.setVariable("region", "sud");
+  el.setFilter("ds1", { a: 1 });
+  expect(setVariable).not.toHaveBeenCalled();
+  expect(setFilter).not.toHaveBeenCalled();
+});
+
+test("contrat v1 : setFilter relaie vers le host en runtime et lit le contexte courant", () => {
+  const first = vi.fn();
+  const second = vi.fn();
+  const WcHost = makeWcHost(manifest);
+  const { container, rerender } = render(
+    <WcHost props={{}} ctx={{ mode: "runtime", setFilter: first } as WidgetContext} />,
+  );
+  const el = container.querySelector("test-wc-host-widget") as V1Element;
+  rerender(<WcHost props={{}} ctx={{ mode: "runtime", setFilter: second } as WidgetContext} />);
+  el.setFilter("ds1", { zone: "A" });
+  expect(first).not.toHaveBeenCalled();
+  expect(second).toHaveBeenCalledWith("ds1", { zone: "A" });
+});
+
+test("contrat v1 : gs:ready est émis une seule fois, après l'assignation des propriétés", () => {
+  const seen: Array<{ sdkVersion: unknown; detail: unknown }> = [];
+  class ReadyWidget extends HTMLElement {
+    connectedCallback() {
+      this.addEventListener("gs:ready", (e) =>
+        seen.push({
+          sdkVersion: (this as unknown as V1Element).sdkVersion,
+          detail: (e as CustomEvent).detail,
+        }),
+      );
+    }
+  }
+  if (!customElements.get("test-wc-ready-widget")) {
+    customElements.define("test-wc-ready-widget", ReadyWidget);
+  }
+  const WcHost = makeWcHost({ ...manifest, tag: "test-wc-ready-widget" });
+  const { rerender } = render(<WcHost props={{}} ctx={{ mode: "runtime" } as WidgetContext} />);
+  rerender(<WcHost props={{ a: 1 }} ctx={{ mode: "runtime" } as WidgetContext} />);
+  expect(seen).toEqual([{ sdkVersion: 1, detail: { sdkVersion: 1 } }]);
+});

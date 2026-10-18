@@ -4,9 +4,9 @@ import type { LakeFreshness, Page, RenderMode, Theme, WidgetItem } from "../api/
 import { formatDateTime } from "../lib/format";
 import type { Breakpoint } from "./grid";
 import { getWidget } from "./registry";
-import { useDataStates } from "./DataContext";
+import { useDataStates, useSetFilter } from "./DataContext";
 import { useActionBus } from "./ActionBusContext";
-import { useVariables } from "./VariablesContext";
+import { useSetVariable, useVariables } from "./VariablesContext";
 import { useAnalyticsContext } from "./AnalyticsContext";
 import { useAuth } from "../auth/useAuth";
 import { evaluateExpression } from "./expr";
@@ -64,6 +64,8 @@ export function WidgetHost({
   const states = useDataStates();
   const bus = useActionBus();
   const variables = useVariables();
+  const setVariable = useSetVariable();
+  const setFilter = useSetFilter();
   const { username } = useAuth();
   const analyticsCtx = useAnalyticsContext();
   const user = { name: username ?? "" };
@@ -110,6 +112,8 @@ export function WidgetHost({
           pages,
           navigate,
           variables,
+          setVariable,
+          setFilter,
           user,
           breakpoint,
           theme,

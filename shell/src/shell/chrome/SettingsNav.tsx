@@ -29,6 +29,11 @@ export const SETTINGS_LINKS: readonly {
     labelKey: "extensions.linkInfrastructure",
     privilege: "settings.instance.manage",
   },
+  {
+    to: "/admin/copilot",
+    labelKey: "extensions.linkCopilot",
+    privilege: "settings.instance.manage",
+  },
   { to: "/admin/roles", labelKey: "extensions.linkRoles", privilege: "admin.roles.manage" },
   { to: "/admin/users", labelKey: "extensions.linkUsers", privilege: "admin.users.manage" },
   {
