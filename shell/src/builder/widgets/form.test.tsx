@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -634,11 +634,13 @@ test("a Point collection shows longitude/latitude inputs", () => {
   expect(screen.getByLabelText("Latitude")).toBeInTheDocument();
 });
 
-test("a non-Point (or absent) geometry shows no geometry inputs", () => {
-  renderConnectedFormWithGeometry("LineString");
-  expect(screen.queryByLabelText("Longitude")).not.toBeInTheDocument();
+test("an absent geometry shows no geometry inputs; a line shows the vertex input (L8)", () => {
   renderConnectedFormWithGeometry(null);
   expect(screen.queryByLabelText("Longitude")).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "Géométrie" })).not.toBeInTheDocument();
+  cleanup();
+  renderConnectedFormWithGeometry("LineString");
+  expect(screen.getByRole("group", { name: "Géométrie" })).toBeInTheDocument();
 });
 
 test("submitting with longitude/latitude filled sends a GeoJSON Point geometry", async () => {

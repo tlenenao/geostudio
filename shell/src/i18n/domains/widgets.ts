@@ -791,6 +791,23 @@ export const widgets = {
   "navigation.unsavedChangesMessage":
     "Vous avez des modifications non enregistrées. Voulez-vous vraiment quitter cette page ?",
   "navigation.leaveAnyway": "Quitter sans enregistrer",
+  "widgetForm.geometryPoints": "{count} point(s) saisi(s)",
+  "widgetForm.geometryAddMyPosition": "Ajouter ma position",
+  "widgetForm.geometryAddPoint": "Ajouter ce point",
+  "widgetForm.geometryUndo": "Retirer le dernier point",
+  "widgetForm.geometryClear": "Effacer la géométrie",
+  "widgetForm.geometryTraceStart": "Démarrer la trace GPS",
+  "widgetForm.geometryTraceStop": "Arrêter la trace GPS",
+  "widgetForm.geometryTracing": "Trace en cours : un point tous les {step} m",
+  "widgetForm.geometryIncompleteLine": "Une ligne demande au moins 2 points.",
+  "widgetForm.geometryIncompletePolygon": "Un polygone demande au moins 3 points.",
+  "widgetForm.geometryRequired": "La géométrie est obligatoire.",
+  "widgetForm.geometryMultiPart":
+    "Géométrie à plusieurs parties : conservée telle quelle (non modifiable ici).",
+  "widgetForm.accuracyWarning":
+    "Précision faible : environ {meters} m. Attendez un meilleur signal.",
+  "widgetForm.accuracyOk": "Précision : environ {meters} m",
+  "widgetForm.geometryGroup": "Géométrie",
 } as const;
 
 registerMessages(widgets);

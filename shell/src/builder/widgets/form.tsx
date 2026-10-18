@@ -14,6 +14,7 @@ import { plural, t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { FeatureHistoryPanel } from "./FeatureHistoryPanel";
+import { ACCURACY_WARN_M, GeometryInput, lineKind, type GeometryIssue } from "./GeometryInput";
 import { RelatedRecordsPanel } from "./RelatedRecordsPanel";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import { evaluateExpression, type ExprContext } from "../expr";
@@ -751,11 +752,18 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       (pos) => {
         setLon(String(pos.coords.longitude));
         setLat(String(pos.coords.latitude));
+        setAccuracy(typeof pos.coords.accuracy === "number" ? pos.coords.accuracy : null);
       },
       () => setGeoError(true),
       { enableHighAccuracy: true, timeout: 15000 },
     );
   }
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  // L8 : géométrie ligne/polygone (GeometryInput) ; `geomKey` remonte le composant quand la
+  // géométrie est remplacée de l'extérieur (reset, chargement d'un enregistrement).
+  const [geomIssue, setGeomIssue] = useState<GeometryIssue>(null);
+  const [geomKey, setGeomKey] = useState(0);
+  const [geometryError, setGeometryError] = useState<string | null>(null);
   const [lon, setLon] = useState<string>("");
   const [lat, setLat] = useState<string>("");
   const [loadedGeometry, setLoadedGeometry] = useState<unknown>(null);
@@ -885,6 +893,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         });
         if (!edited.has("__geom")) {
           setLoadedGeometry(f.geometry ?? null);
+          setGeomKey((k) => k + 1);
           const g = f.geometry as { type?: string; coordinates?: number[] } | null;
           if (geometryType === "Point" && g?.type === "Point" && Array.isArray(g.coordinates)) {
             setLon(String(g.coordinates[0]));
@@ -911,6 +920,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setLon("");
     setLat("");
     setLoadedGeometry(null);
+    setGeomKey((k) => k + 1);
+    setGeomIssue(null);
+    setGeometryError(null);
+    setAccuracy(null);
     setEditingId(null);
     setSummaryNames(null);
     setPendingFiles({});
@@ -933,6 +946,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setGenericError(false);
     setSummaryNames(null);
     setLoadedGeometry(record.geometry ?? null);
+    setGeomKey((k) => k + 1);
+    setGeomIssue(null);
+    setGeometryError(null);
     const geom = record.geometry as { type?: string; coordinates?: number[] } | undefined;
     if (geometryType === "Point" && geom?.type === "Point" && Array.isArray(geom.coordinates)) {
       setLon(String(geom.coordinates[0]));
@@ -964,11 +980,21 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     const invalidNow = fields.filter((f) => validateField(f, values[f.name]) !== null);
     setSummaryNames(invalidNow.map((f) => f.name));
     const firstInvalid = invalidNow[0];
+    // L8 : géométrie requise (schéma courant) ou incomplète (ligne < 2 points, polygone < 3).
+    const pointGeometry =
+      geometryType === "Point" && lon !== "" && lat !== ""
+        ? { type: "Point", coordinates: [Number(lon), Number(lat)] }
+        : null;
+    const geometryNow = geometryType === "Point" ? pointGeometry : loadedGeometry;
+    const geometryMissing =
+      !!geometryType && schemaQuery.data?.geometry?.required === true && geometryNow === null;
+    setGeometryError(geometryMissing ? t("widgetForm.geometryRequired") : null);
     if (firstInvalid) {
       // REV-223 : focus sur le premier champ invalide (les contrôles portent id=field-<name>).
       document.getElementById(`field-${firstInvalid.name}`)?.focus();
       return;
     }
+    if (geomIssue !== null || geometryMissing) return;
     setServerErrors({});
     setGenericError(false);
     setAttachmentFailed(false);
@@ -977,12 +1003,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       if (values[f.name] !== undefined && !irrelevant.has(f.name))
         properties[f.name] = values[f.name];
     });
-    const geometry =
-      geometryType === "Point"
-        ? lon !== "" && lat !== ""
-          ? { type: "Point", coordinates: [Number(lon), Number(lat)] }
-          : null
-        : loadedGeometry;
+    // L8 : précision du fix GPS, seulement si la collection déclare la colonne `gps_accuracy`.
+    if (accuracy !== null && allFields.some((f) => f.name === "gps_accuracy"))
+      properties.gps_accuracy = Math.round(accuracy);
+    const geometry = geometryNow;
     try {
       const { fid, failed } = await write.mutateAsync({ properties, geometry });
       void queryClient.invalidateQueries({ queryKey: ["datasource"] });
@@ -1165,6 +1189,24 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           </label>
         ),
       )}
+      {lineKind(geometryType) && (
+        <GeometryInput
+          key={geomKey}
+          geometryType={geometryType!}
+          value={loadedGeometry}
+          onChange={(g, issue) => {
+            editedRef.current.add("__geom");
+            setLoadedGeometry(g);
+            setGeomIssue(issue);
+            setGeometryError(null);
+          }}
+        />
+      )}
+      {geometryError && (
+        <p role="alert" className="text-xs text-danger">
+          {geometryError}
+        </p>
+      )}
       {mobile && geometryType === "Point" && (
         <div className="flex flex-col gap-1">
           {/* eslint-disable-next-line geostudio/panel-trigger-aria -- message d'erreur transitoire, pas un panneau */}
@@ -1174,6 +1216,17 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           {geoError && (
             <p role="alert" className="text-xs text-danger">
               {t("widgetForm.positionError")}
+            </p>
+          )}
+          {accuracy !== null && (
+            <p
+              className={accuracy > ACCURACY_WARN_M ? "text-xs text-danger" : "text-xs text-ink-2"}
+              role={accuracy > ACCURACY_WARN_M ? "alert" : undefined}
+            >
+              {t(
+                accuracy > ACCURACY_WARN_M ? "widgetForm.accuracyWarning" : "widgetForm.accuracyOk",
+                { meters: Math.round(accuracy) },
+              )}
             </p>
           )}
         </div>
