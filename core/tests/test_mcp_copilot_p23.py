@@ -313,9 +313,10 @@ def test_llm_requested_write_is_not_executed_but_proposed(client, monkeypatch): 
         ),
     )
     resp = _turn(client)
-    assert resp.json()["clientOps"] == [
-        {"op": "confirmWrite", "args": {"name": "create_item", "arguments": {"kind": "app"}}}
-    ]
+    [op] = resp.json()["clientOps"]
+    assert op["op"] == "confirmWrite"
+    assert op["args"]["name"] == "create_item" and op["args"]["arguments"] == {"kind": "app"}
+    assert op["args"]["confirmToken"]  # AUD-102
 
 
 class _FakeOnce:
@@ -327,9 +328,9 @@ class _FakeOnce:
 
 
 def test_confirm_write_rejects_non_write_or_unlisted_tools(client):  # noqa: F811
-    r = _turn(client, confirmWrite={"name": "set_sharing", "arguments": {}})
+    r = _turn(client, confirmWrite={"name": "set_sharing", "arguments": {}, "confirmToken": "x"})
     assert r.status_code == 422
-    r = _turn(client, confirmWrite={"name": "list_items", "arguments": {}})
+    r = _turn(client, confirmWrite={"name": "list_items", "arguments": {}, "confirmToken": "x"})
     assert r.status_code == 422
 
 
@@ -373,3 +374,158 @@ def test_failed_copilot_turn_is_still_audited(client, monkeypatch):  # noqa: F81
     s = next(client.app.dependency_overrides[db.get_session]())
     rows = s.scalars(select(AuditLog).where(AuditLog.action == "copilot.turn")).all()
     assert any(r.payload["outcome"] == "error" for r in rows)
+
+
+# --- AUD-102 : la confirmation est liée aux arguments proposés ---
+def _proposal(client, monkeypatch):  # noqa: F811
+    import app.copilot.routes as routes_module
+
+    monkeypatch.setattr(
+        routes_module,
+        "get_llm_provider",
+        lambda: _FakeOnce(
+            LLMTurn(
+                text="je crée",
+                tool_calls=[
+                    ToolCall(
+                        "1",
+                        "create_item",
+                        {
+                            "kind": "app",
+                            "title": "A",
+                            "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
+                        },
+                    )
+                ],
+            )
+        ),
+    )
+    return _turn(client).json()["clientOps"][0]["args"]
+
+
+def test_confirm_write_rejects_tampered_arguments(client, monkeypatch):  # noqa: F811
+    args = _proposal(client, monkeypatch)
+    tampered = {**args, "arguments": {"kind": "app", "title": "AUTRE"}}
+    r = _turn(client, confirmWrite=tampered)
+    assert r.status_code == 403 and "invalide" in r.json()["detail"]
+
+
+def test_confirm_write_rejects_missing_token(client):  # noqa: F811
+    r = _turn(client, confirmWrite={"name": "create_item", "arguments": {}})
+    assert r.status_code == 422
+
+
+def test_confirm_write_rejects_another_users_token(client, monkeypatch):  # noqa: F811
+    from app.copilot.confirm_token import sign_confirmation
+
+    token = sign_confirmation("someone-else", "create_item", {"kind": "app"})
+    r = _turn(
+        client,
+        confirmWrite={"name": "create_item", "arguments": {"kind": "app"}, "confirmToken": token},
+    )
+    assert r.status_code == 403
+
+
+def test_confirmation_token_expires():
+    from app.copilot.confirm_token import (
+        ConfirmTokenError,
+        sign_confirmation,
+        verify_confirmation,
+    )
+
+    t = sign_confirmation("u", "create_item", {"a": 1}, now=1000)
+    verify_confirmation(t, "u", "create_item", {"a": 1}, now=1100)
+    with pytest.raises(ConfirmTokenError, match="expiré"):
+        verify_confirmation(t, "u", "create_item", {"a": 1}, now=1000 + 601)
+
+
+def test_confirm_write_with_valid_token_executes(client, monkeypatch):  # noqa: F811
+    args = _proposal(client, monkeypatch)
+    r = _turn(client, confirmWrite=args)
+    assert r.status_code == 200 and "create_item" in r.json()["reply"]
+
+
+# --- AUD-103 : audit complet ---
+def test_confirmed_write_turn_audit_records_arguments_hash(client, monkeypatch):  # noqa: F811
+    from app import db
+    from app.audit.context import args_sha256
+
+    args = _proposal(client, monkeypatch)
+    assert _turn(client, confirmWrite=args).status_code == 200
+    s = next(client.app.dependency_overrides[db.get_session]())
+    turn = [
+        r
+        for r in s.scalars(select(AuditLog).where(AuditLog.action == "copilot.turn")).all()
+        if r.payload.get("confirmedWrite")
+    ][0]
+    assert turn.payload["argsSha256"] == args_sha256(args["arguments"])
+    assert len(turn.payload["turnId"]) == 32
+
+
+def test_loopback_sends_the_turn_header():
+    from app.copilot.mcp_loopback import McpLoopbackSession
+
+    session = McpLoopbackSession("t", http_client=httpx.AsyncClient())
+    session.turn_id = "abc"
+    assert session._headers()["X-GeoStudio-Turn"] == "abc"
+
+
+def test_tool_writes_carry_turn_id_and_origin_in_every_audit_row(app_client):  # noqa: F811
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Authorization": "Bearer x",
+        "X-GeoStudio-Origin": "copilot",
+        "X-GeoStudio-Turn": "turn-42",
+    }
+    rpc = {"jsonrpc": "2.0", "id": 1, "method": "initialize"}
+    rpc["params"] = {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "t", "version": "0"},
+    }
+    with app_client:
+        init = app_client.post("/mcp", json=rpc, headers=headers)
+        h2 = {**headers, "mcp-session-id": init.headers["mcp-session-id"]}
+        app_client.post(
+            "/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"}, headers=h2
+        )
+        args = {
+            "kind": "app",
+            "title": "T",
+            "config": {"kind": "app", "layout": {"type": "grid", "items": []}},
+        }
+        app_client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "create_item", "arguments": args},
+            },
+            headers=h2,
+        )
+    with app_client.session_factory() as s:
+        rows = {r.action: r for r in s.scalars(select(AuditLog)).all()}
+    for action in ("item.create", "config.create", "mcp.tool_call"):
+        assert rows[action].payload["turnId"] == "turn-42", action
+        assert rows[action].payload["origin"] == "copilot", action
+    # empreinte des arguments *validés* (modèles pydantic sérialisés, défauts inclus)
+    assert len(rows["mcp.tool_call"].payload["argsSha256"]) == 64
+
+
+def test_unconfigured_provider_is_503_and_audited_as_error(client, monkeypatch):  # noqa: F811
+    from app import db
+
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "")
+    r = _turn(client)
+    assert r.status_code == 503 and "configuré" in r.json()["detail"]
+    s = next(client.app.dependency_overrides[db.get_session]())
+    rows = s.scalars(select(AuditLog).where(AuditLog.action == "copilot.turn")).all()
+    assert rows and rows[-1].payload["outcome"] == "error"
+
+
+def test_oversized_confirm_arguments_and_client_tool_are_rejected(client):  # noqa: F811
+    big = {"x": "a" * 70_000}
+    body = {"name": "create_item", "arguments": big, "confirmToken": "x"}
+    assert _turn(client, confirmWrite=body).status_code == 422
+    assert _turn(client, clientTools=[{"name": "t", "x": "a" * 20_000}]).status_code == 422

@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import secrets
+import uuid
 from typing import Any, Literal
 
 import anyio
@@ -12,8 +13,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
+from app.audit.context import args_sha256
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.copilot.confirm_token import ConfirmTokenError, sign_confirmation, verify_confirmation
 from app.copilot.egress import EgressBlockedError
 from app.copilot.llm_provider import LLMTurn, get_llm_provider
 from app.copilot.mcp_loopback import McpLoopbackError, McpLoopbackSession
@@ -42,6 +45,8 @@ MAX_HISTORY_MESSAGE_CHARS = 8_000
 MAX_MCP_TOKEN_CHARS = 8_192
 MAX_CONFIG_CHARS = 64_000
 MAX_CLIENT_TOOLS = 64
+MAX_CLIENT_TOOL_CHARS = 16_000
+MAX_CONFIRM_ARGUMENTS_CHARS = 64_000
 # j11-012 : un résultat d'outil (titres, descriptions, valeurs écrits par des
 # tiers) est réinjecté au LLM : borné en taille et fencé par un nonce.
 MAX_TOOL_RESULT_CHARS = 8_000
@@ -58,6 +63,16 @@ class CopilotMessage(BaseModel):
 class ConfirmWrite(BaseModel):
     name: str = Field(max_length=64)
     arguments: dict[str, Any]
+    # AUD-102 : jeton émis avec la proposition (sha256 des arguments lié à
+    # l'utilisateur) ; sans lui, le clic validerait un dict libre.
+    confirmToken: str = Field(min_length=1, max_length=256)
+
+    @field_validator("arguments")
+    @classmethod
+    def _bound_arguments(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(value)) > MAX_CONFIRM_ARGUMENTS_CHARS:  # D23-11
+            raise ValueError("arguments trop volumineux")
+        return value
 
 
 class CopilotTurnRequest(BaseModel):
@@ -85,6 +100,13 @@ class CopilotTurnRequest(BaseModel):
     # tel quel ; il revient au shell sous forme d'op `confirmWrite`, et c'est
     # le clic humain qui renvoie l'appel ici (sans passage par le LLM).
     confirmWrite: ConfirmWrite | None = None
+
+    @field_validator("clientTools")
+    @classmethod
+    def _bound_client_tools(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if any(len(json.dumps(t)) > MAX_CLIENT_TOOL_CHARS for t in value):  # D23-11
+            raise ValueError("outil client trop volumineux")
+        return value
 
     @field_validator("currentConfig")
     @classmethod
@@ -244,7 +266,11 @@ def _llm_failure(exc: Exception) -> HTTPException:
 
 
 async def _run_turn(
-    *, request: CopilotTurnRequest, mcp_session: McpLoopbackSession, tools_called: list[str]
+    *,
+    request: CopilotTurnRequest,
+    mcp_session: McpLoopbackSession,
+    tools_called: list[str],
+    user_id: str = "",
 ) -> CopilotTurnResponse:
     try:
         server_tools_raw = await mcp_session.list_tools()
@@ -260,7 +286,12 @@ async def _run_turn(
         messages.append({"role": m.role, "content": m.content})
     messages.append({"role": "user", "content": request.message})
 
-    provider = get_llm_provider()
+    try:
+        provider = get_llm_provider()
+    except (ValueError, KeyError) as exc:  # D23-11 : fournisseur non/mal configuré
+        raise HTTPException(
+            status_code=503, detail="Le fournisseur LLM n'est pas configuré."
+        ) from exc
 
     for _ in range(MAX_TOOL_ITERATIONS):
         # `LLMProvider.chat` est asynchrone par contrat : un appel
@@ -312,7 +343,14 @@ async def _run_turn(
                 continue
             if tc.name in COPILOT_WRITE_TOOL_NAMES:
                 client_ops.append(
-                    ClientOp(op="confirmWrite", args={"name": tc.name, "arguments": tc.arguments})
+                    ClientOp(
+                        op="confirmWrite",
+                        args={
+                            "name": tc.name,
+                            "arguments": tc.arguments,
+                            "confirmToken": sign_confirmation(user_id, tc.name, tc.arguments),
+                        },
+                    )
                 )
                 continue
             tools_called.append(tc.name)
@@ -340,7 +378,12 @@ async def _run_turn(
 
 
 def _write_turn_audit(
-    session: Session, user: User, body: CopilotTurnRequest, tools: list[str], outcome: str
+    session: Session,
+    user: User,
+    body: CopilotTurnRequest,
+    tools: list[str],
+    outcome: str,
+    turn_id: str,
 ) -> None:
     write_audit(
         session,
@@ -355,6 +398,8 @@ def _write_turn_audit(
             "messageSha256": hashlib.sha256(body.message.encode()).hexdigest(),
             "tools": tools,
             "confirmedWrite": body.confirmWrite.name if body.confirmWrite else None,
+            "turnId": turn_id,
+            "argsSha256": args_sha256(body.confirmWrite.arguments) if body.confirmWrite else None,
             "outcome": outcome,
         },
     )
@@ -364,10 +409,14 @@ def _write_turn_audit(
 
 
 async def _run_confirmed_write(
-    confirm: ConfirmWrite, mcp_session: McpLoopbackSession, tools_called: list[str]
+    confirm: ConfirmWrite, mcp_session: McpLoopbackSession, tools_called: list[str], user_id: str
 ) -> CopilotTurnResponse:
     if confirm.name not in ALLOWED_MCP_TOOL_NAMES or confirm.name not in COPILOT_WRITE_TOOL_NAMES:
         raise HTTPException(status_code=422, detail="Outil d'écriture non autorisé.")
+    try:
+        verify_confirmation(confirm.confirmToken, user_id, confirm.name, confirm.arguments)
+    except ConfirmTokenError as exc:
+        raise HTTPException(status_code=403, detail=f"Confirmation refusée : {exc}.") from exc
     tools_called.append(confirm.name)
     try:
         result = await mcp_session.call_tool(confirm.name, confirm.arguments)
@@ -398,13 +447,17 @@ async def copilot_turn(
         )
 
     mcp_session = McpLoopbackSession(body.mcpToken)
+    turn_id = uuid.uuid4().hex
+    mcp_session.turn_id = turn_id
     tools_called: list[str] = []
     outcome = "ok"
     try:
         if body.confirmWrite is not None:
-            return await _run_confirmed_write(body.confirmWrite, mcp_session, tools_called)
+            return await _run_confirmed_write(body.confirmWrite, mcp_session, tools_called, user.id)
         return await asyncio.wait_for(
-            _run_turn(request=body, mcp_session=mcp_session, tools_called=tools_called),
+            _run_turn(
+                request=body, mcp_session=mcp_session, tools_called=tools_called, user_id=user.id
+            ),
             timeout=TURN_TIMEOUT_SECONDS,
         )
     except TimeoutError as exc:
@@ -412,14 +465,14 @@ async def copilot_turn(
         raise HTTPException(
             status_code=504, detail="Le copilote a mis trop de temps à répondre."
         ) from exc
-    except HTTPException:
+    except Exception:  # AUD-103 : toute exception (pas seulement HTTPException) est un échec
         outcome = "error"
         raise
     finally:
         await mcp_session.aclose()
         try:  # trace best-effort de chaque tour (j11-011)
             await anyio.to_thread.run_sync(
-                _write_turn_audit, session, user, body, tools_called, outcome
+                _write_turn_audit, session, user, body, tools_called, outcome, turn_id
             )
         except Exception:
             # REV-287(b) : best-effort (la réponse part quand même), mais jamais

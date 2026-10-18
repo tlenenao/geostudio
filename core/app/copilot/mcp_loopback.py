@@ -72,6 +72,9 @@ class McpLoopbackSession:
         self._owns_client = http_client is None
         self._session_id: str | None = None
         self._initialized = False
+        # AUD-103 : identifiant du tour, transmis en en-tête puis inscrit dans
+        # les audits d'écriture des outils (posé par la route après construction).
+        self.turn_id: str | None = None
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -84,6 +87,8 @@ class McpLoopbackSession:
             # étiquette d'audit : distingue le copilote d'un agent externe (j11-011)
             "X-GeoStudio-Origin": "copilot",
         }
+        if self.turn_id:
+            headers["X-GeoStudio-Turn"] = self.turn_id
         if self._session_id:
             headers["mcp-session-id"] = self._session_id
         return headers
@@ -124,7 +129,10 @@ class McpLoopbackSession:
     def _parse_sse(self, response: httpx.Response) -> dict[str, Any]:
         for line in response.text.splitlines():
             if line.startswith("data: "):
-                doc: dict[str, Any] = json.loads(line.removeprefix("data: "))
+                try:
+                    doc: dict[str, Any] = json.loads(line.removeprefix("data: "))
+                except json.JSONDecodeError as exc:  # D23-11
+                    raise McpLoopbackError("malformed SSE data in MCP response") from exc
                 return doc
         raise McpLoopbackError("no SSE data line in MCP response")
 

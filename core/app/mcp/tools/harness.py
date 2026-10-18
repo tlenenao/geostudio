@@ -22,6 +22,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.lowlevel.server import request_ctx
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.audit.context import args_sha256, audit_extra
 from app.audit.writer import write_audit
 from app.db import request_scoped_session
 from app.mcp.tools.identity import McpToolError, resolve_actor
@@ -29,6 +30,7 @@ from app.mcp.tools.identity import McpToolError, resolve_actor
 logger = logging.getLogger(__name__)
 
 ORIGIN_HEADER = "x-geostudio-origin"
+TURN_HEADER = "x-geostudio-turn"
 
 
 def _origin() -> str:
@@ -44,11 +46,26 @@ def _origin() -> str:
     return "agent"
 
 
+def _turn_id() -> str | None:
+    """Identifiant du tour copilote (étiquette d'audit, comme `_origin` : pas
+    une frontière de sécurité)."""
+    try:
+        request = request_ctx.get().request
+        if request is not None:
+            value = request.headers.get(TURN_HEADER)
+            return value[:64] if value else None
+    except LookupError:
+        pass
+    return None
+
+
 def _targets(kwargs: dict[str, Any]) -> dict[str, str]:
     return {k: v[:64] for k, v in kwargs.items() if k.lower().endswith("id") and isinstance(v, str)}
 
 
-def _audit(session_factory, name: str, kwargs: dict[str, Any], outcome: str) -> None:
+def _audit(
+    session_factory, name: str, kwargs: dict[str, Any], outcome: str, turn_id: str | None = None
+) -> None:
     token = get_access_token()
     if token is None:
         return
@@ -63,7 +80,13 @@ def _audit(session_factory, name: str, kwargs: dict[str, Any], outcome: str) -> 
                 action="mcp.tool_call",
                 object_type="mcp_tool",
                 object_id=name,
-                payload={"origin": _origin(), "outcome": outcome, "targets": _targets(kwargs)},
+                payload={
+                    "origin": _origin(),
+                    "outcome": outcome,
+                    "targets": _targets(kwargs),
+                    "argsSha256": args_sha256({k: v for k, v in kwargs.items() if k != "ctx"}),
+                    **({"turnId": turn_id} if turn_id else {}),
+                },
             )
     except Exception:  # best-effort : une trace manquée ne casse jamais l'outil
         logger.exception("mcp audit failed for %s", name)
@@ -83,19 +106,25 @@ class _InstrumentedServer:
         def decorator(fn):
             @functools.wraps(fn)
             async def run(*a, **kw):
+                turn_id = _turn_id()
+                origin = _origin()
+
                 def in_thread():
+                    # AUD-103 : toute ligne d'audit écrite par l'outil (item.create,
+                    # config.update…) porte l'origine et le tour copilote.
+                    audit_extra.set({"origin": origin, **({"turnId": turn_id} if turn_id else {})})
                     try:
                         result = asyncio.run(fn(*a, **kw))
                     except SQLAlchemyError as exc:
                         logger.warning("mcp tool %s: %s", fn.__name__, exc)
-                        _audit(self._session_factory, fn.__name__, kw, "error")
+                        _audit(self._session_factory, fn.__name__, kw, "error", turn_id)
                         raise McpToolError(
                             500, "erreur de base de données (détail masqué)"
                         ) from None
                     except Exception:
-                        _audit(self._session_factory, fn.__name__, kw, "error")
+                        _audit(self._session_factory, fn.__name__, kw, "error", turn_id)
                         raise
-                    _audit(self._session_factory, fn.__name__, kw, "ok")
+                    _audit(self._session_factory, fn.__name__, kw, "ok", turn_id)
                     return result
 
                 return await anyio.to_thread.run_sync(in_thread)
