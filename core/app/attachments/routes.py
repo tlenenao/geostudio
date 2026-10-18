@@ -17,7 +17,9 @@ import uuid
 from urllib.parse import quote
 
 from botocore.exceptions import ClientError
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.attachments import repository as attachments_repo
@@ -31,6 +33,8 @@ from app.attachments.schemas import (
 )
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
+from app.collect import repository as collect_ops
+from app.collections.introspection import TableNotFound
 from app.collections.repository import get_access_facts
 from app.collections.routes import get_collection_for_read, get_readable_collection
 from app.collections.sensitive import masked_attachment_keys
@@ -41,6 +45,7 @@ from app.ingestion.storage import ensure_uploads_bucket, generate_presigned_put_
 from app.quotas.service import enforce_storage_quota
 from app.sharing.authorization import can
 from app.sharing.geo_limits import refuse_if_geo_limited
+from app.upload_sniff import HEAD_BYTES, allowed_for_kind, looks_executable, sniff_content_type
 from app.users.models import User
 
 router = APIRouter()
@@ -163,10 +168,42 @@ def _attachment_json(a: Attachment) -> AttachmentRead:
     )
 
 
-def _require_declared_field(col, field_key: str) -> None:
-    declared = {f["key"] for f in col.attachment_fields}
-    if field_key not in declared:
+def _require_declared_field(col, field_key: str) -> dict:
+    spec = next((f for f in col.attachment_fields if f["key"] == field_key), None)
+    if spec is None:
         raise HTTPException(status_code=400, detail=f"unknown attachment field: {field_key}")
+    return spec
+
+
+def get_entity_checker():  # overridé dans main.py (app.features, au-dessus dans le contrat)
+    """`(session, col, fid) -> bool` : la ligne `fid` existe-t-elle, sous RLS ? Défaut permissif
+    pour les tests sans table dynamique ; create_app() branche toujours le vrai contrôle."""
+    return lambda session, col, fid: True
+
+
+def _require_existing_entity(exists, session: Session, col, fid: str) -> None:
+    """M1 : aucune pièce jointe (ni URL présignée) sur un fid inexistant ou invisible."""
+    try:
+        found = exists(session, col, fid)
+    except TableNotFound:
+        found = False
+    if not found:
+        raise HTTPException(status_code=404, detail="feature not found")
+
+
+def _discard_object(s3, bucket: str, key: str) -> None:
+    try:
+        s3.delete_object(Bucket=bucket, Key=key)
+    except ClientError:
+        logger.warning("attachment rejeté %s: objet non supprimé", key, exc_info=True)
+
+
+def _read_head(s3, bucket: str, key: str) -> bytes:
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=key, Range=f"bytes=0-{HEAD_BYTES - 1}")
+        return obj["Body"].read()
+    except ClientError as exc:
+        raise HTTPException(status_code=404, detail="objet introuvable") from exc
 
 
 @router.post(
@@ -181,10 +218,12 @@ def presign_attachment(
     geo_limits=Depends(get_request_geo_limits),
     session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
+    entity_exists=Depends(get_entity_checker),
 ) -> AttachmentPresignResponse:
     col = _get_writable_collection(session, user, collection_id)
     refuse_if_geo_limited(geo_limits, col.table_name, path="attachments")
     _require_declared_field(col, body.fieldKey)
+    _require_existing_entity(entity_exists, session, col, fid)
     _reject_dangerous_extension(body.filename)
     _reject_invalid_content_type(body.contentType)
     bucket = get_attachments_bucket()
@@ -208,16 +247,40 @@ def confirm_attachment(
     collection_id: str,
     fid: str,
     body: AttachmentConfirmRequest,
+    response: Response,
+    idempotency_key: str | None = Header(default=None),
     user: User = Depends(get_current_user),
     geo_limits=Depends(get_request_geo_limits),
     session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
+    entity_exists=Depends(get_entity_checker),
 ) -> AttachmentRead:
     col = _get_writable_collection(session, user, collection_id)
     refuse_if_geo_limited(geo_limits, col.table_name, path="attachments")
-    _require_declared_field(col, body.fieldKey)
+    field_spec = _require_declared_field(col, body.fieldKey)
     _reject_dangerous_extension(body.filename)
     _reject_invalid_content_type(body.contentType)
+    _require_existing_entity(entity_exists, session, col, fid)
+    # L8 : rejeu d'une confirmation (file hors-ligne) = même pièce jointe, rien d'écrit.
+    op_key = collect_ops.parse_key(idempotency_key)
+    claimed = None
+    if op_key:
+        claimed, replay = collect_ops.claim(
+            session,
+            tenant_id=col.tenant_id,
+            collection_id=col.id,
+            actor_id=user.id,
+            kind="attachment",
+            client_op_id=op_key,
+        )
+        if replay:
+            prior_id = (claimed.result or {}).get("attachmentId")
+            prior = session.get(Attachment, prior_id) if prior_id else None
+            if prior is None or prior.tenant_id != col.tenant_id or prior.fid != fid:
+                raise HTTPException(status_code=409, detail="idempotent operation unavailable")
+            response.status_code = 200
+            response.headers["Idempotent-Replay"] = "true"
+            return _attachment_json(prior)
     # Même garde anti-confused-deputy que POST /uploads (app/ingestion/routes.py),
     # étendue au préfixe COMPLET (REV-013) : la clé est censée venir du
     # présigné ci-dessus (presign_attachment), qui la préfixe toujours par
@@ -233,19 +296,63 @@ def confirm_attachment(
         raise HTTPException(status_code=404, detail="objet introuvable") from exc
     size = head["ContentLength"]
     if size > MAX_ATTACHMENT_BYTES:
-        try:
-            s3.delete_object(Bucket=bucket, Key=body.key)
-        except ClientError:
-            logger.warning("attachment oversize %s: objet non supprimé", body.key, exc_info=True)
+        _discard_object(s3, bucket, body.key)
         raise HTTPException(
             status_code=400,
             detail=f"fichier trop volumineux (> {MAX_ATTACHMENT_BYTES} octets)",
         )
+    # Le contenu prime sur le type déclaré (jumelle de la soumission publique, upload_sniff) :
+    # un exécutable déguisé est refusé ; un champ typé image/audio/vidéo exige son type.
+    head_bytes = _read_head(s3, bucket, body.key)
+    sniffed = sniff_content_type(head_bytes)
+    kind = field_spec.get("kind")
+    if looks_executable(head_bytes) or (
+        kind in ("image", "audio", "video") and not allowed_for_kind(sniffed, kind)
+    ):
+        _discard_object(s3, bucket, body.key)
+        raise HTTPException(status_code=415, detail="type de fichier non autorisé")
+    content_type = sniffed or head.get("ContentType") or body.contentType
+    _reject_invalid_content_type(content_type)
     # SP-58 Tâche 5 (GAP-73/GAP-11) : même patron de nettoyage que le
     # plafond par fichier ci-dessus — un rejet de quota ne doit jamais
     # laisser un objet orphelin en S3.
     enforce_storage_quota(session, s3, tenant_id=col.tenant_id, bucket=bucket, key=body.key)
-    attachment = attachments_repo.create_attachment(
+    already = session.scalar(
+        select(Attachment.id).where(
+            Attachment.tenant_id == col.tenant_id, Attachment.s3_key == body.key
+        )
+    )
+    if already is not None:  # un objet S3 ne porte qu'une pièce jointe (M1)
+        raise HTTPException(status_code=409, detail="attachment already registered")
+    try:
+        attachment = _create_attachment(
+            session, col, collection_id, fid, body, content_type, size, user
+        )
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="attachment already registered") from exc
+    if claimed is not None:
+        collect_ops.record_result(session, claimed, {"attachmentId": attachment.id})
+    write_audit(
+        session,
+        tenant_id=col.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="attachment.create",
+        object_type="attachment",
+        object_id=attachment.id,
+        payload={
+            "collection": collection_id,
+            "fid": fid,
+            "fieldKey": body.fieldKey,
+            **({"clientOpId": op_key} if op_key else {}),
+        },
+    )
+    session.commit()
+    return _attachment_json(attachment)
+
+
+def _create_attachment(session, col, collection_id, fid, body, content_type, size, user):
+    return attachments_repo.create_attachment(
         session,
         tenant_id=col.tenant_id,
         collection_id=collection_id,
@@ -260,23 +367,11 @@ def confirm_attachment(
         # repli ASCII, calculé à la volée, jamais stocké. La clé S3 du
         # presigné (ligne ~155), elle, reste assainie : problème différent.
         filename=body.filename,
-        content_type=body.contentType,
+        content_type=content_type,
         byte_size=size,
         s3_key=body.key,
         created_by=user.id,
     )
-    write_audit(
-        session,
-        tenant_id=col.tenant_id,
-        actor_id=user.id,
-        actor_kind="user",
-        action="attachment.create",
-        object_type="attachment",
-        object_id=attachment.id,
-        payload={"collection": collection_id, "fid": fid, "fieldKey": body.fieldKey},
-    )
-    session.commit()
-    return _attachment_json(attachment)
 
 
 @router.get(

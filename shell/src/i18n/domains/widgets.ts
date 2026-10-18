@@ -801,6 +801,45 @@ export const widgets = {
   "navigation.unsavedChangesMessage":
     "Vous avez des modifications non enregistrées. Voulez-vous vraiment quitter cette page ?",
   "navigation.leaveAnyway": "Quitter sans enregistrer",
+  "widgetForm.geometryPoints": "{count} point(s) saisi(s)",
+  "widgetForm.geometryAddMyPosition": "Ajouter ma position",
+  "widgetForm.geometryAddPoint": "Ajouter ce point",
+  "widgetForm.geometryUndo": "Retirer le dernier point",
+  "widgetForm.geometryClear": "Effacer la géométrie",
+  "widgetForm.geometryTraceStart": "Démarrer la trace GPS",
+  "widgetForm.geometryTraceStop": "Arrêter la trace GPS",
+  "widgetForm.geometryTracing": "Trace en cours : un point tous les {step} m",
+  "widgetForm.geometryIncompleteLine": "Une ligne demande au moins 2 points.",
+  "widgetForm.geometryIncompletePolygon": "Un polygone demande au moins 3 points.",
+  "widgetForm.geometryRequired": "La géométrie est obligatoire.",
+  "widgetForm.geometryMultiPart":
+    "Géométrie à plusieurs parties : conservée telle quelle (non modifiable ici).",
+  "widgetForm.accuracyWarning":
+    "Précision faible : environ {meters} m. Attendez un meilleur signal.",
+  "widgetForm.accuracyOk": "Précision : environ {meters} m",
+  "widgetForm.geometryGroup": "Géométrie",
+  "collect.notFound": "Ce lien de collecte est introuvable.",
+  "collect.expired": "Ce lien de collecte a expiré ou a été révoqué.",
+  "collect.unreachable":
+    "Impossible de joindre le serveur. Vérifiez votre connexion puis réessayez.",
+  "collect.loadError": "Le formulaire n'a pas pu être chargé.",
+  "collect.submit": "Envoyer",
+  "collect.sending": "Envoi en cours…",
+  "collect.thanks": "Merci, votre saisie a bien été envoyée. Elle sera examinée avant publication.",
+  "collect.another": "Envoyer une autre saisie",
+  "collect.sendError": "L'envoi a échoué. Votre saisie est conservée, vous pouvez réessayer.",
+  "collect.rateLimited": "Trop d'envois pour le moment, réessayez dans quelques instants.",
+  "collect.quotaExhausted": "Ce lien de collecte n'accepte plus de saisies.",
+  "collect.powRejected": "La vérification anti-robot a échoué, réessayez.",
+  "collect.maxFiles": "Au plus {max} fichiers par saisie.",
+  "collect.fileField": "Fichier : {name}",
+  "collect.honeypot": "Ne pas remplir ce champ",
+  "collect.requiredNote": "Les champs marqués d'un astérisque sont obligatoires.",
+  "collect.kitUnavailable":
+    "Vous êtes hors ligne et ce formulaire n'a jamais été chargé sur cet appareil. Reconnectez-vous une première fois pour pouvoir saisir sans réseau.",
+  "collect.offlineKit": "Mode hors ligne : formulaire chargé depuis cet appareil.",
+  "collect.kitExpired":
+    "Ce formulaire n'a pas été mis à jour depuis plus de 14 jours : reconnectez-vous pour récupérer la dernière version.",
 } as const;
 
 registerMessages(widgets);

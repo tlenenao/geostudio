@@ -682,6 +682,31 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await runAxeAudit(page, "EmbedRoute");
   });
 
+  test("CollectRoute (page publique de collecte, formulaire du kit)", async ({ page }) => {
+    await page.route("**/v1/public/submit/e2e-audit-collect/kit", async (route) => {
+      await route.fulfill({
+        json: {
+          version: 1,
+          title: "Signalement citoyen",
+          schema: {
+            geometry: { column: "geom", type: "Point", srid: 4326 },
+            fields: [
+              { name: "nom", type: "string", required: true, label: "Votre nom" },
+              { name: "photo", type: "attachment", required: false, label: "Photo", kind: "image" },
+            ],
+          },
+          rules: [],
+          geometryRequired: false,
+          updatedAt: null,
+          etag: "audit",
+        },
+      });
+    });
+    await page.goto("/collect/e2e-audit-collect");
+    await expect(page.getByLabel(/Votre nom/)).toBeVisible();
+    await runAxeAudit(page, "CollectRoute");
+  });
+
   test("PublicItemRoute (item publié consulté en anonyme)", async ({ page }) => {
     await mockCore(page);
     // Item "8" (GALLERY_ITEM, config texte "Detail de l'article") est déjà

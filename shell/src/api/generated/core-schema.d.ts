@@ -405,6 +405,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/collections/{collection_id}/collect-kit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Collect Kit
+         * @description Kit de collecte hors-ligne (L8) : schéma, domaines, règles, champs média typés. Droit de
+         *     LECTURE requis ; champs sensibles masqués comme `GET .../schema` (GAP-22). L'autorisation
+         *     d'écriture reste vérifiée à l'envoi : le client ne s'y fie jamais. ETag fort + 304.
+         */
+        get: operations["collect_kit_v1_collections__collection_id__collect_kit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections/{collection_id}/export": {
         parameters: {
             query?: never;
@@ -2362,6 +2384,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/submit/{token}/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Challenge
+         * @description Défi de preuve de travail (hashcash) à joindre au POST ; jamais mis en cache.
+         */
+        get: operations["public_challenge_v1_public_submit__token__challenge_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/submit/{token}/kit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Kit
+         * @description Kit de collecte public (L8) : schéma sans nom de table ni champ sensible, aucune donnée.
+         */
+        get: operations["public_kit_v1_public_submit__token__kit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/records": {
         parameters: {
             query?: never;
@@ -3443,6 +3505,8 @@ export interface components {
         AttachmentFieldSpec: {
             /** Key */
             key: string;
+            /** Kind */
+            kind?: ("image" | "audio" | "video" | "file") | null;
             /** Label */
             label: string;
             /**
@@ -3715,15 +3779,28 @@ export interface components {
         };
         /** Body_submit_v1_public_submit__token__post */
         Body_submit_v1_public_submit__token__post: {
+            /** Clientopid */
+            clientOpId?: string | null;
             /** Fieldkey */
             fieldKey?: string | null;
+            /** Fieldkeys */
+            fieldKeys?: string[] | null;
             /** File */
             file?: string | null;
+            /**
+             * Files
+             * @default []
+             */
+            files: string[];
             /**
              * Payload
              * @description GeoJSON Feature (JSON)
              */
             payload: string;
+            /** Powchallenge */
+            powChallenge?: string | null;
+            /** Pownonce */
+            powNonce?: string | null;
             /**
              * Website
              * @description honeypot : doit rester vide
@@ -3894,6 +3971,8 @@ export interface components {
             fieldDomains?: {
                 [key: string]: components["schemas"]["FieldDomain"];
             } | null;
+            /** Geometryrequired */
+            geometryRequired?: boolean | null;
             /** Inspiretheme */
             inspireTheme?: string | null;
             /** Ispublic */
@@ -4362,6 +4441,10 @@ export interface components {
          * @description ARC-13 : domaine `list` (valeurs admises) ou `range` (bornes incluses).
          */
         FieldDomain: {
+            /** Labels */
+            labels?: {
+                [key: string]: string;
+            } | null;
             /** Max */
             max?: number | null;
             /** Min */
@@ -7463,6 +7546,39 @@ export interface operations {
             };
         };
     };
+    collect_kit_v1_collections__collection_id__collect_kit_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_collection_aggregate_v1_collections__collection_id__export_post: {
         parameters: {
             query: {
@@ -7806,6 +7922,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "idempotency-key"?: string | null;
+                "x-gs-offline-created-at"?: string | null;
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
             };
@@ -7994,6 +8112,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "idempotency-key"?: string | null;
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
             };
@@ -8836,7 +8955,9 @@ export interface operations {
     };
     read_submission_attachment_v1_collections__collection_id__submissions__submission_id__attachment_get: {
         parameters: {
-            query?: never;
+            query?: {
+                fileId?: string | null;
+            };
             header?: {
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
@@ -12269,6 +12390,68 @@ export interface operations {
             };
         };
     };
+    public_challenge_v1_public_submit__token__challenge_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_kit_v1_public_submit__token__kit_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     landing_v1_records_get: {
         parameters: {
             query?: never;
@@ -13901,7 +14084,9 @@ export interface operations {
     };
     import_xlsform_v1_xlsform_import_post: {
         parameters: {
-            query?: never;
+            query?: {
+                collectionId?: string | null;
+            };
             header?: {
                 authorization?: string;
             };

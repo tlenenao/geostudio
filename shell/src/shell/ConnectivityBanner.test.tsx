@@ -9,6 +9,7 @@ import {
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { ConnectivityBanner, CONNECTIVITY_POLL_MS } from "./ConnectivityBanner";
 import { CoreUnreachableError } from "../api/CoreUnreachableError";
+import { setUnsentForTests } from "../offline/useOutbox";
 
 function setup() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -140,4 +141,16 @@ test("REV-254 : mutation en échec seule, le sondage relance les requêtes activ
   });
   await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   unsubscribe();
+});
+
+test("hors ligne avec des saisies gardées sur l'appareil : message rassurant (status), pas d'alerte", () => {
+  onlineManager.setOnline(false);
+  setUnsentForTests(2);
+  try {
+    setup();
+    expect(screen.getByRole("status")).toHaveTextContent(/saisies seront envoyées au retour/);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  } finally {
+    setUnsentForTests(0);
+  }
 });

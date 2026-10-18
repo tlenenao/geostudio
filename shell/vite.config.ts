@@ -3,9 +3,10 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
 import { copyMaplibreWorkerPlugin } from "./vite.copyMaplibreWorker.ts";
+import { serviceWorkerPlugin } from "./vite.serviceWorker.ts";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), copyMaplibreWorkerPlugin()],
+  plugins: [react(), tailwindcss(), copyMaplibreWorkerPlugin(), serviceWorkerPlugin()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },

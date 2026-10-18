@@ -429,6 +429,9 @@ ENV_WIRING_EXEMPTIONS = {
     # Couture de test : permet de lire des partitions CDC depuis le disque
     # local au lieu de S3 (tests analytiques). Jamais réglée en production.
     "S3_CDC_BUCKET_BASE_URI",
+    # L8 : éteint la preuve de travail de la soumission publique — réservé aux tests
+    # (tests/conftest.py), jamais câblé en production où la preuve est toujours exigée.
+    "CORE_PUBLIC_SUBMIT_POW_DISABLED",
     # Lues par l'image mini-serveur de l'export autoporté (SP-18c), dont le
     # docker-compose est **généré** par build_standalone_bundle_zip et livré
     # dans le zip — pas celui de ce dépôt.
@@ -1953,6 +1956,32 @@ def test_shell_nginx_serves_mjs_cache_and_404_for_assets():
     # (X-Frame-Options DENY en Helm) : /index.html doit rester non terminal.
     assert "try_files $uri /index.html =404;" in embed_block
     assert "rm -rf dist/.vite dist/fixtures" in (REPO / "shell/Dockerfile").read_text()
+
+
+def test_shell_service_worker_is_never_cached_and_allowed_by_the_csp():
+    """L8 (PWA de collecte) : un `sw.js` servi avec le Cache-Control du reste du shell (ou
+    pire, `immutable`) figerait les clients sur un ancien shell — c'est le seul fichier dont la
+    revalidation fait la mise à jour. Et la CSP (Traefik, puis Helm) doit autoriser le worker
+    même origine : sans `worker-src 'self'`, le navigateur refuse l'enregistrement en silence."""
+    conf = (REPO / "shell/nginx.conf").read_text()
+    block = conf.split("location = /sw.js {")[1].split("}")[0]
+    assert 'add_header Cache-Control "no-cache" always;' in block
+    assert "immutable" not in block
+    assert 'add_header Service-Worker-Allowed "/" always;' in block
+    assert "include /etc/nginx/snippets/security-headers.conf;" in block, (
+        "un add_header de location masque ceux du server : réinclure les en-têtes de sécurité"
+    )
+    assert "try_files $uri =404;" in block, "jamais de repli SPA (index.html) à la place du SW"
+    # Le SW est émis dans dist/ (donc dans l'image) ; son manifeste aussi.
+    assert (REPO / "shell/sw/sw.template.js").exists()
+    assert (REPO / "shell/public/manifest.webmanifest").exists()
+    from app.security.traefik_render import CspAllowlist, _build_csp_value
+
+    csp = _build_csp_value(CspAllowlist(), frame_ancestors=True)
+    assert "worker-src 'self'" in csp
+    assert "default-src 'self'" in csp  # couvre manifest-src
+    values = (REPO / "deploy/helm/geostudio/values.yaml").read_text()
+    assert "worker-src 'self'" in values
 
 
 def test_core_env_vars_extractor_has_not_silently_regressed_to_empty():

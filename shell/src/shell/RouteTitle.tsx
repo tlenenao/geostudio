@@ -34,6 +34,7 @@ const ROUTE_TITLES: [path: string, key: MessageKey][] = [
   ["/settings", "docTitle.settings"],
   ["/apps/:pk/:pageId?", "docTitle.app"],
   ["/embed/:token", "docTitle.embed"],
+  ["/collect/:token", "docTitle.collect"],
   ["/sites/:slug", "docTitle.site"],
   ["/public", "docTitle.publicCatalog"],
   ["/public/items/:pk", "docTitle.publicItem"],

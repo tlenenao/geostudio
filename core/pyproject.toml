@@ -405,6 +405,9 @@ layers = [
     # lit les collections/privilèges (en dessous).
     "app.history",
     "app.attachments",
+    # app.collect (L8, AUD-004) : idempotence des écritures de collecte (collect_client_ops),
+    # appelée par app.features (création) et app.attachments (confirm), donc SOUS les deux.
+    "app.collect",
     # app.lineage (ARC4-F15) : graphe de dépendances dérivé des configs (lecture seule).
     "app.lineage",
     "app.collections",
@@ -452,6 +455,9 @@ ignore_imports = [
     # AppExportJob) — lecture pure de modèles, même rationale que les
     # exemptions app.analytics.* -> app.collections.introspection plus bas.
     "app.quotas.service -> app.collections.models",
+    # L8 : le défi de preuve de travail dérive sa clé HMAC de la clé maîtresse du coffre (lecture
+    # d'une fonction pure, aucun accès aux secrets stockés) — pas de nouveau secret à configurer.
+    "app.collect.pow -> app.secrets.crypto",
     # P26.03 : le quota d'items est contrôlé au point unique de création
     # (items.repository.create_item) ; quotas.service n'importe que items.models.
     "app.items.repository -> app.quotas.service",
@@ -574,6 +580,7 @@ ignore_imports = [
     "app.db -> app.geocoding.models",
     "app.db -> app.roles.models",
     "app.db -> app.attachments.models",
+    "app.db -> app.collect.models",
     "app.db -> app.compliance.models",
     "app.db -> app.dataexport.models",
     "app.db -> app.quality.models",

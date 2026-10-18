@@ -10,7 +10,7 @@ la collection par l'écriture normale (validation + RLS + journal)."""
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -54,6 +54,15 @@ class Submission(Base):
     __table_args__ = (
         Index("ix_submissions_queue", "tenant_id", "collection_id", "status", "created_at"),
         Index("ix_submissions_attachment_key", "attachment_key"),
+        # L8 : un rejeu (file hors-ligne) du même clientOpId ne crée pas de seconde soumission.
+        Index(
+            "uq_submissions_token_client_op",
+            "token_id",
+            "client_op_id",
+            unique=True,
+            postgresql_where=text("client_op_id IS NOT NULL"),
+            sqlite_where=text("client_op_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -73,3 +82,24 @@ class Submission(Base):
     moderated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reject_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     feature_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    client_op_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class SubmissionFile(Base):
+    """Fichier d'une soumission (jusqu'à 5, L8). Même cycle de vie que `Submission.attachment` :
+    métadonnées vidées à l'approbation/au rejet, `attachment_key` conservée si approuvée."""
+
+    __tablename__ = "submission_files"
+    __table_args__ = (
+        Index("ix_submission_files_submission", "submission_id"),
+        Index("ix_submission_files_attachment_key", "attachment_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    submission_id: Mapped[str] = mapped_column(
+        ForeignKey("submissions.id", ondelete="CASCADE"), nullable=False
+    )
+    field_key: Mapped[str] = mapped_column(String, nullable=False)
+    attachment: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    attachment_key: Mapped[str | None] = mapped_column(String, nullable=True)

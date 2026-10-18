@@ -34,6 +34,7 @@ from app.appexport.models import AppExportJob
 from app.attachments import repository as attachments_repo
 from app.attachments.models import Attachment
 from app.attachments.routes import get_attachments_bucket
+from app.collect.models import CollectClientOp
 from app.collections.models import Collection
 from app.collections.publication import remove_table_from_publication
 from app.compliance.journal import schedule_erasure_journal
@@ -55,7 +56,7 @@ from app.notifications.models import Notification, NotificationPreference
 from app.outbox.models import FileTrigger, FileTriggerSeen, OutboundWebhook, OutboxEvent
 from app.pipelines import checkpoints
 from app.pipelines.models import PipelineRun
-from app.public_submit.models import Submission, SubmissionToken
+from app.public_submit.models import Submission, SubmissionFile, SubmissionToken
 from app.quality.models import QualityReport
 from app.quotas.models import TenantLimits
 from app.raster.models import RasterAsset, RasterJob
@@ -222,6 +223,7 @@ def purge_tenant(
     counts["config_revisions"] = _delete_all(session, ConfigRevision, tenant_id)
     counts["entity_history"] = _delete_all(session, EntityHistory, tenant_id)  # ARC-15
     counts["collection_relations"] = _delete_all(session, CollectionRelation, tenant_id)  # ARC-21
+    counts["collect_client_ops"] = _delete_all(session, CollectClientOp, tenant_id)  # L8
     # ARC4-F6 : outbox, déclencheurs fichier (+ clés d'idempotence), destinations (ordre FK)
     counts["outbox"] = _delete_all(session, OutboxEvent, tenant_id)
     counts["file_trigger_seen"] = _delete_all(session, FileTriggerSeen, tenant_id)
@@ -258,6 +260,7 @@ def purge_tenant(
     counts["report_runs"] = _delete_all(session, ReportRun, tenant_id)
     counts["harvest_records"] = _delete_all(session, HarvestRecord, tenant_id)
     counts["configs"] = _delete_all(session, Config, tenant_id)
+    counts["submission_files"] = _delete_all(session, SubmissionFile, tenant_id)
     counts["submissions"] = _delete_all(session, Submission, tenant_id)
     counts["submission_tokens"] = _delete_all(session, SubmissionToken, tenant_id)
     session.flush()

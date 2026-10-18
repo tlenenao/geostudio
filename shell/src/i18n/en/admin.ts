@@ -549,4 +549,5 @@ export const adminEn: Record<keyof typeof admin, string> = {
   "editCollection.inspireThemeLabel": "INSPIRE theme",
   "editCollection.noInspireThemeOption": "None",
   "newItem.bindSource": "Collection for \u201c{source}\u201d",
+  "submissions.publicLink": "Collection link to share:",
 };

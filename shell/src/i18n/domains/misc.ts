@@ -213,6 +213,51 @@ export const misc = {
   "datasetProfile.histogram": "Répartition de {name}",
   "datasetProfile.geometry": "Géométrie ({column})",
   "datasetProfile.extent": "Emprise : {bbox}",
+  "outbox.title": "Saisies hors-ligne",
+  "outbox.stateQueued": "En attente d'envoi",
+  "outbox.stateSending": "Envoi en cours",
+  "outbox.stateNeedsPhotos": "Photos à envoyer",
+  "outbox.stateSent": "Envoyée",
+  "outbox.stateConflict": "À corriger",
+  "outbox.stateFailedPermanent": "Échec définitif",
+  "outbox.reasonNetwork": "réseau indisponible",
+  "outbox.reasonServer": "serveur indisponible",
+  "outbox.reasonRateLimited": "trop de requêtes, nouvel essai programmé",
+  "outbox.reasonPow": "vérification anti-robot à refaire",
+  "outbox.reasonBusy": "envoi déjà en cours côté serveur",
+  "outbox.reasonForbidden": "droits insuffisants",
+  "outbox.reasonGone": "cible disparue ou lien expiré",
+  "outbox.reasonInvalid": "saisie refusée par le serveur",
+  "outbox.reasonUnique": "valeur déjà utilisée",
+  "outbox.reasonQuota": "quota épuisé",
+  "outbox.details": "Détails de l'erreur",
+  "outbox.edit": "Modifier",
+  "outbox.export": "Exporter en JSON",
+  "outbox.abandon": "Abandonner",
+  "outbox.abandonTitle": "Abandonner cette saisie ?",
+  "outbox.abandonMessage":
+    "Elle ne sera jamais envoyée et ses fichiers seront supprimés de cet appareil.",
+  "outbox.syncNow": "Synchroniser maintenant",
+  "outbox.pausedAuth":
+    "Votre session a expiré : l'envoi est suspendu, vos saisies sont conservées.",
+  "outbox.resume": "Reprendre",
+  "outbox.pillOne": "{count} saisie à envoyer",
+  "outbox.pillMany": "{count} saisies à envoyer",
+  "outbox.conflictOne": "{count} saisie à corriger",
+  "outbox.conflictMany": "{count} saisies à corriger",
+  "outbox.queuedNotice":
+    "Hors-ligne : saisie enregistrée sur cet appareil, elle sera envoyée au retour du réseau.",
+  "outbox.limitEntries":
+    "Trop de saisies en attente sur cet appareil (100 au plus) : synchronisez-les avant d'en ajouter.",
+  "outbox.limitBytes":
+    "Espace de stockage des fichiers épuisé sur cet appareil : synchronisez avant d'ajouter des photos.",
+  "outbox.limitPhotos": "Trop de fichiers pour une saisie (5 au plus).",
+  "outbox.storageError":
+    "Impossible d'enregistrer sur cet appareil (stockage plein ou refusé). Votre saisie reste ouverte.",
+  "outbox.offlineBanner": "Mode hors-ligne : vos saisies seront envoyées au retour du réseau.",
+  "sw.updateReady":
+    "Une nouvelle version de GeoStudio est disponible. Terminez votre saisie en cours avant de l'appliquer.",
+  "sw.updateAction": "Mettre à jour",
 } as const;
 
 registerMessages(misc);

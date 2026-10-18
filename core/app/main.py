@@ -647,6 +647,11 @@ def create_app() -> FastAPI:
         )
 
     app.dependency_overrides[features_routes.get_relation_hooks] = lambda: RelationHooks()  # ARC-21
+    # L8 (M1) : pièces jointes seulement sur un fid existant, relu par la porte de lecture
+    # de features (app.attachments est en dessous dans le contrat : injection).
+    app.dependency_overrides[attachments_routes.get_entity_checker] = (
+        features_routes.get_feature_exists
+    )
     app.dependency_overrides[features_routes.get_export_job_starter] = lambda: (
         dataexport_routes.default_starter
     )

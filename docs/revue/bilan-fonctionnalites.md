@@ -2,7 +2,7 @@
 
 **Généré le 2026-10-18** par `uv run python scripts/feature_health_cli.py --repo .. --write`. **Ne pas éditer à la main** : ce fichier est regénéré à chaque clôture de SP.
 
-345 fonctionnalités — santé médiane 98.8 sur 345 mesurables.
+346 fonctionnalités — santé médiane 98.8 sur 346 mesurables.
 
 La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** est déclarée (spec §4). Les deux ne sont jamais moyennées. Le tri est `priorité × (100 − santé)`.
 
@@ -39,6 +39,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 11 | **Catalogue/Items** | 98.7 |
 | 1 | **Catalogue/Métadonnées** | 100.0 |
 | 6 | **Catalogue/Portails publics** | 96.6 |
+| 1 | **Collecte** | 100.0 |
 | 13 | **Collections** | 98.3 |
 | 2 | **Configs/Alerte** | 98.8 |
 | 2 | **Configs/AppConfig** | 98.2 |
@@ -428,3 +429,4 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Supervision | Recevoir une alerte SLO par webhook (latence API/tuiles, backlog de jobs, taux de 5xx) | `supervision-recevoir-une-alerte-slo-par-webhook-latence-api-tuiles-backlog-de-jo` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | IA | Copilote gouverné : quota LLM, fournisseur par tenant, outils MCP de lecture | `copilote-quota-et-fournisseur-par-tenant` | 100.0 | = | moyenne (amorcée) | 100.0 | 100.0 | 100.0 | 100.0 |
 | Analytique | Requêtes SQL Lab enregistrées | `analytique-requetes-sql-enregistrees` | 100.0 | = | moyenne (amorcée) | — | 100.0 | 100.0 | 100.0 |
+| Collecte | Collecte terrain hors-ligne : page publique /collect/:token, file IndexedDB, PWA | `collecte-terrain-hors-ligne-page-publique-et-file-de-synchro` | 100.0 | — | moyenne (amorcée) | 100.0 | 100.0 | — | 100.0 |

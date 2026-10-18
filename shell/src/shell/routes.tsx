@@ -105,6 +105,9 @@ const UsagePage = lazy(() => import("../pages/UsagePage").then((m) => ({ default
 const SettingsPage = lazy(() =>
   import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
+const CollectPage = lazy(() =>
+  import("../pages/CollectPage").then((m) => ({ default: m.CollectPage })),
+);
 const EmbedPage = lazy(() => import("../pages/EmbedPage").then((m) => ({ default: m.EmbedPage })));
 
 function CatalogRoute() {
@@ -246,6 +249,11 @@ function DatasetRoute() {
 function EmbedRoute() {
   const { token } = useParams();
   return <EmbedPage token={token!} />;
+}
+
+function CollectRoute() {
+  const { token } = useParams();
+  return <CollectPage token={token!} />;
 }
 
 function ProtectedLayout() {
@@ -390,6 +398,7 @@ function routeElements() {
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/embed/:token" element={<EmbedRoute />} />
+      <Route path="/collect/:token" element={<CollectRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />
       <Route path="/public" element={<PublicCatalogPage />} />
       <Route path="/public/items/:pk" element={<PublicItemRoute />} />

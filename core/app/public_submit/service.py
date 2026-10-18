@@ -19,8 +19,9 @@ from app.audit.writer import write_audit
 from app.collections.models import Collection
 from app.notifications import repository as notifications_repo
 from app.outbox.emit import emit
-from app.public_submit.models import Submission, SubmissionToken
+from app.public_submit.models import Submission, SubmissionFile, SubmissionToken
 from app.sharing.models import CollectionShare, GroupMember, share_active
+from app.upload_sniff import sniff_content_type  # noqa: F401  (liste blanche partagée, L8)
 
 logger = logging.getLogger(__name__)
 
@@ -29,24 +30,10 @@ TOKEN_PREFIX = "gss_"
 _PREFIX_LEN = len(TOKEN_PREFIX) + 12
 MAX_LIFETIME_DAYS = 365
 MAX_PAYLOAD_BYTES = 64 * 1024
-# Magic numbers acceptés pour la pièce jointe (type contrôlé par CONTENU, jamais par
-# l'en-tête déclaré) -> content-type servi.
-_SNIFF = (
-    (b"\xff\xd8\xff", "image/jpeg"),
-    (b"\x89PNG\r\n\x1a\n", "image/png"),
-    (b"GIF87a", "image/gif"),
-    (b"GIF89a", "image/gif"),
-    (b"%PDF-", "application/pdf"),
-)
-
-
-def sniff_content_type(head: bytes) -> str | None:
-    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
-        return "image/webp"
-    for magic, ctype in _SNIFF:
-        if head.startswith(magic):
-            return ctype
-    return None
+# L8 : plafonds d'une soumission publique (fichiers).
+MAX_FILES = 5
+MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_TOTAL_BYTES = 25 * 1024 * 1024
 
 
 class HourlyLimiter:
@@ -180,8 +167,10 @@ def create_submission(
     *,
     token: SubmissionToken,
     payload: dict,
-    attachment: dict | None,
-    attachment_key: str | None,
+    attachment: dict | None = None,
+    attachment_key: str | None = None,
+    files: list[tuple[dict, str]] | None = None,
+    client_op_id: str | None = None,
 ) -> Submission:
     sub = Submission(
         id=str(uuid.uuid4()),
@@ -192,8 +181,21 @@ def create_submission(
         payload=payload,
         attachment=attachment,
         attachment_key=attachment_key,
+        client_op_id=client_op_id,
     )
     session.add(sub)
+    session.flush()
+    for meta, key in files or []:
+        session.add(
+            SubmissionFile(
+                id=str(uuid.uuid4()),
+                tenant_id=token.tenant_id,
+                submission_id=sub.id,
+                field_key=meta["fieldKey"],
+                attachment=meta,
+                attachment_key=key,
+            )
+        )
     session.flush()
     emit(  # F6 : identifiants seulement, jamais le contenu de la soumission (ADR 0017/0027)
         session,
@@ -248,3 +250,17 @@ def notify_moderators(session: Session, col: Collection) -> None:
                 )
     except Exception:  # noqa: BLE001
         logger.warning("notification de soumission non écrite", exc_info=True)
+
+
+def find_replay(session: Session, token: SubmissionToken, client_op_id: str | None) -> bool:
+    """Vrai si ce `clientOpId` a déjà produit une soumission pour ce jeton (rejeu hors-ligne)."""
+    if not client_op_id:
+        return False
+    return (
+        session.scalar(
+            select(Submission.id).where(
+                Submission.token_id == token.id, Submission.client_op_id == client_op_id
+            )
+        )
+        is not None
+    )

@@ -36,6 +36,9 @@ os.environ.setdefault("CORE_ENV", "development")
 # Lot 9 : la suite exerce les op expérimentales ; les tests du flag éteint le
 # monkeypatchent explicitement (tests/test_pipeline_experimental_ops.py).
 os.environ.setdefault("CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED", "true")
+# L8 : preuve de travail de la soumission publique éteinte par défaut dans la suite (le flag est
+# réservé aux tests) ; tests/test_pow.py et test_collect_kit.py la rallument explicitement.
+os.environ.setdefault("CORE_PUBLIC_SUBMIT_POW_DISABLED", "1")
 
 
 def shard_of(nodeid: str, total: int) -> int:

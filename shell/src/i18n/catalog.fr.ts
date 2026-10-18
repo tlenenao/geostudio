@@ -48,6 +48,7 @@ export const fr = {
   "docTitle.settings": "Paramètres",
   "docTitle.app": "Application",
   "docTitle.embed": "Contenu intégré",
+  "docTitle.collect": "Collecte",
   "docTitle.site": "Portail",
   "docTitle.publicItem": "Élément public",
   "docTitle.publicDataset": "Jeu de données public",

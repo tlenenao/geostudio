@@ -29,6 +29,21 @@ function main(manifestPath, thresholdPath) {
     console.error("Aucune entrée trouvée dans le manifeste Vite.");
     process.exit(1);
   }
+  // L8 : le service worker est émis hors du graphe de l'entrée (jamais compté ci-dessous) ; on
+  // garantit seulement qu'il existe et que l'injection du plugin a bien eu lieu.
+  let sw = "";
+  try {
+    sw = readFileSync(join(distDir, "sw.js"), "utf-8");
+  } catch {
+    console.error(
+      "ÉCHEC : dist/sw.js absent (vite.serviceWorker.ts n'a pas émis le service worker).",
+    );
+    process.exit(1);
+  }
+  if (sw.includes("__BUILD_ID__") || sw.includes("__PRECACHE_")) {
+    console.error("ÉCHEC : dist/sw.js contient des marqueurs d'injection non remplacés.");
+    process.exit(1);
+  }
   const files = initialChunkFiles(manifest, entryKey);
   let totalBytes = 0;
   const sizes = [];

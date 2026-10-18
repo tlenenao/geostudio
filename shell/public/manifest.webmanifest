@@ -1,0 +1,21 @@
+{
+  "name": "GeoStudio",
+  "short_name": "GeoStudio",
+  "description": "Plateforme d'applications géospatiales : collecte de terrain, cartes et tableaux de bord.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0b6e77",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

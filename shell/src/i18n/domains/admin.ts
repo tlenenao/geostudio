@@ -602,6 +602,7 @@ export const admin = {
     "Le GeoJSON ne contient que les {count} premières entités sur {total}.",
   "datasetDownload.tooLarge":
     "Jeu de données trop volumineux pour l'export CSV navigateur — export serveur à venir (SP-15).",
+  "submissions.publicLink": "Lien de collecte à partager :",
 } as const;
 
 registerMessages(admin);

@@ -21,8 +21,9 @@ async function requestFeatureWrite<T>(
   method: string,
   body?: GeoJSONFeatureInput,
   ifMatch?: string,
+  extraHeaders?: Record<string, string>,
 ): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...extraHeaders };
   if (ifMatch) headers["If-Match"] = ifMatch;
   const res = await authFetch(url, {
     method,
@@ -82,12 +83,18 @@ export function createFeaturesMethods(base: ItemClientBase): FeaturesMethods {
     async createFeature(
       collectionId: string,
       feature: GeoJSONFeatureInput,
+      opts?: { idempotencyKey?: string; offlineCreatedAt?: string },
     ): Promise<{ id: string | number }> {
+      const extra: Record<string, string> = {};
+      if (opts?.idempotencyKey) extra["Idempotency-Key"] = opts.idempotencyKey;
+      if (opts?.offlineCreatedAt) extra["X-GS-Offline-Created-At"] = opts.offlineCreatedAt;
       return requestFeatureWrite<{ id: string | number }>(
         authFetch,
         `${coreUrl}/collections/${collectionId}/items`,
         "POST",
         feature,
+        undefined,
+        extra,
       );
     },
 

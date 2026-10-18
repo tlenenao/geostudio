@@ -140,9 +140,11 @@ def test_import_creates_collection_and_mobile_form_app(env):
     assert not [x for x in body["report"] if x["code"] == "not_ported"]
     col = client.get(f"/v1/collections/{body['collectionId']}").json()
     assert col["geometryType"] in ("Point", "ST_Point") or "Point" in str(col["geometryType"])
-    assert col["fieldDomains"]["etat"] == {"type": "list", "values": ["bon", "degrade", "hs"]}
-    assert {r["field"] for r in col["attributeRules"]} == {"age", "surface"}
-    assert col["attachmentFields"] == [{"key": "photo", "label": "Photo"}]
+    assert col["fieldDomains"]["etat"]["values"] == ["bon", "degrade", "hs"]
+    assert col["fieldDomains"]["etat"]["labels"]["degrade"] == "Dégradé"
+    assert {r["field"] for r in col["attributeRules"]} >= {"age", "surface", "nom"}
+    assert col["attachmentFields"] == [{"key": "photo", "label": "Photo", "kind": "image"}]
+    assert col["geometryRequired"] is True
     cfg = client.get(f"/v1/configs/by-item/{body['itemId']}").json()
     form = cfg["config"]["layout"]["items"][0]
     assert form["widget"] == "form" and form["props"]["mobile"] is True
@@ -160,6 +162,18 @@ def test_imported_rules_and_domains_are_enforced_on_write(env):
     assert bad_age.status_code == 400 and "Âge entre 0 et 120" in bad_age.text
     bad_dom = client.post(f"/v1/collections/{cid}/items", json=_feature(etat="inconnu"))
     assert bad_dom.status_code == 400
+
+
+def test_imported_required_and_geometry_required_are_enforced_on_write(env):
+    client, _S, _as = env
+    cid = _import(client).json()["collectionId"]
+    no_name = _feature()
+    no_name["properties"].pop("nom")
+    assert client.post(f"/v1/collections/{cid}/items", json=no_name).status_code == 400
+    no_geom = _feature()
+    no_geom["geometry"] = None
+    r = client.post(f"/v1/collections/{cid}/items", json=no_geom)
+    assert r.status_code == 400 and "geometry" in r.text
 
 
 def test_my_entries_lists_only_my_own_creations(env):

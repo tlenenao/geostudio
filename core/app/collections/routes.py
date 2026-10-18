@@ -308,6 +308,7 @@ def _collection_json(
         "tableName": col.table_name,
         "isPublic": col.is_public,
         "editable": col.editable,
+        "geometryRequired": col.geometry_required,
         "owsEnabled": col.ows_enabled,
         "geometryType": col.geometry_type,
         "srid": col.srid,
@@ -947,6 +948,7 @@ def patch_collection(
         ("description", body.description),
         ("is_public", body.isPublic),
         ("editable", body.editable),
+        ("geometry_required", body.geometryRequired),
         ("ows_enabled", body.owsEnabled),
         ("license", body.license),
         ("license_uri", body.licenseUri),
@@ -974,7 +976,7 @@ def patch_collection(
     if body.keywords is not None:
         col.keywords = body.keywords
     if body.attachmentFields is not None:
-        col.attachment_fields = [f.model_dump() for f in body.attachmentFields]
+        col.attachment_fields = [f.model_dump(exclude_none=True) for f in body.attachmentFields]
     if new_domains is not None:
         col.field_domains = new_domains
     if new_subtypes is not None:

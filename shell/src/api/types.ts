@@ -662,7 +662,8 @@ export type CollectionFieldType =
 
 // ARC-13 : domaine d'attribut (liste de valeurs admises ou plage bornée incluse).
 export type FieldDomain =
-  { type: "list"; values: (string | number)[] } | { type: "range"; min?: number; max?: number };
+  | { type: "list"; values: (string | number)[]; labels?: Record<string, string> }
+  | { type: "range"; min?: number; max?: number };
 
 export type CollectionSubtypes = {
   field: string;
@@ -674,6 +675,8 @@ export type CollectionSubtypes = {
   }[];
 };
 
+export type AttachmentKind = "image" | "audio" | "video" | "file";
+
 export type CollectionSchemaField = {
   name: string;
   type: CollectionFieldType;
@@ -683,14 +686,37 @@ export type CollectionSchemaField = {
   itemType?: CollectionFieldType;
   label?: string;
   domain?: FieldDomain;
+  // L8 : nature d'un champ média (`type: "attachment"`), pilote accept/capture du formulaire.
+  kind?: AttachmentKind;
 };
 
 export type CollectionSchema = {
   collection: string;
   pk: string;
-  geometry: { column: string; type: string | null; srid: number } | null;
+  geometry: { column: string; type: string | null; srid: number; required?: boolean } | null;
   fields: CollectionSchemaField[];
   subtypes?: CollectionSubtypes;
+};
+
+// L8 : kit de collecte (GET /collections/{id}/collect-kit, GET /public/submit/{token}/kit) : tout
+// ce qu'il faut pour saisir et valider hors-ligne. Le kit public n'a ni `collection` ni `pk`.
+export type CollectRule = {
+  id: string;
+  kind: "constraint" | "calculation";
+  field?: string;
+  expression: string;
+  message?: string;
+};
+
+export type CollectKit = {
+  version: number;
+  title: string;
+  schema: Omit<CollectionSchema, "collection" | "pk"> & Partial<CollectionSchema>;
+  rules: CollectRule[];
+  geometryRequired: boolean;
+  updatedAt: string | null;
+  etag: string;
+  collectionId?: string;
 };
 
 // REV-117 : profil exploratoire d'une collection (GET /collections/{id}/profile).
@@ -1137,6 +1163,8 @@ export interface ItemClient {
     collectionId: string,
     fid: string,
     input: { key: string; fieldKey: string; filename: string; contentType: string },
+    // L8 : `idempotencyKey` (UUID) rend le rejeu d'une confirmation inoffensif (reprise hors-ligne).
+    opts?: { idempotencyKey?: string },
   ): Promise<AttachmentSummary>;
   listAttachments(
     collectionId: string,
@@ -1155,6 +1183,9 @@ export interface ItemClient {
   createFeature(
     collectionId: string,
     feature: GeoJSONFeatureInput,
+    // L8 : `idempotencyKey` (UUID) = opId d'une saisie hors-ligne ; un rejeu renvoie le même id.
+    // `offlineCreatedAt` : horodatage client (informatif, tracé dans l'audit).
+    opts?: { idempotencyKey?: string; offlineCreatedAt?: string },
   ): Promise<{ id: string | number }>;
   /** `opts.ifMatch` (ARC-04) : ETag lu via `getFeature` ; périmé = ApiError 412. */
   updateFeature(
@@ -1166,6 +1197,8 @@ export interface ItemClient {
   deleteFeature(collectionId: string, fid: string, opts?: { ifMatch?: string }): Promise<void>;
   /** Saisies créées par l'appelant (ARC-27), plus récentes d'abord. Optionnel : sans cœur. */
   listMyEntries?(collectionId: string, limit?: number): Promise<MyEntry[]>;
+  /** L8 : kit de collecte (schéma, règles) ; `null` = 304, le `etag` fourni est à jour. */
+  getCollectKit?(collectionId: string, etag?: string): Promise<CollectKit | null>;
   /** Import XLSForm -> collection + App de collecte mobile (ARC-27). Optionnel : sans cœur. */
   importXlsForm?(file: File): Promise<XlsFormImportResult>;
   /** Soumission publique modérée (ARC-10). Optionnels : absents d'un client sans cœur. */

@@ -39,6 +39,7 @@ export const coreEn: Record<keyof typeof fr, string> = {
   "docTitle.settings": "Settings",
   "docTitle.app": "App",
   "docTitle.embed": "Embedded content",
+  "docTitle.collect": "Collection",
   "docTitle.site": "Portal",
   "docTitle.publicItem": "Public item",
   "docTitle.publicDataset": "Public dataset",

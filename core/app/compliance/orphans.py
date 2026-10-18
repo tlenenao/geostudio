@@ -42,7 +42,7 @@ from app.export.models import ExportJob
 from app.ingestion.models import IngestionJob
 from app.items.models import Item
 from app.mapicons.models import MapIcon
-from app.public_submit.models import Submission
+from app.public_submit.models import Submission, SubmissionFile
 from app.raster.models import RasterAsset, RasterJob
 from app.terrain3d.models import Terrain3DJob
 from app.tileset3d.models import Tileset3DJob
@@ -98,6 +98,12 @@ def _alive_attachment_keys(session: Session, keys: set[str]) -> set[str]:
     alive |= set(
         session.scalars(
             select(Submission.attachment_key).where(Submission.attachment_key.in_(keys))
+        )
+    )
+    # L8 : fichiers multiples d'une soumission (jumelle de la colonne historique ci-dessus).
+    alive |= set(
+        session.scalars(
+            select(SubmissionFile.attachment_key).where(SubmissionFile.attachment_key.in_(keys))
         )
     )
     return alive

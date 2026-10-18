@@ -96,9 +96,15 @@ def test_thirty_questions_import_without_loss():
     assert types["horodatage"] == "timestamptz"
     assert types["ok"] == "boolean"
     assert by["photo"]["type"] == "attachment"
-    assert plan.attachment_fields == [{"key": "photo", "label": "Photo"}]
+    assert plan.attachment_fields == [{"key": "photo", "label": "Photo", "kind": "image"}]
     # liste de choix -> domaine
-    assert plan.field_domains["etat"] == {"type": "list", "values": ["bon", "degrade", "hs"]}
+    assert plan.field_domains["etat"] == {
+        "type": "list",
+        "values": ["bon", "degrade", "hs"],
+        "labels": {"bon": "Bon", "degrade": "Dégradé", "hs": "Hors service"},
+    }
+    assert types["usages"] == "text[]"  # select_multiple : tableau, plus de texte libre
+    assert plan.geometry_required is True  # géopoint required, plus « non imposée »
     # relevant -> CEL
     assert by["motif"]["visibleWhen"] == "etat == 'degrade'"
     assert by["gravite"]["visibleWhen"] == "etat != 'bon' && age > 18"
@@ -106,22 +112,38 @@ def test_thirty_questions_import_without_loss():
     assert by["nom"]["required"] is True and by["nom"]["hint"] == "Votre nom"
     assert [f["order"] for f in plan.form_fields] == sorted(f["order"] for f in plan.form_fields)
     # constraint -> règles ARC-14
-    rules = {r["field"]: r for r in plan.attribute_rules}
+    rules = {r["field"]: r for r in plan.attribute_rules if not r["id"].startswith("xf-req")}
     assert rules["age"]["expression"] == "age >= 0 && age <= 120"
     assert rules["age"]["message"] == "Âge entre 0 et 120"
     assert rules["surface"]["kind"] == "constraint"
     # rien de perdu en silence : les approximations sont déclarées
     msgs = " | ".join(r.message for r in plan.report)
-    assert "choix multiple" in msgs and "heure stockée comme texte" in msgs
+    assert "heure stockée comme texte" in msgs
+    assert "choix multiple" not in msgs and "géométrie requise" not in msgs
+    required = {r["field"]: r for r in plan.attribute_rules if r["id"].startswith("xf-req")}
+    assert set(required) == {"nom", "age", "etat"}
+    assert required["nom"]["expression"] == "nom != null && nom != ''"
+    assert required["age"]["expression"] == "age != null"
     assert not [r for r in plan.report if r.code == "not_ported"]
 
 
 def test_unsupported_items_are_reported_never_silently_dropped():
     survey = [
         HEAD + ("default", "calculation"),
-        ("text", "a", "A", None, None, "today() > ${b}", "regex(., '^[0-9]+$')", None, "x", None),
+        (
+            "text",
+            "a",
+            "A",
+            None,
+            None,
+            "today() > ${b}",
+            "pulldata(., 1) = 2",
+            None,
+            "today()",
+            None,
+        ),
         ("text", "b", "B", None, None, None, None, None, None, None),
-        ("calculate", "c", "C", None, None, None, None, None, None, "${b}"),
+        ("calculate", "c", "C", None, None, None, None, None, None, "today()"),
         ("note", "n", "Note", None, None, None, None, None, None, None),
         ("begin_repeat", "r", "R", None, None, None, None, None, None, None),
         ("text", "in_rep", "Dans repeat", None, None, None, None, None, None, None),
@@ -246,3 +268,175 @@ def test_translated_label_choice_ignores_column_order():
     assert _label({"label::français": "Nom", "label::english": "Name"}) == "Nom"
     assert _label({"label::german": "Name", "label::english": "Name en"}) == "Name en"
     assert _label({"label": "Base", "label::français": "Nom"}) == "Base"
+
+
+# ------------------------------------------------------------------ L8 T6 : fidélité XLSForm
+
+SURVEY_HEAD = ("type", "name", "label", "required", "relevant", "default", "calculation")
+
+
+def _plan(rows, choices=()):
+    return parse_xlsform(_book([SURVEY_HEAD, *rows], choices=choices))
+
+
+def _rule(plan, rid):
+    return next(r for r in plan.attribute_rules if r["id"] == rid)
+
+
+def test_choice_labels_prefer_fr_then_first_translation_and_are_optional():
+    plan = _plan(
+        [("select_one l", "x", "X", None, None, None, None)],
+        choices=[
+            ("list_name", "name", "label::en", "label::fr"),
+            ("l", "a", "Alpha", "Alfa"),
+            ("l", "b", "Beta", None),
+        ],
+    )
+    assert plan.field_domains["x"]["labels"] == {"a": "Alfa", "b": "Beta"}
+    plain = _plan(
+        [("select_one l", "x", "X", None, None, None, None)],
+        choices=[("list_name", "name"), ("l", "a"), ("l", "b")],
+    )
+    assert "labels" not in plain.field_domains["x"]
+
+
+def test_required_becomes_a_server_constraint_per_column_type():
+    plan = _plan(
+        [
+            ("text", "nom", "Nom", "yes", None, None, None),
+            ("integer", "n", "N", "yes", None, None, None),
+            ("select_multiple l", "m", "M", "yes", None, None, None),
+            ("text", "libre", "Libre", None, None, None, None),
+        ],
+        choices=[("list_name", "name"), ("l", "a")],
+    )
+    assert _rule(plan, "xf-required-nom")["expression"] == "nom != null && nom != ''"
+    assert _rule(plan, "xf-required-n")["expression"] == "n != null"
+    assert _rule(plan, "xf-required-m")["expression"] == "m != null && size(m) > 0"
+    assert not [r for r in plan.attribute_rules if r["id"].endswith("libre")]
+
+
+def test_required_under_relevant_is_only_enforced_when_the_field_is_visible():
+    plan = _plan(
+        [
+            ("text", "a", "A", None, None, None, None),
+            ("text", "b", "B", "yes", "${a} = 'x'", None, None),
+        ]
+    )
+    assert _rule(plan, "xf-required-b")["expression"] == "!(a == 'x') || (b != null && b != '')"
+
+
+def test_required_with_untranslatable_relevant_is_not_enforced_and_is_reported():
+    plan = _plan(
+        [
+            ("text", "a", "A", None, None, None, None),
+            ("text", "b", "B", "yes", "today() > ${a}", None, None),
+        ]
+    )
+    assert not [r for r in plan.attribute_rules if r["id"] == "xf-required-b"]
+    assert any(r.name == "b" and "required" in r.message for r in plan.report)
+
+
+def test_default_values_become_default_mode_rules():
+    plan = _plan(
+        [
+            ("integer", "i", "I", None, None, "7", None),
+            ("decimal", "d", "D", None, None, "2.5", None),
+            ("select_multiple l", "m", "M", None, None, "a b", None),
+            ("date", "j", "J", None, None, "today()", None),
+        ],
+        choices=[("list_name", "name"), ("l", "a"), ("l", "b")],
+    )
+    for field_, expr in {"i": "7", "d": "2.5", "m": "['a', 'b']"}.items():
+        r = _rule(plan, f"xf-default-{field_}")
+        assert (r["kind"], r["mode"], r["expression"]) == ("calculation", "default", expr)
+    assert any(r.name == "j" and r.code == "not_ported" for r in plan.report)
+
+
+def test_calculate_is_ported_as_a_derived_rule_with_an_inferred_column_type():
+    plan = _plan(
+        [
+            ("decimal", "l", "L", None, None, None, None),
+            ("decimal", "w", "W", None, None, None, None),
+            ("calculate", "aire", "Aire", None, None, None, "${l} * ${w}"),
+            ("calculate", "auj", "Auj", None, None, None, "today()"),
+        ]
+    )
+    types = {c["name"]: c["sqlType"] for c in plan.columns}
+    assert types["aire"] == "double precision"
+    r = _rule(plan, "xf-calc-aire")
+    assert (r["kind"], r["mode"], r["field"], r["expression"]) == (
+        "calculation",
+        "derived",
+        "aire",
+        "l * w",
+    )
+    assert "auj" not in types
+    assert any(r.name == "auj" and r.code == "not_ported" for r in plan.report)
+
+
+def test_geometry_required_is_a_plan_flag():
+    assert _plan([("geopoint", "g", "G", "yes", None, None, None)]).geometry_required is True
+    assert _plan([("geopoint", "g", "G", None, None, None, None)]).geometry_required is False
+
+
+def test_media_kinds_are_typed():
+    plan = _plan(
+        [
+            ("image", "p", "P", None, None, None, None),
+            ("audio", "a", "A", None, None, None, None),
+            ("video", "v", "V", None, None, None, None),
+            ("file", "f", "F", None, None, None, None),
+        ]
+    )
+    assert {f["key"]: f["kind"] for f in plan.attachment_fields} == {
+        "p": "image",
+        "a": "audio",
+        "v": "video",
+        "f": "file",
+    }
+    # le champ du formulaire porte la même nature (pilote accept/capture côté shell)
+    assert {f["name"]: f["kind"] for f in plan.form_fields} == {
+        "p": "image",
+        "a": "audio",
+        "v": "video",
+        "f": "file",
+    }
+
+
+# Parité : valeur de référence XPath (calculée à la main) contre l'évaluation CEL réelle.
+_PARITY = [
+    ("if(${n} > 3, 'grand', 'petit')", {"n": 5, "s": "abc"}, "grand"),
+    ("if(${n} > 3, 'grand', 'petit')", {"n": 1, "s": "abc"}, "petit"),
+    ("string-length(${s})", {"n": 1, "s": "abcd"}, 4),
+    ("string-length(${s})", {"n": 1, "s": ""}, 0),
+    ("coalesce(${s}, 'defaut')", {"n": 1, "s": "x"}, "x"),
+    ("coalesce(${s}, 'defaut')", {"n": 1, "s": None}, "defaut"),
+    ("regex(${s}, '^[0-9]+$')", {"n": 1, "s": "123"}, True),
+    ("regex(${s}, '^[0-9]+$')", {"n": 1, "s": "12a"}, False),
+    ("regex(${s}, '[0-9]')", {"n": 1, "s": "ab1"}, True),  # XPath : non ancré
+    ("${n} mod 3", {"n": 10, "s": ""}, 1),
+    ("not(${n} = 1) and ${n} < 9", {"n": 5, "s": ""}, True),
+]
+
+
+@pytest.mark.parametrize(("xpath", "props", "expected"), _PARITY)
+def test_to_cel_matches_xpath_reference_values(xpath, props, expected):
+    from app.collections.introspection import ColumnInfo, TableInfo
+    from app.features.cel_rules import evaluate
+
+    names = {"n": "n", "s": "s", "t": "t"}
+    info = TableInfo(
+        table_name="x",
+        pk_column="id",
+        geometry_column=None,
+        geometry_type=None,
+        srid=None,
+        columns=[ColumnInfo(name=k, type="string", required=False) for k in names],
+    )
+    assert evaluate(info, to_cel(xpath, names), props) == expected
+
+
+def test_today_has_no_cel_equivalent_and_is_refused():
+    with pytest.raises(Exception, match="today"):
+        to_cel("today()", {})
