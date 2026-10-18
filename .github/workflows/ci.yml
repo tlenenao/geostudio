@@ -115,7 +115,7 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles app/net_pin.py
+      - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles app/net_pin.py app/ratelimit app/sql_ident.py app/bbox.py app/errors.py app/filter_values.py app/cell_safety.py app/job_timeouts.py app/ogc_crs.py app/egress_guard.py app/job_errors.py app/jobs/engine.py app/jobs/after_commit.py
       # P27.09 : retention.py (rotation des sauvegardes) vit hors de
       # `testpaths = ["tests"]` — sans cette ligne, aucun job ne le garde.
       - run: uv run pytest --no-cov ../deploy/backup/test_retention.py
@@ -131,8 +131,9 @@ jobs:
         with:
           name: core-coverage
           path: core/coverage.xml
-      - name: Mypy (périmètre large, non bloquant)
-        run: uv run mypy app/ || true
+      # AUD-125 : cliquet par fichier (core/.mypy-baseline.json) — plus de `|| true`.
+      - name: Mypy (périmètre large, cliquet sans régression)
+        run: (uv run mypy app/ || true) | uv run python scripts/mypy_ratchet.py .mypy-baseline.json
       - run: uv run lint-imports
 
   # A20 (feuille de route §8) promet une conformité STAC « vérifiée par

@@ -4,6 +4,7 @@
 
 import logging
 import os
+from typing import Any
 
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -47,7 +48,7 @@ def database_reachable() -> bool:
     return True
 
 
-def jobs_backlog() -> dict | None:
+def jobs_backlog() -> dict[str, Any] | None:
     """Santé de la file procrastinate (t02-013/j09-014) : nombre de jobs `todo` et
     âge du plus ancien, au total et PAR FILE (`queues`) : un worker arrêté se voit à
     un âge qui grandit sur SA file, même si les workers des autres files tournent.
