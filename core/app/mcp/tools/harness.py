@@ -26,6 +26,7 @@ from app.audit.context import args_sha256, audit_extra
 from app.audit.writer import write_audit
 from app.db import request_scoped_session
 from app.mcp.tools.identity import McpToolError, resolve_actor
+from app.mcp.tools.write_tools import tool_annotations
 
 logger = logging.getLogger(__name__)
 
@@ -101,8 +102,6 @@ class _InstrumentedServer:
         return getattr(self._server, attr)
 
     def tool(self, *args, **kwargs):
-        register = self._server.tool(*args, **kwargs)
-
         def decorator(fn):
             @functools.wraps(fn)
             async def run(*a, **kw):
@@ -129,7 +128,11 @@ class _InstrumentedServer:
 
                 return await anyio.to_thread.run_sync(in_thread)
 
-            register(run)
+            # AUD-105 : annotations dérivées du registre `@write_tool` (posé avant ce
+            # décorateur, donc déjà à jour ici) — un client agent peut demander
+            # confirmation avant tout outil non en lecture seule.
+            kwargs.setdefault("annotations", tool_annotations(fn.__name__))
+            self._server.tool(*args, **kwargs)(run)
             return fn
 
         return decorator

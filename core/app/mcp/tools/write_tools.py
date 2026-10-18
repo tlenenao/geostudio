@@ -37,7 +37,39 @@ tool d'écriture oublié (ni le garde, ni le décorateur) reste indétectable
 par ce mécanisme seul — cf. la note de falsification dans
 `test_mcp_read_only_mode.py`."""
 
+from mcp.types import ToolAnnotations
+
 WRITE_TOOL_NAMES: set[str] = set()
+
+# AUD-105 : écritures qui détruisent ou remplacent un état existant (les autres
+# écritures ne font que créer ou déclencher).
+DESTRUCTIVE_TOOL_NAMES = frozenset(
+    {"delete_secret", "set_sharing", "save_app_config", "update_item"}
+)
+# Outils qui parlent à un service tiers (LLM, géocodeur, routage).
+OPEN_WORLD_TOOL_NAMES = frozenset(
+    {
+        "generate_sql_query",
+        "generate_visual_query",
+        "generate_cel_expression",
+        "generate_attribute_rule",
+        "geocode",
+        "geocode_batch",
+        "route",
+        "isochrone",
+        "service_area",
+        "travel_matrix",
+    }
+)
+
+
+def tool_annotations(name: str) -> ToolAnnotations:
+    write = name in WRITE_TOOL_NAMES
+    return ToolAnnotations(
+        readOnlyHint=not write,
+        destructiveHint=name in DESTRUCTIVE_TOOL_NAMES if write else None,
+        openWorldHint=name in OPEN_WORLD_TOOL_NAMES,
+    )
 
 
 def write_tool[F](fn: F) -> F:
