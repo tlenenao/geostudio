@@ -19,6 +19,8 @@
   body {
     background-color: var(--gs-background);
     color: var(--gs-ink);
+    /* AUD-126 : police d'identité (Archivo) enfin appliquée ; la toile d'app garde --gs-font. */
+    font-family: var(--font-ui);
   }
 }
 
