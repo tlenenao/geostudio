@@ -11,6 +11,7 @@ de réutiliser une file déjà dans cette liste."""
 import logging
 import os
 
+from app.collect.repository import purge_expired as purge_expired_client_ops
 from app.compliance.models import PurgeReceipt
 from app.compliance.orphans import sweep_orphan_job_objects
 from app.compliance.purge import purge_tenant, retry_pending_s3_purges
@@ -87,6 +88,17 @@ def purge_entity_history_task(timestamp: int) -> None:
         session.commit()
     if n:
         logging.getLogger(__name__).info("%d version(s) d'historique expirée(s) purgée(s)", n)
+
+
+@app.periodic(cron="53 3 * * *")
+@app.task(queue="etl", queueing_lock="purge_collect_client_ops_task")
+def purge_collect_client_ops_task(timestamp: int) -> None:
+    """Rétention de 30 j des clés d'idempotence de collecte (L8, AUD-004)."""
+    with request_scoped_session(_session_factory()) as session:
+        n = purge_expired_client_ops(session)
+        session.commit()
+    if n:
+        logging.getLogger(__name__).info("%d clé(s) d'idempotence de collecte purgée(s)", n)
 
 
 @app.periodic(cron="17 * * * *")
