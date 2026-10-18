@@ -21,7 +21,7 @@ import math
 import re
 import threading
 from collections import OrderedDict
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -682,7 +682,7 @@ class AggregateBusy(Exception):
 
 
 @contextlib.contextmanager
-def _tenant_slot(tenant_id: str):
+def _tenant_slot(tenant_id: str) -> Iterator[None]:
     with _slots_lock:
         sem = _slots.setdefault(tenant_id, threading.BoundedSemaphore(_TENANT_SLOTS))
     if not sem.acquire(timeout=_SLOT_WAIT_SECONDS):

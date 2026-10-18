@@ -18,7 +18,7 @@ import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import defusedxml.ElementTree
 import numpy as np
@@ -988,7 +988,7 @@ def parse_xml_generic(
         effective_mode: GeometryMode | None = None
         # Les éléments hors du sous-arbre d'un enregistrement sont retirés de leur parent dès
         # leur fermeture : seul le fil courant reste en mémoire.
-        stack: list[tuple[str, int, object]] = []
+        stack: list[tuple[str, int, Any]] = []
         seq = 0
         i = 0
         for event, elem in defusedxml.ElementTree.iterparse(io.BytesIO(content), ("start", "end")):
