@@ -48,6 +48,18 @@ test("un fond xyz: déclare des glyphs (étiquettes, clusters, mesures) — AUD-
   expect(typeof style === "object" && style.glyphs).toContain("{fontstack}/{range}.pbf");
 });
 
+test("AUD-126 : le fond vierge lit le jeton --gs-map-land (thème clair/sombre)", () => {
+  document.documentElement.style.setProperty("--gs-map-land", "#16242a");
+  try {
+    const style = resolveBasemapStyle(BLANK_BASEMAP.style);
+    expect(typeof style === "object" && style.layers[0].paint).toEqual({
+      "background-color": "#16242a",
+    });
+  } finally {
+    document.documentElement.style.removeProperty("--gs-map-land");
+  }
+});
+
 test("le fond vierge est rendu en ligne, sans URL (export statique, desktop)", () => {
   const style = resolveBasemapStyle(BLANK_BASEMAP.style);
   expect(typeof style).toBe("object");
