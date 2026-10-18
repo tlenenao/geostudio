@@ -37,7 +37,9 @@ def test_ensure_built_in_roles_is_idempotent_and_covers_the_four_profiles():
         # spec §3.3, décision explicite : purge de tenant, irréversible —
         # jamais glissé silencieusement dans un rôle prédéfini).
         assert roles["admin"].privileges == [
-            p.value for p in Privilege if p != Privilege.COMPLIANCE_MANAGE
+            p.value
+            for p in Privilege
+            if p not in (Privilege.COMPLIANCE_MANAGE, Privilege.ADMIN_QUOTAS_MANAGE)
         ]
         assert roles["reader"].privileges == ["analytics.view"]
         assert all(r.is_built_in for r in roles.values())

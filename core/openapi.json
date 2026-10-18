@@ -8533,6 +8533,73 @@
         "title": "Subtypes",
         "type": "object"
       },
+      "TenantLimitsBody": {
+        "description": "SP-L4 : plafonds propres au tenant ; `null` retombe sur la limite d'instance.",
+        "properties": {
+          "maxActiveRuns": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxactiveruns"
+          },
+          "maxCollections": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxcollections"
+          },
+          "maxItems": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxitems"
+          },
+          "maxStorageBytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxstoragebytes"
+          },
+          "maxUsers": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxusers"
+          }
+        },
+        "title": "TenantLimitsBody",
+        "type": "object"
+      },
       "Terrain3DPayload": {
         "properties": {
           "originalFilename": {
@@ -9450,6 +9517,60 @@
           }
         },
         "summary": "Get Usage",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/usage/limits": {
+      "put": {
+        "description": "Remplace les plafonds du tenant de l'appelant (PUT complet, audit\u00e9).",
+        "operationId": "put_tenant_limits_v1_admin_usage_limits_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantLimitsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantLimitsBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Tenant Limits",
         "tags": [
           "admin"
         ]

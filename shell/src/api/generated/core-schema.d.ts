@@ -89,6 +89,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/usage/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Tenant Limits
+         * @description Remplace les plafonds du tenant de l'appelant (PUT complet, audité).
+         */
+        put: operations["put_tenant_limits_v1_admin_usage_limits_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/alerts/{item_id}/evaluate": {
         parameters: {
             query?: never;
@@ -6069,6 +6089,22 @@ export interface components {
             /** Items */
             items: components["schemas"]["SubtypeItem"][];
         };
+        /**
+         * TenantLimitsBody
+         * @description SP-L4 : plafonds propres au tenant ; `null` retombe sur la limite d'instance.
+         */
+        TenantLimitsBody: {
+            /** Maxactiveruns */
+            maxActiveRuns?: number | null;
+            /** Maxcollections */
+            maxCollections?: number | null;
+            /** Maxitems */
+            maxItems?: number | null;
+            /** Maxstoragebytes */
+            maxStorageBytes?: number | null;
+            /** Maxusers */
+            maxUsers?: number | null;
+        };
         /** Terrain3DPayload */
         Terrain3DPayload: {
             /** Originalfilename */
@@ -6420,6 +6456,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsageSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_tenant_limits_v1_admin_usage_limits_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantLimitsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantLimitsBody"];
                 };
             };
             /** @description Validation Error */

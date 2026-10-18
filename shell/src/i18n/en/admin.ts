@@ -65,6 +65,7 @@ export const adminEn: Record<keyof typeof admin, string> = {
   "roles.privilege.settingsInstanceManage": "Manage instance and tenant settings",
   "roles.privilege.complianceManage": "Purge all of a tenant's data (GDPR, irreversible)",
   "roles.privilege.dataViewSensitive": "View sensitive fields",
+  "roles.privilege.adminQuotasManage": "Change the tenant quotas",
   "roles.privilege.itemsPublish": "Publish an item (public or catalog)",
   "roles.privilege.unknown": "Unknown privilege",
   "roles.loadError": "Failed to load roles.",
