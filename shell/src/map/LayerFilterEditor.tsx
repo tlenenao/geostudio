@@ -6,6 +6,15 @@ import "../i18n/domains/map";
 
 type Scalar = string | number | boolean;
 const OPS: LayerFilterClause["op"][] = ["eq", "ne", "gt", "gte", "lt", "lte", "in"];
+const OP_LABELS = {
+  eq: "layersPanel.filterOpEq",
+  ne: "layersPanel.filterOpNe",
+  gt: "layersPanel.filterOpGt",
+  gte: "layersPanel.filterOpGte",
+  lt: "layersPanel.filterOpLt",
+  lte: "layersPanel.filterOpLte",
+  in: "layersPanel.filterOpIn",
+} as const;
 const scalar = (v: string): Scalar => (v.trim() !== "" && !isNaN(Number(v)) ? Number(v) : v);
 
 export function parseFilterValue(
@@ -52,7 +61,7 @@ export function LayerFilterEditor({
           >
             {OPS.map((o) => (
               <option key={o} value={o}>
-                {t(`layersPanel.filterOp.${o}`)}
+                {t(OP_LABELS[o])}
               </option>
             ))}
           </select>
