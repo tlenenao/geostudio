@@ -323,6 +323,9 @@ export const map = {
   "popupEditor.fieldsListButton": "Liste de champs",
   "popupEditor.advancedButton": "Avancé (gabarit)",
   "popupEditor.templateLabel": "Gabarit",
+  "popupEditor.templateHelpAria": "Aide sur le gabarit de popup",
+  "popupEditor.templateHelpBody":
+    "Texte en markdown ; chaque ${expression} est évaluée en CEL. Exemple : **${record.nom}** : ${record.population} habitants. Les variables d'une app sont accessibles via vars.nom.",
   "popupEditor.exprHint":
     "Markdown ; chaque ${expression} est évaluée sur l'entité cliquée, par exemple ${record.nom}.",
 

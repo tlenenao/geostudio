@@ -6,6 +6,7 @@ import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
 import { resolvePipelineEditorPath } from "./resolvePipelineEditorPath";
 import type { Item, ResourceType } from "../api/types";
 import { editorPath } from "./editorPath";
+import { recordRecentItem } from "./recentItems";
 
 // Shared by CatalogRoute (general catalog) and BookmarksRoute ("Mes vues"):
 // a bookmark has no editor (SP-14m — no edit flow for this kind), so opening
@@ -24,6 +25,7 @@ export function useOpenItem() {
   const client = useItemClient();
   const [openError, setOpenError] = useState(false);
   const openItemAsync = async (pk: string, type: ResourceType, item?: Item) => {
+    if (item?.title) recordRecentItem({ pk, type, title: item.title });
     if (type === "bookmark") {
       try {
         const bookmark = await client.getBookmarkConfig(pk);

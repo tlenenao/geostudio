@@ -8,7 +8,8 @@ import { DOMAIN_PATHS } from "../../shell/chrome/domainRoutes";
 import { SETTINGS_LINKS } from "../../shell/chrome/SettingsNav";
 import { holdsAnyPrivilege } from "../../auth/holdsAnyPrivilege";
 import { useItems, useMe } from "../../api/hooks";
-import { editorPath } from "../../shell/editorPath";
+import { useOpenItem } from "../../shell/useOpenItem";
+import { readRecentItems } from "../../shell/recentItems";
 import { t } from "../../i18n";
 
 type CommandItem = { id: string; label: string; run: () => void };
@@ -35,6 +36,7 @@ export function CommandPalette({
   profile: Profile;
 }) {
   const navigate = useNavigate();
+  const { onOpenItem } = useOpenItem();
   const meQuery = useMe();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -94,6 +96,18 @@ export function CommandPalette({
     { q: debounced, pageSize: 5 },
     { enabled: open && debounced.length >= 2 },
   );
+  // AUD-119 : à saisie vide, les derniers items ouverts (relus à chaque ouverture).
+  const recents = useMemo<CommandItem[]>(
+    () =>
+      open
+        ? readRecentItems().map((r) => ({
+            id: `recent:${r.pk}`,
+            label: r.title,
+            run: () => onOpenItem(r.pk, r.type),
+          }))
+        : [],
+    [open, onOpenItem],
+  );
   const filtered = useMemo(() => {
     const local = items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase()));
     const found: CommandItem[] =
@@ -101,11 +115,11 @@ export function CommandPalette({
         ? (itemsQuery.data?.items ?? []).map((it) => ({
             id: `item:${it.pk}`,
             label: it.title,
-            run: () => void navigate(editorPath(it.pk, it.resourceType, it)),
+            run: () => onOpenItem(it.pk, it.resourceType, it),
           }))
         : [];
-    return [...local, ...found];
-  }, [items, query, debounced, itemsQuery.data, navigate]);
+    return query.trim() === "" ? [...recents, ...local] : [...local, ...found];
+  }, [items, recents, query, debounced, itemsQuery.data, onOpenItem]);
 
   function commit(item: CommandItem) {
     item.run();

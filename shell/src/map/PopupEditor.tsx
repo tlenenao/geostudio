@@ -7,6 +7,7 @@ import { closingBrace } from "./popupTemplate";
 import { Button } from "../ui/kit/Button";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { labelCls, inputCls } from "./formFieldStyles";
+import { HelpHint } from "../ui/kit/HelpHint";
 import { t } from "../i18n";
 import "../i18n/domains/map";
 
@@ -218,8 +219,14 @@ export function PopupEditor({
                 onChange={(e) => onChange({ ...value, template: e.target.value })}
               />
             </label>
-            <span id={hintId} className="text-xs text-ink-3">
-              {t("popupEditor.exprHint")}
+            <span className="flex items-center gap-1">
+              <span id={hintId} className="text-xs text-ink-3">
+                {t("popupEditor.exprHint")}
+              </span>
+              {/* hors du <label> : le nom accessible du gabarit n'inclut pas le bouton d'aide */}
+              <HelpHint label={t("popupEditor.templateHelpAria")}>
+                {t("popupEditor.templateHelpBody")}
+              </HelpHint>
             </span>
           </div>
         </div>
