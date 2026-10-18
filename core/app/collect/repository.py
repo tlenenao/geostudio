@@ -73,4 +73,4 @@ def purge_expired(session: Session, *, now: datetime | None = None) -> int:
     """Rétention de 30 jours (balayage cron des opérations déjà rejouables)."""
     cutoff = (now or datetime.now(UTC)).replace(tzinfo=None) - timedelta(days=RETENTION_DAYS)
     res = session.execute(delete(CollectClientOp).where(CollectClientOp.created_at < cutoff))
-    return res.rowcount or 0
+    return int(getattr(res, "rowcount", 0) or 0)

@@ -191,10 +191,10 @@ def _translate(toks: list[tuple[str, str]], names: dict[str, str], current: str 
             elif low == "selected" and nxt == "(":
                 # selected(${f}, 'v') ; valide seulement pour select_one (valeur unique)
                 try:
-                    ref, comma, lit, close = (toks[i + 2], toks[i + 3], toks[i + 4], toks[i + 5])
+                    ref, comma, lit, rparen = (toks[i + 2], toks[i + 3], toks[i + 4], toks[i + 5])
                 except IndexError as exc:
                     raise _Unsupported("selected() mal formé") from exc
-                if ref[0] != "ref" or comma[1] != "," or lit[0] != "str" or close[1] != ")":
+                if ref[0] != "ref" or comma[1] != "," or lit[0] != "str" or rparen[1] != ")":
                     raise _Unsupported("selected() mal formé")
                 name = ref[1][2:-1].strip()
                 if name not in names:
@@ -276,8 +276,10 @@ def _infer_sql_type(expr: str, names: dict[str, str], col_types: dict[str, str])
         return "text"
     if ops and ref_types <= {"double precision", "integer"}:
         return "double precision"
-    if not ops and len(toks) == 1 and len(ref_types) == 1 and None not in ref_types:
-        return next(iter(ref_types))  # simple recopie d'un autre champ
+    if not ops and len(toks) == 1 and len(ref_types) == 1:
+        only = next(iter(ref_types))
+        if only is not None:
+            return only  # simple recopie d'un autre champ
     raise _Unsupported("type du résultat indéterminé")
 
 
@@ -511,13 +513,18 @@ def parse_xlsform(content: bytes) -> XlsFormPlan:
             rep.append(ReportItem("renamed", f"renommé en {name}", row, raw))
         label = _label(q) or raw
         labels = _translations(q, "label")
-        for k in q:
+        for qkey in q:
             # Langue hors fr/en : non conservée (toujours « ignorée » si un label de base existe).
-            if k.startswith("label::") and q[k] and q.get("label") and q[k] not in labels.values():
-                rep.append(ReportItem("ignored", f"traduction {k} ignorée", row, raw))
-        for c in _UNSUPPORTED_COLS:
-            if q.get(c):
-                rep.append(ReportItem("not_ported", f"colonne {c} non portée", row, raw))
+            if (
+                qkey.startswith("label::")
+                and q[qkey]
+                and q.get("label")
+                and q[qkey] not in labels.values()
+            ):
+                rep.append(ReportItem("ignored", f"traduction {qkey} ignorée", row, raw))
+        for col in _UNSUPPORTED_COLS:
+            if q.get(col):
+                rep.append(ReportItem("not_ported", f"colonne {col} non portée", row, raw))
 
         entry: dict[str, Any] = {
             "name": name,

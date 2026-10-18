@@ -120,6 +120,12 @@ describe("desktop-etl golden path", () => {
     // features) mais le budget global doit couvrir ce pire cas de démarrage.
     this.timeout(180_000);
 
+    // 0. Langue : le shell suit `navigator.language` (L11, AUD-115) et le
+    // WebView2 des runners CI est en anglais, alors que les sélecteurs de ce
+    // test sont les libellés français. On épingle la préférence puis on recharge.
+    await browser.execute(() => localStorage.setItem("gs.locale", "fr"));
+    await browser.refresh();
+
     // 1. Signal de disponibilité : la palette n'apparaît qu'une fois la
     // connexion au sidecar établie et le catalogue d'op chargé -- doit
     // dépasser le budget de getSidecarConnectionWithRetry (45s, entry.tsx).
