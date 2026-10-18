@@ -55,7 +55,7 @@ from app.notifications.models import Notification, NotificationPreference
 from app.outbox.models import FileTrigger, FileTriggerSeen, OutboundWebhook, OutboxEvent
 from app.pipelines import checkpoints
 from app.pipelines.models import PipelineRun
-from app.public_submit.models import Submission, SubmissionToken
+from app.public_submit.models import Submission, SubmissionFile, SubmissionToken
 from app.quality.models import QualityReport
 from app.quotas.models import TenantLimits
 from app.raster.models import RasterAsset, RasterJob
@@ -258,6 +258,7 @@ def purge_tenant(
     counts["report_runs"] = _delete_all(session, ReportRun, tenant_id)
     counts["harvest_records"] = _delete_all(session, HarvestRecord, tenant_id)
     counts["configs"] = _delete_all(session, Config, tenant_id)
+    counts["submission_files"] = _delete_all(session, SubmissionFile, tenant_id)
     counts["submissions"] = _delete_all(session, Submission, tenant_id)
     counts["submission_tokens"] = _delete_all(session, SubmissionToken, tenant_id)
     session.flush()

@@ -227,3 +227,77 @@ def test_0162_geometry_required_defaults_false_on_existing_rows_and_round_trips(
         assert cols == 0
         assert conn.scalar(sa.text("SELECT count(*) FROM collections")) == 1
     command.upgrade(cfg, "head")
+
+
+def test_0163_keeps_pending_submissions_and_enforces_client_op_uniqueness(migrate):
+    cfg, engine = migrate
+    command.upgrade(cfg, "0162")
+    with engine.begin() as conn:
+        _base(conn)
+        _insert(
+            conn,
+            "submission_tokens",
+            id="tk1",
+            tenant_id="t1",
+            collection_id="c1",
+            created_by="u1",
+            name="f",
+            token_prefix="gss_x",
+            expires_at=sa.text("now()"),
+        )
+        _insert(
+            conn,
+            "submissions",
+            id="s1",
+            tenant_id="t1",
+            collection_id="c1",
+            token_id="tk1",
+            status="pending",
+            payload="{}",
+            attachment='{"fieldKey": "photo"}',
+            attachment_key="t1/c1/pending-x/a.png",
+        )
+    command.upgrade(cfg, "0163")
+    with engine.begin() as conn:  # soumission en attente conservée, client_op_id nul
+        assert conn.scalar(sa.text("SELECT client_op_id FROM submissions WHERE id = 's1'")) is None
+        _insert(
+            conn,
+            "submissions",
+            id="s2",
+            tenant_id="t1",
+            collection_id="c1",
+            token_id="tk1",
+            status="pending",
+            payload="{}",
+            client_op_id="op",
+        )
+        _insert(
+            conn,
+            "submissions",
+            id="s3",
+            tenant_id="t1",
+            collection_id="c1",
+            token_id="tk1",
+            status="pending",
+            payload="{}",
+        )  # plusieurs NULL autorisés
+        _insert(
+            conn, "submission_files", id="f1", tenant_id="t1", submission_id="s1", field_key="photo"
+        )
+    with pytest.raises(IntegrityError), engine.begin() as conn:
+        _insert(
+            conn,
+            "submissions",
+            id="s4",
+            tenant_id="t1",
+            collection_id="c1",
+            token_id="tk1",
+            status="pending",
+            payload="{}",
+            client_op_id="op",
+        )
+    command.downgrade(cfg, "0162")
+    with engine.begin() as conn:
+        assert conn.scalar(sa.text("SELECT count(*) FROM submissions")) == 3
+        assert conn.scalar(sa.text("SELECT to_regclass('submission_files')")) is None
+    command.upgrade(cfg, "head")

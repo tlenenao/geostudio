@@ -448,6 +448,9 @@ ignore_imports = [
     # AppExportJob) — lecture pure de modèles, même rationale que les
     # exemptions app.analytics.* -> app.collections.introspection plus bas.
     "app.quotas.service -> app.collections.models",
+    # L8 : le défi de preuve de travail dérive sa clé HMAC de la clé maîtresse du coffre (lecture
+    # d'une fonction pure, aucun accès aux secrets stockés) — pas de nouveau secret à configurer.
+    "app.collect.pow -> app.secrets.crypto",
     # P26.03 : le quota d'items est contrôlé au point unique de création
     # (items.repository.create_item) ; quotas.service n'importe que items.models.
     "app.items.repository -> app.quotas.service",

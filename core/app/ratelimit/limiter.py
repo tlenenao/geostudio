@@ -86,6 +86,8 @@ _ZONAL_RE = re.compile(r"^/v1/raster/[^/]+/zonal-stats$")
 # AUD-154 : soumission publique anonyme — budget propre, indexé sur l'IP (/64 en
 # IPv6) quel que soit l'en-tête Authorization présenté.
 _PUBLIC_SUBMIT_RE = re.compile(r"^/v1/public/submit/[^/]+$")
+# L8 : kit et défi PoW de la page de collecte, même budget par IP que le POST.
+_PUBLIC_SUBMIT_READ_RE = re.compile(r"^/v1/public/submit/[^/]+/(kit|challenge)$")
 
 # Budgets par groupe de coût réel (requêtes / 60s). Réutilise _EXPORT_PATH_RE
 # de app.main pour le groupe "jobs" plutôt que de le redéfinir ici.
@@ -193,7 +195,9 @@ def route_group(
         return "tiles"
     if method == "POST" and _ZONAL_RE.match(path):
         return "zonal"
-    if method == "POST" and _PUBLIC_SUBMIT_RE.match(path):
+    if (method == "POST" and _PUBLIC_SUBMIT_RE.match(path)) or (
+        method == "GET" and _PUBLIC_SUBMIT_READ_RE.match(path)
+    ):
         return "public-submit"
     # REV-299 (c) : le jeton invité X-Share-Link-Token est aussi présenté en
     # en-tête sur les routes d'items/configs — même budget par IP que la route publique.

@@ -1462,6 +1462,17 @@
       },
       "Body_submit_v1_public_submit__token__post": {
         "properties": {
+          "clientOpId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clientopid"
+          },
           "fieldKey": {
             "anyOf": [
               {
@@ -1472,6 +1483,20 @@
               }
             ],
             "title": "Fieldkey"
+          },
+          "fieldKeys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fieldkeys"
           },
           "file": {
             "anyOf": [
@@ -1485,10 +1510,41 @@
             ],
             "title": "File"
           },
+          "files": {
+            "default": [],
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
           "payload": {
             "description": "GeoJSON Feature (JSON)",
             "title": "Payload",
             "type": "string"
+          },
+          "powChallenge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Powchallenge"
+          },
+          "powNonce": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pownonce"
           },
           "website": {
             "default": "",
@@ -10403,6 +10459,57 @@
         ]
       }
     },
+    "/v1/collections/{collection_id}/collect-kit": {
+      "get": {
+        "description": "Kit de collecte hors-ligne (L8) : sch\u00e9ma, domaines, r\u00e8gles, champs m\u00e9dia typ\u00e9s. Droit de\nLECTURE requis ; champs sensibles masqu\u00e9s comme `GET .../schema` (GAP-22). L'autorisation\nd'\u00e9criture reste v\u00e9rifi\u00e9e \u00e0 l'envoi : le client ne s'y fie jamais. ETag fort + 304.",
+        "operationId": "collect_kit_v1_collections__collection_id__collect_kit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Collect Kit",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
     "/v1/collections/{collection_id}/export": {
       "post": {
         "operationId": "export_collection_aggregate_v1_collections__collection_id__export_post",
@@ -13472,6 +13579,22 @@
             "schema": {
               "title": "Submission Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fileId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fileid"
             }
           },
           {
@@ -18900,6 +19023,88 @@
           }
         },
         "summary": "Submit",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/v1/public/submit/{token}/challenge": {
+      "get": {
+        "description": "D\u00e9fi de preuve de travail (hashcash) \u00e0 joindre au POST ; jamais mis en cache.",
+        "operationId": "public_challenge_v1_public_submit__token__challenge_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Challenge",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/v1/public/submit/{token}/kit": {
+      "get": {
+        "description": "Kit de collecte public (L8) : sch\u00e9ma sans nom de table ni champ sensible, aucune donn\u00e9e.",
+        "operationId": "public_kit_v1_public_submit__token__kit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Kit",
         "tags": [
           "public"
         ]

@@ -2,14 +2,16 @@
 """Collecte terrain (ARC-27) : import XLSForm -> collection + App formulaire mobile, et liste
 « mes saisies » (créations journalisées de l'appelant, ARC-15)."""
 
+import json
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.collect.kit import build_kit, if_none_match_hits
 from app.collections.domains import check_domain_config, check_rules_config, with_attribute_rules
 from app.collections.provisioning import create_empty_collection
 from app.collections.routes import (
@@ -18,7 +20,7 @@ from app.collections.routes import (
     get_introspector,
 )
 from app.collections.schemas import AttributeRule, EmptyCollectionColumn, FieldDomain
-from app.collections.sensitive import masked_fields_for
+from app.collections.sensitive import masked_fields_for, may_read_sensitive
 from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.service import create_config_service
 from app.db import get_session
@@ -137,3 +139,28 @@ def my_entries(
             for r in rows
         ]
     }
+
+
+@router.get("/collections/{collection_id}/collect-kit")
+def collect_kit(
+    collection_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+    introspect: Callable = Depends(get_introspector),
+):
+    """Kit de collecte hors-ligne (L8) : schéma, domaines, règles, champs média typés. Droit de
+    LECTURE requis ; champs sensibles masqués comme `GET .../schema` (GAP-22). L'autorisation
+    d'écriture reste vérifiée à l'envoi : le client ne s'y fie jamais. ETag fort + 304."""
+    col = get_collection_for_read(session, user, collection_id)
+    kit = build_kit(
+        session,
+        col,
+        introspect,
+        sees_sensitive=may_read_sensitive(session, user, col),
+        public=False,
+    )
+    headers = {"ETag": f'"{kit["etag"]}"', "Cache-Control": "private, no-cache"}
+    if if_none_match_hits(request.headers.get("if-none-match"), kit["etag"]):
+        return Response(status_code=304, headers=headers)
+    return Response(content=json.dumps(kit), media_type="application/json", headers=headers)

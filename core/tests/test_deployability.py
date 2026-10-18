@@ -425,6 +425,9 @@ ENV_WIRING_EXEMPTIONS = {
     # Couture de test : permet de lire des partitions CDC depuis le disque
     # local au lieu de S3 (tests analytiques). Jamais réglée en production.
     "S3_CDC_BUCKET_BASE_URI",
+    # L8 : éteint la preuve de travail de la soumission publique — réservé aux tests
+    # (tests/conftest.py), jamais câblé en production où la preuve est toujours exigée.
+    "CORE_PUBLIC_SUBMIT_POW_DISABLED",
     # Lues par l'image mini-serveur de l'export autoporté (SP-18c), dont le
     # docker-compose est **généré** par build_standalone_bundle_zip et livré
     # dans le zip — pas celui de ce dépôt.

@@ -7,11 +7,22 @@ collection). Modération et gestion des jetons : authentifiées, droit d'écritu
 
 import copy
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 
 from botocore.exceptions import ClientError
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -27,6 +38,8 @@ from app.attachments.routes import (
 )
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.collect import pow as collect_pow
+from app.collect.kit import build_kit, if_none_match_hits
 from app.collections.domains import with_attribute_rules
 from app.collections.introspection import hide_sensitive_columns
 from app.collections.models import Collection
@@ -46,7 +59,7 @@ from app.features.validation import validate_for_write
 from app.history import service as history
 from app.ingestion.storage import ensure_uploads_bucket
 from app.public_submit import service
-from app.public_submit.models import Submission, SubmissionToken
+from app.public_submit.models import Submission, SubmissionFile, SubmissionToken
 from app.quotas.service import enforce_storage_quota
 from app.ratelimit.limiter import ip_bucket
 from app.sharing.geo_limits import refuse_if_geo_limited
@@ -55,6 +68,7 @@ from app.upload_sniff import HEAD_BYTES, allowed_for_kind, looks_executable, sni
 router = APIRouter()
 
 _ACCEPTED = {"status": "pending"}
+_CLIENT_OP_RE = re.compile(r"[0-9a-fA-F-]{32,40}")
 
 
 # --------------------------------------------------------------------------- public
@@ -67,7 +81,13 @@ def submit(
     payload: str = Form(..., description="GeoJSON Feature (JSON)"),
     website: str = Form("", description="honeypot : doit rester vide"),
     fieldKey: str | None = Form(None),  # noqa: N803
+    # fieldKeys : un par fichier de `files`, dans l'ordre
+    fieldKeys: list[str] | None = Form(None),  # noqa: N803, B008
+    clientOpId: str | None = Form(None),  # noqa: N803
+    powChallenge: str | None = Form(None),  # noqa: N803
+    powNonce: str | None = Form(None),  # noqa: N803
     file: UploadFile | None = File(None),
+    files: list[UploadFile] = File(default=[]),
     session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
     s3=Depends(get_s3_client),
@@ -90,6 +110,16 @@ def submit(
     col = get_collection(session, tenant_id=row.tenant_id, collection_id=row.collection_id)
     if col is None or not col.editable:
         raise HTTPException(status_code=410, detail="submission link expired or revoked")
+    if clientOpId is not None and not _CLIENT_OP_RE.fullmatch(clientOpId):
+        raise _validation_error(
+            [{"field": "clientOpId", "code": "invalid", "message": "clientOpId must be a UUID"}]
+        )
+    if service.find_replay(session, row, clientOpId):
+        return _ACCEPTED  # rejeu hors-ligne : déjà reçue, aucun slot ni fichier de plus
+    if not collect_pow.disabled() and not collect_pow.verify(
+        row.token_prefix, powChallenge or "", powNonce or ""
+    ):
+        raise HTTPException(status_code=403, detail="proof of work missing, invalid or expired")
     if len(payload.encode()) > service.MAX_PAYLOAD_BYTES:
         raise HTTPException(status_code=413, detail="payload too large")
     try:
@@ -106,27 +136,96 @@ def submit(
     )
     if errors := validate_for_write(info, copy.deepcopy(feature)):
         raise _validation_error(errors)
-    # Quota réservé AVANT tout envoi S3 : un jeton épuisé n'écrit rien. Un échec ensuite
-    # (fichier refusé, S3) annule la transaction, donc la réservation avec.
-    if not service.reserve_slot(session, row):
-        raise HTTPException(status_code=429, detail="submission quota exhausted")
-    attachment, attachment_key = None, None
-    if file is not None and file.filename:
-        attachment, attachment_key = _store_attachment(session, s3, col, file, fieldKey)
-    sub = service.create_submission(
-        session,
-        token=row,
-        payload={
-            "properties": feature.get("properties") or {},
-            "geometry": feature.get("geometry"),
-        },
-        attachment=attachment,
-        attachment_key=attachment_key,
-    )
-    del sub
+    uploads = [f for f in ([file] if file is not None else []) + files if f.filename]
+    if len(uploads) > service.MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"at most {service.MAX_FILES} files")
+    keys = list(fieldKeys or []) if fieldKeys else [fieldKey] * len(uploads)
+    if len(keys) != len(uploads):
+        raise HTTPException(status_code=400, detail="fieldKeys must match the files one to one")
+    # Quota réservé AVANT tout envoi S3 : un jeton épuisé n'écrit rien. Le tout dans un
+    # SAVEPOINT : un échec (fichier refusé, S3, course sur clientOpId) annule la réservation.
+    stored: list[tuple[dict, str]] = []
+    try:
+        with session.begin_nested():
+            if not service.reserve_slot(session, row):
+                raise HTTPException(status_code=429, detail="submission quota exhausted")
+            total = 0
+            for up, key_name in zip(uploads, keys, strict=True):
+                meta, s3_key = _store_attachment(
+                    session, s3, col, up, key_name, max_bytes=service.MAX_FILE_BYTES
+                )
+                stored.append((meta, s3_key))
+                total += meta["byteSize"]
+                if total > service.MAX_TOTAL_BYTES:
+                    raise HTTPException(status_code=413, detail="files too large (> 25 MB total)")
+            service.create_submission(
+                session,
+                token=row,
+                payload={
+                    "properties": feature.get("properties") or {},
+                    "geometry": feature.get("geometry"),
+                },
+                files=stored,
+                client_op_id=clientOpId,
+            )
+    except IntegrityError:
+        for _meta, k in stored:
+            _delete_object(s3, k)
+        return _ACCEPTED  # course sur le même clientOpId : l'autre requête a gagné
+    except Exception:
+        for _meta, k in stored:
+            _delete_object(s3, k)
+        raise
     service.token_limiter.allow(token)  # revue SP-L2 I4 : seule une soumission acceptée compte
     service.notify_moderators(session, col)
     return _ACCEPTED
+
+
+def _usable_token(session: Session, token: str) -> SubmissionToken:
+    """Mêmes garanties que le POST : 404 jeton inconnu, 410 expiré/révoqué ; ne décompte aucun
+    slot. Budget par IP : groupe `public-submit` du middleware (le kit et le défi y sont inclus,
+    donc le brute-force du jeton n'est jamais gratuit)."""
+    row = service.find_token(session, token)
+    if row is None:
+        raise HTTPException(status_code=404, detail="submission link not found")
+    if not service.token_is_usable(row):
+        raise HTTPException(status_code=410, detail="submission link expired or revoked")
+    return row
+
+
+@router.get("/public/submit/{token}/kit")
+def public_kit(
+    token: str,
+    request: Request,
+    session: Session = Depends(get_session, scope="function"),
+    introspect=Depends(get_introspector),
+):
+    """Kit de collecte public (L8) : schéma sans nom de table ni champ sensible, aucune donnée."""
+    row = _usable_token(session, token)
+    col = get_collection(session, tenant_id=row.tenant_id, collection_id=row.collection_id)
+    if col is None or not col.editable:
+        raise HTTPException(status_code=410, detail="submission link expired or revoked")
+    kit = build_kit(session, col, introspect, sees_sensitive=False, public=True)
+    headers = {"ETag": f'"{kit["etag"]}"', "Cache-Control": "private, no-cache"}
+    if if_none_match_hits(request.headers.get("if-none-match"), kit["etag"]):
+        return Response(status_code=304, headers=headers)
+    return Response(content=json.dumps(kit), media_type="application/json", headers=headers)
+
+
+@router.get("/public/submit/{token}/challenge")
+def public_challenge(
+    token: str,
+    session: Session = Depends(get_session, scope="function"),
+):
+    """Défi de preuve de travail (hashcash) à joindre au POST ; jamais mis en cache."""
+    row = _usable_token(session, token)
+    return Response(
+        content=json.dumps(
+            {**collect_pow.issue(row.token_prefix), "required": not collect_pow.disabled()}
+        ),
+        media_type="application/json",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def _delete_object(s3, key: str) -> None:
@@ -136,7 +235,15 @@ def _delete_object(s3, key: str) -> None:
         pass
 
 
-def _store_attachment(session, s3, col: Collection, file: UploadFile, field_key: str | None):
+def _store_attachment(
+    session,
+    s3,
+    col: Collection,
+    file: UploadFile,
+    field_key: str | None,
+    *,
+    max_bytes: int = MAX_ATTACHMENT_BYTES,
+):
     declared = [f["key"] for f in col.attachment_fields]
     if not declared:
         raise HTTPException(status_code=400, detail="this collection does not accept attachments")
@@ -145,9 +252,11 @@ def _store_attachment(session, s3, col: Collection, file: UploadFile, field_key:
         raise HTTPException(status_code=400, detail=f"unknown attachment field: {field_key}")
     filename = file.filename or "fichier"
     _reject_dangerous_extension(filename)
-    data = file.file.read(MAX_ATTACHMENT_BYTES + 1)
-    if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=413, detail="fichier trop volumineux (> 25 Mo)")
+    data = file.file.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status_code=413, detail=f"fichier trop volumineux (> {max_bytes // (1024 * 1024)} Mo)"
+        )
     content_type = sniff_content_type(data[:HEAD_BYTES])
     kind = next((f.get("kind") for f in col.attachment_fields if f["key"] == key_name), None)
     if looks_executable(data[:HEAD_BYTES]) or not allowed_for_kind(content_type, kind):
@@ -251,13 +360,40 @@ def revoke_submission_token(
         )
 
 
-def _submission_json(s: Submission) -> dict:
+def _files_by_submission(session: Session, ids: list[str]) -> dict[str, list[SubmissionFile]]:
+    out: dict[str, list[SubmissionFile]] = {}
+    if not ids:
+        return out
+    for f in session.scalars(
+        select(SubmissionFile)
+        .where(SubmissionFile.submission_id.in_(ids))
+        .order_by(SubmissionFile.id)
+    ):
+        out.setdefault(f.submission_id, []).append(f)
+    return out
+
+
+def _file_json(f: SubmissionFile) -> dict:
+    meta = f.attachment or {}
+    return {
+        "id": f.id,
+        "fieldKey": f.field_key,
+        "filename": meta.get("filename"),
+        "contentType": meta.get("contentType"),
+        "byteSize": meta.get("byteSize"),
+    }
+
+
+def _submission_json(s: Submission, files: list[SubmissionFile] | None = None) -> dict:
     return {
         "id": s.id,
         "status": s.status,
         "properties": (s.payload or {}).get("properties", {}),
         "geometry": (s.payload or {}).get("geometry"),
-        "attachment": s.attachment,
+        # compat : l'ancien champ unique reste renseigné (premier fichier), clients d'avant L8
+        "attachment": s.attachment
+        or next((f.attachment for f in files or [] if f.attachment), None),
+        "files": [_file_json(f) for f in files or [] if f.attachment],
         "createdAt": _iso(s.created_at),
         "moderatedBy": s.moderated_by,
         "moderatedAt": _iso(s.moderated_at),
@@ -309,8 +445,9 @@ def list_submissions(
         )
         .order_by(Submission.created_at)
         .limit(200)
-    )
-    return {"submissions": [_submission_json(r) for r in rows]}
+    ).all()
+    files = _files_by_submission(session, [r.id for r in rows])
+    return {"submissions": [_submission_json(r, files.get(r.id)) for r in rows]}
 
 
 @router.get("/collections/{collection_id}/submissions/{submission_id}/attachment")
@@ -321,18 +458,29 @@ def read_submission_attachment(
     session: Session = Depends(get_session, scope="function"),
     s3=Depends(get_s3_client),
     geo_limits=Depends(get_request_geo_limits),
+    fileId: str | None = Query(default=None),  # noqa: N803  (L8 : un des fichiers multiples)
 ):
     col = _get_moderable(session, user, collection_id, geo_limits)
     sub = _get_submission(session, col, submission_id)
-    if sub.status != "pending" or not sub.attachment_key or not sub.attachment:
+    meta, key = sub.attachment, sub.attachment_key
+    if fileId is not None:
+        f = session.get(SubmissionFile, fileId)
+        if f is None or f.submission_id != sub.id:
+            raise HTTPException(status_code=404, detail="attachment not found")
+        meta, key = f.attachment, f.attachment_key
+    elif not meta:  # compat : sans fileId, le premier fichier (anciens clients de la modération)
+        first = next(iter(_files_by_submission(session, [sub.id]).get(sub.id, [])), None)
+        if first is not None:
+            meta, key = first.attachment, first.attachment_key
+    if sub.status != "pending" or not key or not meta:
         raise HTTPException(status_code=404, detail="attachment not found")
     try:
-        obj = s3.get_object(Bucket=get_attachments_bucket(), Key=sub.attachment_key)
+        obj = s3.get_object(Bucket=get_attachments_bucket(), Key=key)
     except ClientError as exc:
         raise HTTPException(status_code=404, detail="attachment file not found") from exc
     return Response(
         content=obj["Body"].read(),
-        media_type=sub.attachment["contentType"],
+        media_type=meta["contentType"],
         headers={
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
@@ -393,19 +541,21 @@ def approve_submission(
         text("UPDATE collections SET feature_count = feature_count + 1 WHERE id = :id"),
         {"id": col.id},
     )
-    if sub.attachment and sub.attachment_key:
+    for meta, key in _submission_attachments(session, sub):
         attachments_repo.create_attachment(
             session,
             tenant_id=col.tenant_id,
             collection_id=col.id,
             fid=str(fid),
-            field_key=sub.attachment["fieldKey"],
-            filename=sub.attachment["filename"],
-            content_type=sub.attachment["contentType"],
-            byte_size=sub.attachment["byteSize"],
-            s3_key=sub.attachment_key,
+            field_key=meta["fieldKey"],
+            filename=meta["filename"],
+            content_type=meta["contentType"],
+            byte_size=meta["byteSize"],
+            s3_key=key,
             created_by=user.id,
         )
+    for f in session.scalars(select(SubmissionFile).where(SubmissionFile.submission_id == sub.id)):
+        f.attachment = None  # attachment_key conservée : la pièce jointe reste vivante
     sub.status = "approved"
     sub.moderated_by = user.id
     sub.moderated_at = datetime.now(UTC).replace(tzinfo=None)
@@ -426,6 +576,21 @@ def approve_submission(
     return {"fid": str(fid)}
 
 
+def _submission_attachments(session: Session, sub: Submission) -> list[tuple[dict, str]]:
+    """Tous les fichiers d'une soumission : ancienne colonne (avant L8) puis `submission_files`."""
+    out: list[tuple[dict, str]] = []
+    if sub.attachment and sub.attachment_key:
+        out.append((sub.attachment, sub.attachment_key))
+    for f in session.scalars(
+        select(SubmissionFile)
+        .where(SubmissionFile.submission_id == sub.id)
+        .order_by(SubmissionFile.id)
+    ):
+        if f.attachment and f.attachment_key:
+            out.append((f.attachment, f.attachment_key))
+    return out
+
+
 class RejectBody(BaseModel):
     reason: str = Field(default="", max_length=500)
 
@@ -444,6 +609,11 @@ def reject_submission(
     sub = _get_submission(session, col, submission_id)
     if sub.status != "pending":
         raise HTTPException(status_code=409, detail="submission already moderated")
+    for f in session.scalars(select(SubmissionFile).where(SubmissionFile.submission_id == sub.id)):
+        if f.attachment_key:
+            _delete_object(s3, f.attachment_key)
+        f.attachment = None
+        f.attachment_key = None
     if sub.attachment_key:
         _delete_object(s3, sub.attachment_key)
     sub.status = "rejected"
