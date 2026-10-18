@@ -725,4 +725,9 @@ export const widgetsEn: Record<keyof typeof widgets, string> = {
   "navigation.unsavedChangesMessage":
     "You have unsaved changes. Are you sure you want to leave this page?",
   "navigation.leaveAnyway": "Leave without saving",
+  "atlas.truncated": "Atlas truncated: {shown} pages out of {total} entities (maxPages cap).",
+  "printLayout.dpiLabel": "Export resolution",
+  "widgetHost.lakePending":
+    "Replication in progress: aggregates for this collection are not up to date yet.",
+  "widgetHost.lakeStale": "Aggregates as of {date} (replication lagging).",
 };

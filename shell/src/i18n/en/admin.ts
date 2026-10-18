@@ -486,4 +486,8 @@ export const adminEn: Record<keyof typeof admin, string> = {
     "The GeoJSON only contains the first {count} features out of {total}.",
   "datasetDownload.tooLarge":
     "Dataset too large for browser CSV export — server-side export coming soon (SP-15).",
+  "editCollection.keywordsLabel": "Keywords (comma-separated)",
+  "editCollection.inspireThemeLabel": "INSPIRE theme",
+  "editCollection.noInspireThemeOption": "None",
+  "newItem.bindSource": "Collection for \u201c{source}\u201d",
 };

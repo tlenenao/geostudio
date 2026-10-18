@@ -265,4 +265,8 @@ export const coreEn: Record<keyof typeof fr, string> = {
   "jobStatus.retrying": "Retry scheduled",
   "jobStatus.unknown": "Unknown",
   "docTitle.publicCatalog": "Public catalog",
+  "settings.apiKeyReadOnly": "Read-only",
+  "compliance.eraseConfirmMismatch":
+    "The username entered does not match the account to anonymize.",
+  "compliance.confirmUsernameLabel": "Account username (confirmation)",
 };

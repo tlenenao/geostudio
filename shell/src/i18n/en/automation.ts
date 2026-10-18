@@ -453,4 +453,22 @@ export const automationEn: Record<keyof typeof automation, string> = {
     "{node}: requires either the withCollectionId parameter or a secondary edge.",
   "pipelineValidation.noSecondaryAllowed": "{node} does not accept a secondary edge.",
   "copilot.mcpTokenError": "Unable to obtain an MCP token (signinSilent failed).",
+  "harvest.typeUdata": "data.gouv.fr (udata)",
+  "pipelinePreview.truncated": "Preview limited to the first {count} rows.",
+  "pipelineCanvas.connectRefusedIncoming":
+    "Connection refused: this node input is already connected.",
+  "pipelineCanvas.connectRefusedCycle": "Connection refused: it would create a loop.",
+  "pipelineRun.unsavedWarning": "Unsaved changes: \u201cRun\u201d runs the saved version.",
+  "pipelineBuilder.createTargetCollection": "Create a collection from this flow",
+  "pipelineBuilder.createTargetCollectionFailed": "Unable to create the collection.",
+  "pipelineSchedule.timezone": "Time zone",
+  "pipelineSchedule.suspended":
+    "Schedule suspended after 3 consecutive failures: a successful manual run restores it.",
+  "lineage.title": "Lineage",
+  "lineage.loading": "Loading lineage\u2026",
+  "lineage.upstream": "Sources",
+  "lineage.downstream": "Used by",
+  "lineage.none": "None",
+  "lineage.hiddenOne": "{n} item hidden (insufficient permissions)",
+  "lineage.hiddenMany": "{n} items hidden (insufficient permissions)",
 };

@@ -292,4 +292,6 @@ export const mapEn: Record<keyof typeof map, string> = {
 
   "thumbnailUpload.notAnImageError": "The file must be an image.",
   "thumbnailUpload.tooLargeError": "The image exceeds 2 MB.",
+  "layersPanel.minZoom": "Min zoom",
+  "layersPanel.maxZoom": "Max zoom",
 };
