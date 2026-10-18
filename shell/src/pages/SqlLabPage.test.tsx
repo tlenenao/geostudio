@@ -570,3 +570,38 @@ test("REV-216 : une entrée d'historique en erreur annonce « Statut : Échoué 
   render(<Harness />);
   expect(await screen.findByText("Statut : Échoué")).toBeInTheDocument();
 });
+
+test("AUD-062 : enregistre la requête sous un nom, la recharge et la supprime", async () => {
+  const saved: { id: string; name: string; sql: string }[] = [];
+  let posted: unknown;
+  server.use(
+    http.get("https://core.test/v1/analytics/sql/saved", () =>
+      HttpResponse.json(
+        saved.map((q) => ({ ...q, createdAt: "2026-10-19T00:00:00Z", updatedAt: "" })),
+      ),
+    ),
+    http.post("https://core.test/v1/analytics/sql/saved", async ({ request }) => {
+      posted = await request.json();
+      saved.push({ id: "q1", ...(posted as { name: string; sql: string }) });
+      return HttpResponse.json({ ...saved[0], createdAt: "", updatedAt: "" }, { status: 201 });
+    }),
+    http.delete("https://core.test/v1/analytics/sql/saved/q1", () => {
+      saved.length = 0;
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  render(<Harness />);
+  const editor = await screen.findByRole("textbox", { name: "Requête SQL" });
+  await userEvent.type(editor, "select 1");
+  await userEvent.type(screen.getByRole("textbox", { name: "Nom d'enregistrement" }), "Mon test");
+  await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+  await waitFor(() => expect(posted).toEqual({ name: "Mon test", sql: "select 1" }));
+  const load = await screen.findByRole("button", {
+    name: "Charger la requête enregistrée « Mon test »",
+  });
+  await userEvent.click(load);
+  await userEvent.click(
+    screen.getByRole("button", { name: "Supprimer la requête enregistrée « Mon test »" }),
+  );
+  expect(await screen.findByText("Aucune requête enregistrée.")).toBeInTheDocument();
+});
