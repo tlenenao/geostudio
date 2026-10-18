@@ -271,3 +271,61 @@ def test_delete_extension_requires_privilege_is_audited_and_404s_when_unknown_j0
     with Session() as s:
         actions = s.scalars(select(AuditLog.action).where(AuditLog.object_id == "acme.gauge")).all()
     assert "extension.delete" in actions
+
+
+SRI = "sha384-" + "A" * 64
+
+
+def test_manifest_v1_defaults_and_round_trip_aud_109_110(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    created = client.post("/v1/extensions", json=GAUGE_BODY).json()
+    assert created["sdkVersion"] == 1
+    assert created["integrity"] is None
+    assert created["connectHosts"] == [] and created["imgHosts"] == []
+
+    body = {
+        **GAUGE_BODY,
+        "id": "acme.full",
+        "integrity": SRI,
+        "connectHosts": ["https://api.example.org"],
+        "imgHosts": ["https://cdn.example.org:8443"],
+    }
+    full = client.post("/v1/extensions", json=body).json()
+    assert full["integrity"] == SRI
+    assert full["connectHosts"] == ["https://api.example.org"]
+    listed = {e["id"]: e for e in client.get("/v1/extensions").json()["extensions"]}
+    assert listed["acme.full"]["imgHosts"] == ["https://cdn.example.org:8443"]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"sdkVersion": 2},
+        {"integrity": "md5-abc"},
+        {"connectHosts": ["http://insecure.example.org"]},
+        {"connectHosts": ["https://api.example.org/path"]},
+        {"imgHosts": ["https://*.example.org"]},
+        {"imgHosts": ["https://x.example.org; script-src *"]},
+    ],
+)
+def test_manifest_v1_rejects_bad_values(env, extra):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    assert client.post("/v1/extensions", json={**GAUGE_BODY, **extra}).status_code == 422
+
+
+def test_patch_updates_v1_fields_and_null_resets_defaults(env):
+    app, client, _, admin, _regular = env
+    _as(app, admin)
+    client.post("/v1/extensions", json=GAUGE_BODY)
+    patched = client.patch(
+        "/v1/extensions/acme.gauge",
+        json={"integrity": SRI, "connectHosts": ["https://api.example.org"], "sdkVersion": 1},
+    ).json()
+    assert patched["integrity"] == SRI and patched["connectHosts"] == ["https://api.example.org"]
+    cleared = client.patch(
+        "/v1/extensions/acme.gauge", json={"integrity": None, "connectHosts": None}
+    ).json()
+    assert cleared["integrity"] is None and cleared["connectHosts"] == []
+    assert client.patch("/v1/extensions/acme.gauge", json={"sdkVersion": 2}).status_code == 422

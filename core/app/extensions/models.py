@@ -2,7 +2,7 @@
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -32,6 +32,16 @@ class Extension(Base):
     actions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     default_size: Mapped[dict] = mapped_column(JSON, nullable=False)
     permissions: Mapped[dict] = mapped_column(JSON, nullable=False)
+    sdk_version: Mapped[int] = mapped_column(
+        Integer, default=1, nullable=False, server_default=sa.text("1")
+    )
+    integrity: Mapped[str | None] = mapped_column(String, nullable=True)
+    connect_hosts: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False, server_default=sa.text("'[]'")
+    )
+    img_hosts: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False, server_default=sa.text("'[]'")
+    )
     enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default=sa.true()
     )

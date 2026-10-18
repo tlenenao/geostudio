@@ -4157,11 +4157,17 @@ export interface components {
         ExtensionCreate: {
             /** Actions */
             actions?: string[] | null;
+            /** Connecthosts */
+            connectHosts?: string[];
             defaultSize: components["schemas"]["ExtensionSize"];
             /** Events */
             events?: string[] | null;
             /** Id */
             id: string;
+            /** Imghosts */
+            imgHosts?: string[];
+            /** Integrity */
+            integrity?: string | null;
             /** Label */
             label: string;
             /** Moduleurl */
@@ -4177,6 +4183,12 @@ export interface components {
              * @default []
              */
             props: components["schemas"]["ExtensionProp"][];
+            /**
+             * Sdkversion
+             * @default 1
+             * @constant
+             */
+            sdkVersion: 1;
             /** Tag */
             tag: string;
         };
@@ -4184,11 +4196,17 @@ export interface components {
         ExtensionPatch: {
             /** Actions */
             actions?: string[] | null;
+            /** Connecthosts */
+            connectHosts?: string[] | null;
             defaultSize?: components["schemas"]["ExtensionSize"] | null;
             /** Enabled */
             enabled?: boolean | null;
             /** Events */
             events?: string[] | null;
+            /** Imghosts */
+            imgHosts?: string[] | null;
+            /** Integrity */
+            integrity?: string | null;
             /** Label */
             label?: string | null;
             /** Moduleurl */
@@ -4196,6 +4214,8 @@ export interface components {
             permissions?: components["schemas"]["ExtensionPermissions"] | null;
             /** Props */
             props?: components["schemas"]["ExtensionProp"][] | null;
+            /** Sdkversion */
+            sdkVersion?: 1 | null;
             /** Tag */
             tag?: string | null;
         };
