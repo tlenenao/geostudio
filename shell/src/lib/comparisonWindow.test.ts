@@ -94,3 +94,45 @@ test("windowedStatisticsSource carries groupBy/bucket through untouched", () => 
   );
   expect(source.query).toMatchObject({ groupBy: "date", bucket: "day", agg: "count" });
 });
+
+test("AUD-059 : la comparaison garde les filtres propres de la source d'origine, pas sa mesure ni sa fenêtre", () => {
+  const dataset: DatasetConfig = {
+    source: "collection",
+    collectionId: "events",
+    columns: {},
+    timeField: "date",
+  };
+  const origin = {
+    id: "src-1",
+    type: "statistics" as const,
+    service: "core",
+    layer: "",
+    datasetId: "ds-1",
+    query: {
+      agg: "avg",
+      field: "age",
+      groupBy: "region",
+      region__in: "Nord,Sud",
+      date__gte: "1999-01-01",
+      geomIntersects: { type: "Polygon", coordinates: [] },
+    },
+  };
+  const source = windowedStatisticsSource(
+    "src-1",
+    "ds-1",
+    dataset,
+    EMPTY_ANALYTICS_CONTEXT,
+    { from: "2026-01-01", to: "2026-01-31" },
+    { agg: "sum", field: "pop" },
+    origin,
+  );
+  expect(source.query).toMatchObject({
+    agg: "sum",
+    field: "pop",
+    region__in: "Nord,Sud",
+    geomIntersects: { type: "Polygon", coordinates: [] },
+    date__gte: "2026-01-01",
+    date__lte: "2026-01-31",
+  });
+  expect(source.query.groupBy).toBeUndefined();
+});

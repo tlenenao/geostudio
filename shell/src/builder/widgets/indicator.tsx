@@ -57,6 +57,7 @@ function useKpiComparison(
   sparklineEnabled: boolean,
   agg: string,
   field: string,
+  origin?: DataSource,
 ): KpiComparison {
   const client = useItemClient();
   const analyticsCtx = useAnalyticsContext();
@@ -80,6 +81,7 @@ function useKpiComparison(
           analyticsCtx,
           timeRange as { from: string; to: string },
           { agg, field: field || undefined },
+          origin,
         )
       : null;
   const valueQuery = useQuery({
@@ -100,6 +102,7 @@ function useKpiComparison(
         analyticsCtx,
         referenceRange,
         { agg, field: field || undefined },
+        origin,
       )
     : null;
   const referenceQuery = useQuery({
@@ -123,6 +126,7 @@ function useKpiComparison(
             agg,
             field: field || undefined,
           },
+          origin,
         )
       : null;
   const sparklineQuery = useQuery({
@@ -349,6 +353,7 @@ export function registerIndicatorWidget(): void {
         sparklineEnabled,
         agg,
         field,
+        data?.resolvedSource,
       );
 
       if (!data && props.dataSourceId) return <SourceMissing />;
