@@ -1,0 +1,9 @@
+{
+ "psycopg": "LGPL-3.0, lien dynamique non modifié (driver Postgres)",
+ "psycopg-binary": "idem psycopg (wheel binaire)",
+ "psycopg-pool": "idem psycopg",
+ "psycopg2-binary": "LGPL avec exceptions, driver Postgres, lien dynamique",
+ "pymssql": "LGPL-2.1, connecteur reader.connector.mssql, lien dynamique, op expérimentale",
+ "pyinstaller": "outil de build desktop-etl (dépendance de développement, exception bootloader GPL explicite) : jamais embarqué dans les images",
+ "pyinstaller-hooks-contrib": "idem pyinstaller (hooks de build, dépendance de développement)"
+}

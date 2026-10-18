@@ -10,13 +10,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv==0.11.21
 
 RUN groupadd --system app && useradd --system --gid app --home-dir /opt/geostudio-home --create-home app
 ENV HOME=/opt/geostudio-home
 
-COPY pyproject.toml ./
-RUN uv pip install --system --no-cache -r pyproject.toml
+# AUD-111 : versions figées par uv.lock (même fichier que core/Dockerfile, donc couvertes
+# par le `pip-audit` de la CI) — plus de résolution flottante à chaque rebuild.
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-dev --no-hashes --no-emit-project -o /tmp/requirements.txt \
+  && uv pip install --system --no-cache -r /tmp/requirements.txt
 RUN python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL httpfs'); c.execute('INSTALL spatial'); c.execute('INSTALL h3 FROM community')"
 RUN python -m playwright install --with-deps chromium
 

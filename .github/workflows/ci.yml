@@ -250,6 +250,8 @@ jobs:
       # comme client via databricks-sql-connector, qui épingle <4). À retirer
       # dès que databricks-sql-connector accepte oauthlib>=4.
       - run: uv run pip-audit --strict --ignore-vuln PYSEC-2026-4114
+      # AUD-111 : GPL/AGPL refusées, LGPL seulement si déclarée dans license-exceptions.json.
+      - run: uv run python scripts/check_licenses.py license-exceptions.json
 
   api-types-drift:
     runs-on: ubuntu-latest
@@ -408,6 +410,7 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=high --json > npm-audit.json || true
       - run: node scripts/check-npm-audit.mjs npm-audit.json
+      - run: node scripts/check-licenses.mjs
 
   feature-health:
     runs-on: ubuntu-latest
