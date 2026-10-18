@@ -24,7 +24,10 @@ export type OutboxEntry = {
   updatedAt: number;
   state: OutboxState;
   attempts: number;
+  /** Raison du dernier échec (`FailureReason` de decision.ts) ; traduite par l'UI. */
   lastError: string | null;
+  /** Détail brut renvoyé par le serveur, affiché tel quel dans « détails de l'erreur ». */
+  lastDetail?: string;
   fieldErrors?: FieldProblem[];
   nextTryAt: number;
   serverFid?: string;

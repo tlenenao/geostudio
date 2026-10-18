@@ -116,7 +116,14 @@ export async function getEntry(ownerKey: string, opId: string): Promise<OutboxEn
 export type EntryPatch = Partial<
   Pick<
     OutboxEntry,
-    "payload" | "state" | "attempts" | "lastError" | "fieldErrors" | "nextTryAt" | "serverFid"
+    | "payload"
+    | "state"
+    | "attempts"
+    | "lastError"
+    | "lastDetail"
+    | "fieldErrors"
+    | "nextTryAt"
+    | "serverFid"
   >
 >;
 
@@ -152,7 +159,10 @@ export async function listBlobs(ownerKey: string, opId: string): Promise<BlobRec
   const rows = await inTx(["blobs"], "readonly", (tx) =>
     wrap(tx.objectStore("blobs").index("opId").getAll(opId)),
   );
-  return mine(rows as BlobRecord[], ownerKey);
+  // Ordre stable (l'index renvoie par blobId aléatoire) : l'envoi et l'affichage ne dansent pas.
+  return mine(rows as BlobRecord[], ownerKey).sort(
+    (a, b) => a.fieldKey.localeCompare(b.fieldKey) || a.name.localeCompare(b.name),
+  );
 }
 
 /** Pièce jointe confirmée par le serveur : persisté avant de passer à la suivante (reprise exacte). */

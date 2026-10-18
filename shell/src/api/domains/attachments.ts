@@ -32,11 +32,14 @@ export function createAttachmentsMethods(base: ItemClientBase): AttachmentsMetho
       collectionId: string,
       fid: string,
       input: { key: string; fieldKey: string; filename: string; contentType: string },
+      opts?: { idempotencyKey?: string },
     ): Promise<AttachmentSummary> {
       return request<AttachmentSummary>(
         "POST",
         `/collections/${collectionId}/items/${fid}/attachments`,
         input,
+        undefined,
+        opts?.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : undefined,
       );
     },
 

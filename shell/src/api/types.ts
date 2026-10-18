@@ -1110,6 +1110,8 @@ export interface ItemClient {
     collectionId: string,
     fid: string,
     input: { key: string; fieldKey: string; filename: string; contentType: string },
+    // L8 : `idempotencyKey` (UUID) rend le rejeu d'une confirmation inoffensif (reprise hors-ligne).
+    opts?: { idempotencyKey?: string },
   ): Promise<AttachmentSummary>;
   listAttachments(
     collectionId: string,
@@ -1128,6 +1130,9 @@ export interface ItemClient {
   createFeature(
     collectionId: string,
     feature: GeoJSONFeatureInput,
+    // L8 : `idempotencyKey` (UUID) = opId d'une saisie hors-ligne ; un rejeu renvoie le même id.
+    // `offlineCreatedAt` : horodatage client (informatif, tracé dans l'audit).
+    opts?: { idempotencyKey?: string; offlineCreatedAt?: string },
   ): Promise<{ id: string | number }>;
   /** `opts.ifMatch` (ARC-04) : ETag lu via `getFeature` ; périmé = ApiError 412. */
   updateFeature(
