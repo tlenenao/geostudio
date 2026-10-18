@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItemClient } from "../../api/types";
+import { ApiError } from "../../api/ApiError";
 import { ItemClientProvider } from "../../api/ItemClientProvider";
 import { ExportPanel } from "./ExportPanel";
 import { expectAriaWired } from "../../test/expectAriaWired";
@@ -35,6 +36,21 @@ describe("ExportPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "PDF" }));
     await waitFor(() =>
       expect(createExport).toHaveBeenCalledWith("item-1", "pdf", { ctx: "eyJhIjoxfQ" }),
+    );
+  });
+
+  it("ctx refusé en 422 : message dédié sur les filtres trop volumineux", async () => {
+    const createExport = vi.fn().mockRejectedValue(new ApiError(422));
+    const client = { createExport } as unknown as ItemClient;
+    render(
+      <ItemClientProvider client={client}>
+        <ExportPanel itemId="item-1" ctx="eyJhIjoxfQ" />
+      </ItemClientProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Exporter" }));
+    await userEvent.click(screen.getByRole("button", { name: "PDF" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /filtres actifs sont trop volumineux/,
     );
   });
 
