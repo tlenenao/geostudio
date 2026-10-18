@@ -629,6 +629,9 @@ export function createDesktopItemClient(connection: {
     async getUnreadNotificationCount(..._args: unknown[]) {
       return unsupported();
     },
+    async subscribeNotifications(..._args: unknown[]) {
+      return unsupported();
+    },
     async markNotificationRead(..._args: unknown[]) {
       return unsupported();
     },

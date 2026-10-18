@@ -19025,6 +19025,48 @@
         ]
       }
     },
+    "/v1/notifications/stream": {
+      "get": {
+        "description": "SSE : pousse le compte de non-lues \u00e0 chaque changement (repli : sondage).",
+        "operationId": "get_notifications_stream_v1_notifications_stream_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Notifications Stream",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
     "/v1/notifications/unread-count": {
       "get": {
         "operationId": "get_unread_count_v1_notifications_unread_count_get",
