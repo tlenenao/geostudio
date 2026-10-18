@@ -154,7 +154,7 @@ def test_rest_surface_ids_feeds_the_reachability_facts():
     # +11 SP-L6 (records, ISO, tiles, tileMatrixSets, queryables…) ;
     # +2 SP-L5 (pipelines/preview brouillon, pipelines/target-collection) ;
     # +3 SP-L4 (compliance/audit, audit/verify, users/{id}/export) ;
-    assert len(ids) == 265
+    assert len(ids) == 270
     # +16 vague 4 ARC (webhooks/déclencheurs 9, impact/lineage 4, retry + reader-state 3) ;
     # +5 lot 4b (basemaps 3, geocode jobs 2) ;
     # +2 lot 1 (admin api-keys, REV-366) ; +10 vague 5 ARC (raster 6, routage 4) ;
