@@ -19,6 +19,7 @@ import { tileKeys, useViewport } from "./viewportTiles";
 import { usePanelTrigger } from "../ui/kit/usePanelTrigger";
 import { t } from "../i18n";
 import "../i18n/domains/map";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 // Une couche "feature" n'a pas de collection interrogeable : son schéma vient
 // du GeoJSON qu'elle pointe elle-même. Une seule requête partagée par les
@@ -215,9 +216,9 @@ function LayerTimeFieldEditor({
       ? listFields(featureGeojson.data)
       : [];
   return (
-    <select
+    <NativeSelect
       aria-label={t("layersPanel.timeFieldAria")}
-      className="h-9 rounded border border-rule bg-surface text-xs"
+      className="h-9 rounded border border-rule bg-surface text-xs w-auto"
       value={layer.timeField ?? ""}
       onChange={(e) => {
         const { timeField: _drop, ...rest } = layer;
@@ -230,7 +231,7 @@ function LayerTimeFieldEditor({
           {f}
         </option>
       ))}
-    </select>
+    </NativeSelect>
   );
 }
 

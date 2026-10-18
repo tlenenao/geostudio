@@ -11,6 +11,7 @@ import { Button } from "../ui/kit/Button";
 import { Input } from "../ui/kit/Input";
 import { t } from "../i18n";
 import "../i18n/domains/admin";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 /** ARC-24 (ADR 0022) : mapping administré claim IdP -> groupe du cœur. */
 export function GroupClaimMappingsSection() {
@@ -73,8 +74,8 @@ export function GroupClaimMappingsSection() {
         </label>
         <label className="flex flex-col gap-1 text-sm text-ink">
           {t("claimMap.groupLabel")}
-          <select
-            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+          <NativeSelect
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
             value={groupId}
             onChange={(e) => setGroupId(e.target.value)}
           >
@@ -84,7 +85,7 @@ export function GroupClaimMappingsSection() {
                 {g.title}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <Button
           size="sm"

@@ -19,6 +19,7 @@ import { LoadingState } from "../ui/kit/LoadingState";
 import type { Bbox } from "./CatalogSpatialFilter";
 import "../i18n/domains/admin";
 import "../i18n/domains/misc";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 // La carte du filtre spatial embarque maplibre-gl (vendor-map, ~284 Ko gzip) :
 // chargée seulement à l'ouverture du panneau, pas au premier rendu (t03-005, LCP).
@@ -181,8 +182,8 @@ export function CatalogPage({
               {!fixedType && (
                 <label className="flex flex-col gap-1 text-sm text-ink">
                   {t("catalog.typeLabel")}
-                  <select
-                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                  <NativeSelect
+                    className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                     value={type}
                     onChange={(e) => setType(e.target.value as ResourceType | "")}
                   >
@@ -192,7 +193,7 @@ export function CatalogPage({
                         {RESOURCE_TYPE_LABELS[rt]}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
               )}
               {type === "pipeline" && !fixedType && (
@@ -214,8 +215,8 @@ export function CatalogPage({
                 )}
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.scopeLabel")}
-                <select
-                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                <NativeSelect
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                   value={scope}
                   onChange={(e) => {
                     setScope(e.target.value as ItemScope);
@@ -227,12 +228,12 @@ export function CatalogPage({
                       {SCOPE_LABELS[s]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.sortByLabel")}
-                <select
-                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                <NativeSelect
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                   value={sort}
                   onChange={(e) => {
                     setSortChoice(e.target.value as ItemSort);
@@ -244,12 +245,12 @@ export function CatalogPage({
                       {SORT_LABELS[s]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.ownerLabel")}
-                <select
-                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                <NativeSelect
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                   value={ownerFilter}
                   onChange={(e) => {
                     setOwnerFilter(e.target.value);
@@ -262,12 +263,12 @@ export function CatalogPage({
                       {o.username} ({o.count})
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="flex flex-col gap-1 text-sm text-ink">
                 {t("catalog.statusLabel")}
-                <select
-                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                <NativeSelect
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                   value={statusFilter}
                   onChange={(e) => {
                     setStatusFilter(e.target.value as ContentStatus | "");
@@ -284,7 +285,7 @@ export function CatalogPage({
                       </option>
                     );
                   })}
-                </select>
+                </NativeSelect>
               </label>
               {(facetsQuery.data?.keywords.length ?? 0) > 0 && (
                 <div className="flex flex-col gap-1 text-sm text-ink">

@@ -9,6 +9,7 @@ import { registerWidget } from "../registry";
 import { useSetTimeRange } from "../AnalyticsContext";
 import { t } from "../../i18n";
 import "../../i18n/domains/widgets";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 const DAY_MS = 86_400_000;
 const SPEEDS = [0.5, 1, 2];
@@ -143,9 +144,9 @@ export function registerTimePlayerWidget(): void {
           >
             {playing ? t("widgetTimePlayer.pause") : t("widgetTimePlayer.play")}
           </button>
-          <select
+          <NativeSelect
             aria-label={t("widgetTimePlayer.speed")}
-            className="h-9 rounded-md border border-[var(--gs-color-border)] px-2"
+            className="h-9 rounded-md border border-[var(--gs-color-border)] px-2 w-auto"
             value={String(speed)}
             onChange={(e) => setSpeed(Number(e.target.value))}
           >
@@ -154,7 +155,7 @@ export function registerTimePlayerWidget(): void {
                 {t("widgetTimePlayer.speedOption", { speed: s })}
               </option>
             ))}
-          </select>
+          </NativeSelect>
           {shown && <span>{t("analyticsContext.periodLabel", shown)}</span>}
         </div>
       );

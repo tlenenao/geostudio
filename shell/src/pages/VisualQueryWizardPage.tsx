@@ -38,6 +38,7 @@ import "../i18n/domains/automation";
 import "../i18n/domains/misc";
 import "../i18n/domains/widgets";
 import { formatDateTime } from "../lib/format";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 // Compare le schéma de sortie recompilé (déduit de l'état courant du
 // formulaire) au schéma réel de la collection de sortie déjà provisionnée,
@@ -488,8 +489,8 @@ export function VisualQueryWizardPage({
               />
               <label className="flex flex-col gap-1 text-sm">
                 {t("visualQuery.baseCollectionLabel")}
-                <select
-                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+                <NativeSelect
+                  className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
                   value={baseCollectionId}
                   onChange={(e) => {
                     // Important 3 : un changement direct de collection de base
@@ -517,7 +518,7 @@ export function VisualQueryWizardPage({
                       {c.title}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               {baseSchema && (
                 <>

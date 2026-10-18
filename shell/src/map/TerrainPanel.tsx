@@ -5,6 +5,7 @@ import { useInstanceInfo, useItemClient } from "../api/hooks";
 import { Terrain3DUploadButton } from "./Terrain3DUploadButton";
 import { t } from "../i18n";
 import "../i18n/domains/map";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 export function TerrainPanel({
   value,
@@ -79,14 +80,18 @@ export function TerrainPanel({
             <>
               <label className="flex flex-col gap-1 text-sm">
                 {t("terrainPanel.hostedLabel")}
-                <select defaultValue="" onChange={(e) => selectHosted(e.target.value)}>
+                <NativeSelect
+                  className="w-auto"
+                  defaultValue=""
+                  onChange={(e) => selectHosted(e.target.value)}
+                >
                   <option value="">{t("terrainPanel.chooseHostedOption")}</option>
                   {hostedSources.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.title}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <Terrain3DUploadButton
                 onUploaded={(itemId) => {

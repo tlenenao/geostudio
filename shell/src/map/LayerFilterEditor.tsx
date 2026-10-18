@@ -3,6 +3,7 @@
 import type { LayerFilterClause, MapLayer } from "../api/types";
 import { t } from "../i18n";
 import "../i18n/domains/map";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 type Scalar = string | number | boolean;
 const OPS: LayerFilterClause["op"][] = ["eq", "ne", "gt", "gte", "lt", "lte", "in"];
@@ -50,9 +51,9 @@ export function LayerFilterEditor({
             value={c.field}
             onChange={(e) => patch(i, { field: e.target.value })}
           />
-          <select
+          <NativeSelect
             aria-label={t("layersPanel.filterOp")}
-            className="h-9 rounded border border-rule bg-surface px-1"
+            className="h-9 rounded border border-rule bg-surface px-1 w-auto"
             value={c.op}
             onChange={(e) => {
               const op = e.target.value as LayerFilterClause["op"];
@@ -64,7 +65,7 @@ export function LayerFilterEditor({
                 {t(OP_LABELS[o])}
               </option>
             ))}
-          </select>
+          </NativeSelect>
           <input
             aria-label={t("layersPanel.filterValue")}
             className="h-9 w-28 rounded border border-rule bg-surface px-1"

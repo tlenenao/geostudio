@@ -17,6 +17,7 @@ import { Banner } from "../ui/kit/Banner";
 import { PageTitle } from "../ui/kit/PageTitle";
 import "../i18n/domains/admin";
 import "../i18n/domains/misc";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 const PAGE_SIZE = 50;
 
@@ -144,9 +145,9 @@ export function UsersAdminPage() {
                         const pending = pendingUserId === u.id;
                         return (
                           <>
-                            <select
+                            <NativeSelect
                               aria-label={t("usersAdmin.roleAria", { username: u.username })}
-                              className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+                              className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
                               value={currentRole?.id ?? ""}
                               disabled={pending || !!u.erasedAt}
                               onChange={(e) => void handleRoleChange(u.id, e.target.value)}
@@ -156,7 +157,7 @@ export function UsersAdminPage() {
                                   {role.name}
                                 </option>
                               ))}
-                            </select>
+                            </NativeSelect>
                             {rowError?.userId === u.id && (
                               <p role="alert" className="mt-1 text-xs text-danger">
                                 {rowError.message}

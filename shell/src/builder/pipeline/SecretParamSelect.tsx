@@ -14,6 +14,7 @@ import { Field } from "../../ui/kit/Field";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { usePanelTrigger } from "../../ui/kit/usePanelTrigger";
 import "../../i18n/domains/automation";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 // Filtre d'affichage : ne montre jamais le payload déchiffré (le cœur ne le
 // retourne de toute façon jamais, ConnectorSecretOut = {id,name,kind,
@@ -51,9 +52,9 @@ export function SecretParamSelect({
 
   return (
     <div className="flex flex-col gap-1">
-      <select
+      <NativeSelect
         aria-label={ariaLabel}
-        className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+        className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
@@ -64,7 +65,7 @@ export function SecretParamSelect({
             {s.name}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       {!disabled && (
         <>
           <ul className="flex flex-col gap-1">
@@ -355,8 +356,8 @@ function SecretCreateForm({
       {!kindFilter && (
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.typeAria")}
-          <select
-            className="h-9 rounded border border-control bg-surface px-2 text-ink"
+          <NativeSelect
+            className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
             value={kind}
             onChange={(e) => setKind(e.target.value as SecretPayload["kind"])}
           >
@@ -365,21 +366,21 @@ function SecretCreateForm({
                 {KIND_LABELS[k]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       )}
       {kind === "api_key" && (
         <>
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.locationLabel")}
-            <select
-              className="h-9 rounded border border-control bg-surface px-2 text-ink"
+            <NativeSelect
+              className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
               value={field("location") || "header"}
               onChange={(e) => setFieldValue("location", e.target.value)}
             >
               <option value="header">{t("secretParamSelect.locationHeaderOption")}</option>
               <option value="query">{t("secretParamSelect.locationQueryOption")}</option>
-            </select>
+            </NativeSelect>
           </label>
           <label className="flex flex-col gap-1 text-xs">
             {t("secretParamSelect.keyLabel")}
@@ -440,8 +441,8 @@ function SecretCreateForm({
       {kind === "oauth2_client" && (
         <label className="flex flex-col gap-1 text-xs">
           {t("secretParamSelect.grantTypeLabel")}
-          <select
-            className="h-9 rounded border border-control bg-surface px-2 text-ink"
+          <NativeSelect
+            className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
             value={field("grantType") || "client_credentials"}
             onChange={(e) => setFieldValue("grantType", e.target.value)}
           >
@@ -449,7 +450,7 @@ function SecretCreateForm({
               {t("secretParamSelect.grantClientCredentialsOption")}
             </option>
             <option value="refresh_token">{t("secretParamSelect.grantRefreshTokenOption")}</option>
-          </select>
+          </NativeSelect>
         </label>
       )}
       {(kind === "oauth2_client_credentials" || kind === "oauth2_client") && (

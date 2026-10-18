@@ -2,6 +2,7 @@
 import { registerWidget } from "../registry";
 import { t } from "../../i18n";
 import "../../i18n/domains/widgets";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 export function registerNavigationWidget(): void {
   registerWidget({
@@ -21,14 +22,14 @@ export function registerNavigationWidget(): void {
       <div className="flex flex-col gap-2 text-sm">
         <label className="flex flex-col gap-1">
           {t("widgetNavigation.orientationLabel")}
-          <select
-            className="h-9 rounded-md border border-rule px-2"
+          <NativeSelect
+            className="h-9 rounded-md border border-rule px-2 w-auto"
             value={String(props.direction ?? "horizontal")}
             onChange={(e) => onChange({ ...props, direction: e.target.value })}
           >
             <option value="horizontal">{t("widgetNavigation.horizontal")}</option>
             <option value="vertical">{t("widgetNavigation.vertical")}</option>
-          </select>
+          </NativeSelect>
         </label>
         <p className="text-xs text-ink-2">{t("widgetNavigation.autoPagesHelp")}</p>
       </div>

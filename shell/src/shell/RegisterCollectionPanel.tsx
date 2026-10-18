@@ -7,6 +7,7 @@ import { t } from "../i18n";
 import { LoadingState } from "../ui/kit/LoadingState";
 import "../i18n/domains/admin";
 import "../i18n/domains/misc";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
   const candidatesQuery = useCandidateTables();
@@ -50,8 +51,8 @@ export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("registerCollection.tableLabel")}
-            <select
-              className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink"
+            <NativeSelect
+              className="h-9 rounded-md border border-control bg-surface px-3 text-sm text-ink w-auto"
               value={tableName}
               onChange={(e) => setTableName(e.target.value)}
             >
@@ -61,7 +62,7 @@ export function RegisterCollectionPanel({ onClose }: { onClose: () => void }) {
                   {c.registrable ? c.tableName : `${c.tableName} (${c.reason})`}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <label className="flex flex-col gap-1 text-sm text-ink">
             {t("collectionsAdmin.columnTitle")}
