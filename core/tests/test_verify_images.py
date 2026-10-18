@@ -31,7 +31,7 @@ def test_every_prod_image_is_verified_with_the_workflow_identity(tmp_path):
     prod = (REPO / "docker-compose.prod.yml").read_text()
     expected = set(re.findall(r"ghcr\.io/tlenenao/geostudio-[a-z0-9-]+", prod))
     assert {c.split()[-1] for c in calls} == {f"{i}:v9.9.9" for i in expected}
-    assert all("token.actions.githubusercontent.com" in c for c in calls)
+    assert all("https://token.actions.githubusercontent.com" in c.split() for c in calls)
 
 
 def test_a_failed_verification_fails_the_script(tmp_path):

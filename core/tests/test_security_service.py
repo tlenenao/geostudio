@@ -194,7 +194,7 @@ def test_builtin_basemap_hosts_follow_the_external_basemaps_flag(monkeypatch):
     monkeypatch.delenv("CORE_EXTERNAL_BASEMAPS_ENABLED", raising=False)
     with Session() as s:
         allowlist = compute_csp_allowlist(s)
-    assert "https://data.geopf.fr" in allowlist.img_hosts
+    assert any(h == "https://data.geopf.fr" for h in allowlist.img_hosts)
     assert BUILTIN_BASEMAP_ORIGINS <= allowlist.connect_hosts
     assert not BUILTIN_BASEMAP_ORIGINS & allowlist.script_hosts
     monkeypatch.setenv("CORE_EXTERNAL_BASEMAPS_ENABLED", "false")

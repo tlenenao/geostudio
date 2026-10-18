@@ -3,7 +3,6 @@
 chaînes construites à la main : aucun XML entrant n'est parsé (pas de surface XXE)
 et toute valeur sortante est échappée (champs, valeurs de catégorie, titres)."""
 
-import re
 from xml.sax.saxutils import escape
 
 from app.styles.model import Rule, Style
@@ -12,11 +11,13 @@ NS = (
     'xmlns:sld="http://www.opengis.net/sld" xmlns:se="http://www.opengis.net/se" '
     'xmlns:ogc="http://www.opengis.net/ogc"'
 )
-_BAD_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
+_BAD_XML = dict.fromkeys(
+    [*range(0x09), 0x0B, 0x0C, *range(0x0E, 0x20), 0xFFFE, 0xFFFF]
+)  # XML 1.0 interdits : str.translate
 
 
 def _t(v: str) -> str:
-    return escape(_BAD_XML.sub("", v))
+    return escape(v.translate(_BAD_XML))
 
 
 def _p(name: str, value: str) -> str:
