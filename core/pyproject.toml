@@ -400,13 +400,13 @@ layers = [
     # (RLS, masquage) et écrit leur journal. features l'appelle par injection (main.py).
     "app.relations",
     "app.features",
-    # app.collect (L8, AUD-004) : idempotence des écritures de collecte (collect_client_ops),
-    # appelée par app.features (création) et app.attachments (confirm).
-    "app.collect",
     # app.history (ARC-15) : journal d'entité ; écrit par app.features.routes (au-dessus),
     # lit les collections/privilèges (en dessous).
     "app.history",
     "app.attachments",
+    # app.collect (L8, AUD-004) : idempotence des écritures de collecte (collect_client_ops),
+    # appelée par app.features (création) et app.attachments (confirm), donc SOUS les deux.
+    "app.collect",
     # app.lineage (ARC4-F15) : graphe de dépendances dérivé des configs (lecture seule).
     "app.lineage",
     "app.collections",

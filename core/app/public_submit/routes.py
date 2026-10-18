@@ -50,6 +50,7 @@ from app.public_submit.models import Submission, SubmissionToken
 from app.quotas.service import enforce_storage_quota
 from app.ratelimit.limiter import ip_bucket
 from app.sharing.geo_limits import refuse_if_geo_limited
+from app.upload_sniff import HEAD_BYTES, allowed_for_kind, looks_executable, sniff_content_type
 
 router = APIRouter()
 
@@ -147,8 +148,9 @@ def _store_attachment(session, s3, col: Collection, file: UploadFile, field_key:
     data = file.file.read(MAX_ATTACHMENT_BYTES + 1)
     if len(data) > MAX_ATTACHMENT_BYTES:
         raise HTTPException(status_code=413, detail="fichier trop volumineux (> 25 Mo)")
-    content_type = service.sniff_content_type(data[:16])
-    if content_type is None:
+    content_type = sniff_content_type(data[:HEAD_BYTES])
+    kind = next((f.get("kind") for f in col.attachment_fields if f["key"] == key_name), None)
+    if looks_executable(data[:HEAD_BYTES]) or not allowed_for_kind(content_type, kind):
         raise HTTPException(status_code=415, detail="type de fichier non autorisé")
     bucket = get_attachments_bucket()
     ensure_uploads_bucket(s3, bucket)

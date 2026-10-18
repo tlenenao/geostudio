@@ -73,6 +73,9 @@ class AttachmentFieldSpec(BaseModel):
     # AUD-093 : champ sensible = pièces jointes masquées comme une colonne sensible
     # (collections/sensitive.py::masked_attachment_keys).
     sensitive: bool = False
+    # L8 (AUD-071) : nature du média attendu (accept/capture côté shell, familles de types
+    # acceptées côté serveur). Absent = champ historique : toute la liste blanche.
+    kind: Literal["image", "audio", "video", "file"] | None = None
 
 
 class FieldDomain(BaseModel):
@@ -146,6 +149,7 @@ class CollectionPatch(BaseModel):
     description: str | None = None
     isPublic: bool | None = None
     editable: bool | None = None
+    geometryRequired: bool | None = None
     owsEnabled: bool | None = None
     attachmentFields: list[AttachmentFieldSpec] | None = None
     sensitiveFields: list[str] | None = None

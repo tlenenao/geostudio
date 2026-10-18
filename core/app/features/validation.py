@@ -132,6 +132,8 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
             errors.append(_err(col.name, "missing_required", f"'{col.name}' is required"))
 
     geometry = feature.get("geometry")
+    if geometry is None and info.geometry_required and info.geometry_column:
+        errors.append(_err("geometry", "missing_required", "geometry is required"))
     if geometry is not None:
         if not isinstance(geometry, dict):
             errors.append(

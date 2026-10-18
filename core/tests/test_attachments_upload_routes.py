@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+import io
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -11,11 +13,14 @@ from app.main import create_app
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.repository import get_or_create_user
 
+JPEG_HEAD = b"\xff\xd8\xff\xe0" + bytes(28)
+
 
 class _FakeS3Client:
     def __init__(self):
         self.put_urls: dict[str, str] = {}
         self.heads: dict[str, dict] = {}
+        self.bodies: dict[str, bytes] = {}
         self.deleted: list[str] = []
         self.cors_set = False
 
@@ -37,6 +42,14 @@ class _FakeS3Client:
 
             raise ClientError({"Error": {"Code": "404", "Message": "x"}}, "HeadObject")
         return self.heads[Key]
+
+    def get_object(self, *, Bucket, Key, Range=None):
+        if Key not in self.heads:
+            from botocore.exceptions import ClientError
+
+            raise ClientError({"Error": {"Code": "404", "Message": "x"}}, "GetObject")
+        data = self.bodies.get(Key, JPEG_HEAD)
+        return {"Body": io.BytesIO(data[:32])}
 
     def delete_object(self, *, Bucket, Key):
         self.deleted.append(Key)
@@ -79,6 +92,7 @@ def _make_client(s3=None):
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[attachments_routes.get_entity_checker] = lambda: lambda *_a: True
     if s3 is not None:
         app.dependency_overrides[attachments_routes.get_s3_client] = lambda: s3
     return TestClient(app), Session, tenant, user

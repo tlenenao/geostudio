@@ -2,7 +2,6 @@
 """Migrations L8 (0160+) rejouées pour de vrai, sur une base NON vide, dans les deux sens
 (piège n°8). Base jetable, jamais le schéma partagé."""
 
-import json
 import os
 import re
 import uuid
@@ -156,4 +155,75 @@ def test_single_head():
     assert len(ScriptDirectory.from_config(_cfg()).get_heads()) == 1
 
 
-_ = json
+def test_0161_dedupes_attachments_then_enforces_unique_s3_key(migrate):
+    cfg, engine = migrate
+    command.upgrade(cfg, "0160")
+    with engine.begin() as conn:
+        _base(conn)
+        for att_id, created in (("a2", "2026-01-02"), ("a1", "2026-01-01"), ("a3", "2026-01-03")):
+            _insert(
+                conn,
+                "attachments",
+                id=att_id,
+                tenant_id="t1",
+                collection_id="c1",
+                fid="1",
+                field_key="photo",
+                s3_key="t1/c1/1/same.jpg" if att_id != "a3" else "t1/c1/1/other.jpg",
+                created_by="u1",
+                created_at=sa.text(f"'{created}'::timestamp"),
+            )
+    command.upgrade(cfg, "0161")
+    with engine.begin() as conn:
+        ids = conn.execute(sa.text("SELECT id FROM attachments ORDER BY id")).scalars().all()
+        assert ids == ["a1", "a3"]  # doublon : la plus ancienne gagne
+    with pytest.raises(IntegrityError), engine.begin() as conn:
+        _insert(
+            conn,
+            "attachments",
+            id="a4",
+            tenant_id="t1",
+            collection_id="c1",
+            fid="2",
+            field_key="photo",
+            s3_key="t1/c1/1/same.jpg",
+            created_by="u1",
+        )
+    command.downgrade(cfg, "0160")
+    with engine.begin() as conn:
+        _insert(
+            conn,
+            "attachments",
+            id="a5",
+            tenant_id="t1",
+            collection_id="c1",
+            fid="2",
+            field_key="photo",
+            s3_key="t1/c1/1/same.jpg",
+            created_by="u1",
+        )  # plus d'unicité après le downgrade
+    command.upgrade(cfg, "head")  # a5 est un doublon : le re-upgrade le dédoublonne
+    with engine.begin() as conn:
+        assert conn.scalar(sa.text("SELECT count(*) FROM attachments")) == 2
+
+
+def test_0162_geometry_required_defaults_false_on_existing_rows_and_round_trips(migrate):
+    cfg, engine = migrate
+    command.upgrade(cfg, "0161")
+    with engine.begin() as conn:
+        _base(conn)
+    command.upgrade(cfg, "0162")
+    with engine.begin() as conn:
+        assert conn.scalar(sa.text("SELECT geometry_required FROM collections")) is False
+        conn.execute(sa.text("UPDATE collections SET geometry_required = true"))
+    command.downgrade(cfg, "0161")
+    with engine.begin() as conn:
+        cols = conn.scalar(
+            sa.text(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_name = 'collections' AND column_name = 'geometry_required'"
+            )
+        )
+        assert cols == 0
+        assert conn.scalar(sa.text("SELECT count(*) FROM collections")) == 1
+    command.upgrade(cfg, "head")

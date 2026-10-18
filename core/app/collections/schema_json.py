@@ -21,9 +21,15 @@ def table_info_to_schema(info: TableInfo, attachment_fields: list[dict] | None =
             entry["domain"] = info.domains[col.name]
         fields.append(entry)
     for spec in attachment_fields or []:
-        fields.append(
-            {"name": spec["key"], "type": "attachment", "required": False, "label": spec["label"]}
-        )
+        entry = {
+            "name": spec["key"],
+            "type": "attachment",
+            "required": False,
+            "label": spec["label"],
+        }
+        if spec.get("kind"):  # L8 : nature du média (image|audio|video|file)
+            entry["kind"] = spec["kind"]
+        fields.append(entry)
     geometry = None
     if info.geometry_column:
         geometry = {"column": info.geometry_column, "type": info.geometry_type, "srid": info.srid}

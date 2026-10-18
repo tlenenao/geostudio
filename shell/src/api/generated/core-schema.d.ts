@@ -3300,6 +3300,8 @@ export interface components {
         AttachmentFieldSpec: {
             /** Key */
             key: string;
+            /** Kind */
+            kind?: ("image" | "audio" | "video" | "file") | null;
             /** Label */
             label: string;
             /**
@@ -3751,6 +3753,8 @@ export interface components {
             fieldDomains?: {
                 [key: string]: components["schemas"]["FieldDomain"];
             } | null;
+            /** Geometryrequired */
+            geometryRequired?: boolean | null;
             /** Inspiretheme */
             inspireTheme?: string | null;
             /** Ispublic */
@@ -7551,6 +7555,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "idempotency-key"?: string | null;
                 authorization?: string;
                 "X-Share-Link-Token"?: string | null;
             };

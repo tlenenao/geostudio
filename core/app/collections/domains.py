@@ -17,6 +17,7 @@ def with_attribute_rules(info: TableInfo, col) -> TableInfo:
         domains=getattr(col, "field_domains", None) or {},
         subtypes=getattr(col, "subtypes", None) or {},
         rules=getattr(col, "attribute_rules", None) or [],
+        geometry_required=bool(getattr(col, "geometry_required", False)),
     )
 
 

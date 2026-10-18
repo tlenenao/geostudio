@@ -853,6 +853,23 @@
             "title": "Key",
             "type": "string"
           },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "image",
+                  "audio",
+                  "video",
+                  "file"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -2073,6 +2090,17 @@
               }
             ],
             "title": "Fielddomains"
+          },
+          "geometryRequired": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometryrequired"
           },
           "inspireTheme": {
             "anyOf": [
@@ -11701,6 +11729,22 @@
             "schema": {
               "title": "Fid",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {

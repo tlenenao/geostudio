@@ -40,6 +40,11 @@ class _FakeS3Client:
             raise ClientError({"Error": {"Code": "404", "Message": "x"}}, "HeadObject")
         return self.heads[Key]
 
+    def get_object(self, *, Bucket, Key, Range=None):
+        import io
+
+        return {"Body": io.BytesIO(b"\xff\xd8\xff\xe0" + bytes(28))}  # JPEG : signature admise
+
     def delete_object(self, *, Bucket, Key):
         self.deleted.append(Key)
 
@@ -108,6 +113,7 @@ def _make_app(s3, *, with_collection=False):
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[attachments_routes.get_s3_client] = lambda: s3
+    app.dependency_overrides[attachments_routes.get_entity_checker] = lambda: lambda *_a: True
     app.dependency_overrides[tileset3d_routes.get_s3_client] = lambda: s3
     app.dependency_overrides[terrain3d_routes.get_s3_client] = lambda: s3
     app.dependency_overrides[ingestion_routes.get_s3_client] = lambda: s3

@@ -218,6 +218,22 @@ def get_rls_scope(geo_limits=Depends(get_request_geo_limits)):  # overridé en t
     return functools.partial(rls_scope, geo_limits=geo_limits)
 
 
+def get_feature_exists(
+    introspect=Depends(get_introspector),
+    repo=Depends(get_features_repo),
+    rls=Depends(get_rls_scope),
+):
+    """Contrôle d'existence d'une ligne pour app.attachments (M1) : même porte que la lecture
+    (RLS + limites géographiques) ; ne rend jamais la ligne."""
+
+    def exists(session, col, fid) -> bool:
+        info = introspect(session, col.table_name)
+        with rls(session, col.tenant_id):
+            return repo.get_feature(session, info, fid=str(fid)) is not None
+
+    return exists
+
+
 def get_masked_for_user(
     user=Depends(get_current_user_optional),
     session: Session = Depends(get_session, scope="function"),

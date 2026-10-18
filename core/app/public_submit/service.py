@@ -21,6 +21,7 @@ from app.notifications import repository as notifications_repo
 from app.outbox.emit import emit
 from app.public_submit.models import Submission, SubmissionToken
 from app.sharing.models import CollectionShare, GroupMember, share_active
+from app.upload_sniff import sniff_content_type  # noqa: F401  (liste blanche partagée, L8)
 
 logger = logging.getLogger(__name__)
 
@@ -29,24 +30,6 @@ TOKEN_PREFIX = "gss_"
 _PREFIX_LEN = len(TOKEN_PREFIX) + 12
 MAX_LIFETIME_DAYS = 365
 MAX_PAYLOAD_BYTES = 64 * 1024
-# Magic numbers acceptés pour la pièce jointe (type contrôlé par CONTENU, jamais par
-# l'en-tête déclaré) -> content-type servi.
-_SNIFF = (
-    (b"\xff\xd8\xff", "image/jpeg"),
-    (b"\x89PNG\r\n\x1a\n", "image/png"),
-    (b"GIF87a", "image/gif"),
-    (b"GIF89a", "image/gif"),
-    (b"%PDF-", "application/pdf"),
-)
-
-
-def sniff_content_type(head: bytes) -> str | None:
-    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
-        return "image/webp"
-    for magic, ctype in _SNIFF:
-        if head.startswith(magic):
-            return ctype
-    return None
 
 
 class HourlyLimiter:

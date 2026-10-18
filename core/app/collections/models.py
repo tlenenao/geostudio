@@ -42,6 +42,10 @@ class Collection(Base):
     editable: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default=sa.true()
     )
+    # L8 (AUD-070) : une écriture sans géométrie est refusée (validate_feature).
+    geometry_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=sa.false()
+    )
     # [{"key": str, "label": str}] — champs `attachment` déclarés (chantier
     # 4.12) ; pas de colonne SQL réelle par champ, cf.
     # docs/superpowers/specs/2026-09-04-sp40-pieces-jointes-design.md §3.1.
