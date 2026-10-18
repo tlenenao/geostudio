@@ -359,7 +359,7 @@ async function uploadAttachment(
   });
 }
 
-function validateField(field: FormField, value: unknown): string | null {
+export function validateField(field: FormField, value: unknown): string | null {
   const empty =
     value === undefined ||
     value === null ||
@@ -393,7 +393,7 @@ function validateField(field: FormField, value: unknown): string | null {
   return null;
 }
 
-const fieldInputCls = "h-9 rounded-md border border-rule px-2 text-sm";
+export const fieldInputCls = "h-9 rounded-md border border-rule px-2 text-sm";
 
 function AttachmentFieldInput({
   collectionId,
@@ -547,7 +547,7 @@ function AttachmentFieldInput({
 }
 
 // L8 : `select_multiple` — cases à cocher dans un groupe nommé par le libellé du champ.
-function MultiChoiceInput({
+export function MultiChoiceInput({
   field,
   value,
   onChange,
@@ -592,7 +592,7 @@ function MultiChoiceInput({
   );
 }
 
-function FieldInput({
+export function FieldInput({
   field,
   value,
   onChange,

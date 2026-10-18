@@ -653,6 +653,27 @@ export type CollectionSchema = {
   subtypes?: CollectionSubtypes;
 };
 
+// L8 : kit de collecte (GET /collections/{id}/collect-kit, GET /public/submit/{token}/kit) : tout
+// ce qu'il faut pour saisir et valider hors-ligne. Le kit public n'a ni `collection` ni `pk`.
+export type CollectRule = {
+  id: string;
+  kind: "constraint" | "calculation";
+  field?: string;
+  expression: string;
+  message?: string;
+};
+
+export type CollectKit = {
+  version: number;
+  title: string;
+  schema: Omit<CollectionSchema, "collection" | "pk"> & Partial<CollectionSchema>;
+  rules: CollectRule[];
+  geometryRequired: boolean;
+  updatedAt: string | null;
+  etag: string;
+  collectionId?: string;
+};
+
 // REV-117 : profil exploratoire d'une collection (GET /collections/{id}/profile).
 export type CollectionColumnProfile = {
   name: string;

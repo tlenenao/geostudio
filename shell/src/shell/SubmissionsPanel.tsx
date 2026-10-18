@@ -170,6 +170,8 @@ export function SubmissionsPanel({
       {fresh && (
         <p role="status" className="break-all rounded bg-surface p-2 text-xs">
           {t("submissions.tokenOnce")} <code>{fresh}</code>
+          <br />
+          {t("submissions.publicLink")} <code>{`${window.location.origin}/collect/${fresh}`}</code>
         </p>
       )}
       <Button type="button" variant="outline" size="sm" className="self-start" onClick={onClose}>

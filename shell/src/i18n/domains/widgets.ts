@@ -808,6 +808,23 @@ export const widgets = {
     "Précision faible : environ {meters} m. Attendez un meilleur signal.",
   "widgetForm.accuracyOk": "Précision : environ {meters} m",
   "widgetForm.geometryGroup": "Géométrie",
+  "collect.notFound": "Ce lien de collecte est introuvable.",
+  "collect.expired": "Ce lien de collecte a expiré ou a été révoqué.",
+  "collect.unreachable":
+    "Impossible de joindre le serveur. Vérifiez votre connexion puis réessayez.",
+  "collect.loadError": "Le formulaire n'a pas pu être chargé.",
+  "collect.submit": "Envoyer",
+  "collect.sending": "Envoi en cours…",
+  "collect.thanks": "Merci, votre saisie a bien été envoyée. Elle sera examinée avant publication.",
+  "collect.another": "Envoyer une autre saisie",
+  "collect.sendError": "L'envoi a échoué. Votre saisie est conservée, vous pouvez réessayer.",
+  "collect.rateLimited": "Trop d'envois pour le moment, réessayez dans quelques instants.",
+  "collect.quotaExhausted": "Ce lien de collecte n'accepte plus de saisies.",
+  "collect.powRejected": "La vérification anti-robot a échoué, réessayez.",
+  "collect.maxFiles": "Au plus {max} fichiers par saisie.",
+  "collect.fileField": "Fichier : {name}",
+  "collect.honeypot": "Ne pas remplir ce champ",
+  "collect.requiredNote": "Les champs marqués d'un astérisque sont obligatoires.",
 } as const;
 
 registerMessages(widgets);

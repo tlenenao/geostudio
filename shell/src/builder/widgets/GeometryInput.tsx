@@ -4,6 +4,7 @@
 // coordonnées, ou trace GPS échantillonnée). La saisie d'un Point reste dans form.tsx.
 import { useEffect, useRef, useState } from "react";
 import { t } from "../../i18n";
+import "../../i18n/domains/widgets";
 import { Button } from "../../ui/kit/Button";
 
 export type Position = [number, number];
