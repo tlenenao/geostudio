@@ -59,7 +59,7 @@ def _create(session, *, tenant_id, created_by, fid="f1", field_key="photos"):
         filename="a.jpg",
         content_type="image/jpeg",
         byte_size=1234,
-        s3_key=f"{tenant_id}/col1/{fid}/abc-a.jpg",
+        s3_key=f"{tenant_id}/col1/{fid}/{field_key}-abc-a.jpg",
         created_by=created_by,
     )
 
