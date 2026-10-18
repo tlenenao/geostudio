@@ -13416,7 +13416,9 @@ export interface operations {
     };
     import_xlsform_v1_xlsform_import_post: {
         parameters: {
-            query?: never;
+            query?: {
+                collectionId?: string | null;
+            };
             header?: {
                 authorization?: string;
             };

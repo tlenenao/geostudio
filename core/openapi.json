@@ -22001,6 +22001,22 @@
         "operationId": "import_xlsform_v1_xlsform_import_post",
         "parameters": [
           {
+            "in": "query",
+            "name": "collectionId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Collectionid"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
