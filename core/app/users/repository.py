@@ -181,6 +181,13 @@ def list_users(
     return users, total
 
 
+def user_timezone(session: Session, user_id: str | None) -> str | None:
+    """Fuseau IANA enregistré d'un utilisateur (AUD-115) ; None = UTC."""
+    if user_id is None:
+        return None
+    return session.scalar(select(User.timezone).where(User.id == user_id))
+
+
 def user_locale(session: Session, user_id: str | None) -> str | None:
     """Langue enregistrée d'un utilisateur (AUD-115) ; None = défaut d'instance."""
     if user_id is None:

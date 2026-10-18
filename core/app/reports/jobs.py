@@ -13,6 +13,7 @@ avec des droits élevés."""
 
 import logging
 import os
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -28,7 +29,7 @@ from app.export.jobs import (
     render_export_task,
     s3_client_from_env,
 )
-from app.i18n_core import tr
+from app.i18n_core import format_local, tr
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
 from app.items.models import Item
@@ -40,7 +41,7 @@ from app.reports import repository as reports_repo
 from app.reports.ctx import encode_analytics_context
 from app.sharing.authorization import can
 from app.users.models import User
-from app.users.repository import user_locale
+from app.users.repository import user_locale, user_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -392,6 +393,13 @@ def _notify_pending_reports(session_factory) -> None:
                     tr("report.body", locale, title=title, status=job.status)
                     + (tr("report.link", locale, url=result_url) if result_url else "")
                     + (tr("report.error", locale, error=job.error) if job.error else "")
+                    + tr(
+                        "mail.at",
+                        locale,
+                        at=format_local(
+                            datetime.now(UTC), user_timezone(session, owner_actor_id), locale
+                        ),
+                    )
                 )
 
                 for channel in payload.channels:

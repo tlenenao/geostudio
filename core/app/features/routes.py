@@ -65,6 +65,7 @@ from app.features.repository import CursorError, FilterError, _property_columns
 from app.features.validation import validate_for_write
 from app.filter_values import fold_query_filters
 from app.history import service as history
+from app.i18n_core import with_default_tz
 from app.ogc_crs import SUPPORTED_EPSG, crs_uri
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
@@ -569,7 +570,7 @@ def aggregate_features(
                 tenant_id=col.tenant_id,
                 collection_id=col.id,
                 table_info=info,
-                request=body,
+                request=with_default_tz(body, getattr(user, "timezone", None)),
                 masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
@@ -674,7 +675,7 @@ def export_collection_aggregate(
                 tenant_id=col.tenant_id,
                 collection_id=col.id,
                 table_info=info,
-                request=body,
+                request=with_default_tz(body, getattr(user, "timezone", None)),
                 masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
@@ -683,8 +684,10 @@ def export_collection_aggregate(
             ) from exc
     finally:
         conn.close()
-    content = rows_to_format(rows, format=format, columns=aggregate_columns(body, category_key))
-    filename = export_filename(col.title, format=format)
+    content = rows_to_format(
+        rows, format=format, columns=aggregate_columns(body, category_key), tz=user.timezone
+    )
+    filename = export_filename(col.title, format=format, tz=user.timezone)
     write_audit(
         session,
         tenant_id=col.tenant_id,
