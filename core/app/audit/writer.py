@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from sqlalchemy.orm import Session
 
+from app.audit.context import audit_extra
 from app.audit.models import AuditLog
 
 
@@ -23,7 +24,8 @@ def write_audit(
             action=action,
             object_type=object_type,
             object_id=object_id,
-            payload=payload or {},
+            # Le payload explicite prime sur le contexte ambiant (AUD-103).
+            payload={**(audit_extra.get() or {}), **(payload or {})},
         )
     )
     session.flush()

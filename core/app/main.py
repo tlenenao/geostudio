@@ -48,6 +48,7 @@ from app.collections import routes as collections_routes
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.compliance import routes as compliance_routes
 from app.configs import routes as configs_routes
+from app.copilot import admin_routes as copilot_admin_routes
 from app.copilot import routes as copilot_routes
 from app.dataexport import routes as dataexport_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
@@ -615,6 +616,7 @@ def create_app() -> FastAPI:
         v1_router.include_router(terrain3d_routes.router)
     if is_raster_enabled():  # ARC-33 : COG + proxy TiTiler authentifié (ADR 0024)
         v1_router.include_router(raster_routes.router)
+    v1_router.include_router(copilot_admin_routes.router)  # AUD-106/149 : sans flag
     if is_copilot_enabled():
         v1_router.include_router(copilot_routes.router)
     if is_admin_tools_enabled():

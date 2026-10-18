@@ -875,7 +875,8 @@ export interface ItemClient {
       clientTools: CopilotToolSchema[];
       surface?: CopilotSurface;
       // j11-012 : exécution d'un outil d'écriture après clic humain.
-      confirmWrite?: { name: string; arguments: Record<string, unknown> };
+      // confirmToken : émis par le cœur avec la proposition, lié aux arguments (AUD-102).
+      confirmWrite?: { name: string; arguments: Record<string, unknown>; confirmToken: string };
     },
   ): Promise<CopilotTurnResult>;
   createConfigItem(input: {

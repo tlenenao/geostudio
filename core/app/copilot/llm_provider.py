@@ -32,6 +32,10 @@ class ToolCall:
 class LLMTurn:
     text: str
     tool_calls: list[ToolCall] = field(default_factory=list)
+    # AUD-106 : consommation lue sur la réponse fournisseur (0 = non fournie).
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    model: str = ""
 
 
 class LLMProvider(Protocol):
@@ -68,10 +72,14 @@ class OpenAICompatibleLLMProvider:
         api_key: str,
         model: str,
         http_client: httpx.AsyncClient | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ):
         self._api_url = api_url
         self._api_key = api_key
         self._model = model
+        self._temperature = temperature
+        self._max_tokens = max_tokens
         # Client injectable (même couture que McpLoopbackSession) : sinon un
         # client éphémère par appel — la réutilisation de connexion pèse
         # peu face à la latence d'un aller-retour LLM.
@@ -93,7 +101,13 @@ class OpenAICompatibleLLMProvider:
             }
             for t in tools
         ]
-        payload = {"model": self._model, "messages": messages, "tools": openai_tools}
+        payload: dict[str, Any] = {"model": self._model, "messages": messages}
+        if openai_tools:  # `tools: []` est refusé par certains fournisseurs compatibles
+            payload["tools"] = openai_tools
+        if self._temperature is not None:
+            payload["temperature"] = self._temperature
+        if self._max_tokens is not None:
+            payload["max_tokens"] = self._max_tokens
         headers = {"Authorization": f"Bearer {self._api_key}"}
         if self._client is not None:
             response = await self._client.post(self._api_url, headers=headers, json=payload)
@@ -110,7 +124,37 @@ class OpenAICompatibleLLMProvider:
             )
             for tc in choice.get("tool_calls") or []
         ]
-        return LLMTurn(text=choice.get("content") or "", tool_calls=tool_calls)
+        usage = response.json().get("usage") or {}
+        return LLMTurn(
+            text=choice.get("content") or "",
+            tool_calls=tool_calls,
+            prompt_tokens=int(usage.get("prompt_tokens") or 0),
+            completion_tokens=int(usage.get("completion_tokens") or 0),
+            model=self._model,
+        )
+
+    def with_params(
+        self, *, temperature: float | None, max_tokens: int | None
+    ) -> "OpenAICompatibleLLMProvider":
+        """Copie bornée pour les générateurs (déterministes, réponses courtes)."""
+        return OpenAICompatibleLLMProvider(
+            api_url=self._api_url,
+            api_key=self._api_key,
+            model=self._model,
+            http_client=self._client,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    def with_model(self, model: str) -> "OpenAICompatibleLLMProvider":
+        return OpenAICompatibleLLMProvider(
+            api_url=self._api_url,
+            api_key=self._api_key,
+            model=model,
+            http_client=self._client,
+            temperature=self._temperature,
+            max_tokens=self._max_tokens,
+        )
 
 
 def get_llm_provider() -> LLMProvider:

@@ -552,6 +552,8 @@ ignore_imports = [
     "app.db -> app.harvest.models",
     "app.db -> app.pipelines.models",
     "app.db -> app.quotas.models",
+    "app.db -> app.copilot.models",
+    "app.compliance.purge -> app.copilot.models",
     "app.db -> app.alerts.models",
     "app.db -> app.secrets.models",
     "app.db -> app.export.models",

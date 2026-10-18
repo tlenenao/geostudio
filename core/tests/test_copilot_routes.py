@@ -991,3 +991,21 @@ def test_cel_surfaces_point_to_cel_generation_with_context(client, monkeypatch, 
     assert client.post("/v1/copilot/turn", json=body).status_code == 200
     assert f'context="{context}"' in captured["system"]
     assert client.post("/v1/copilot/turn", json={**body, "surface": "nope"}).status_code == 422
+
+
+def test_turn_is_refused_with_429_once_the_daily_token_quota_is_reached(client, monkeypatch):
+    # AUD-106 : plafond atteint (0 jeton autorisé) -> refus avant tout appel au LLM.
+    monkeypatch.setenv("CORE_LLM_DAILY_TOKENS", "0")
+    resp = client.post(
+        "/v1/copilot/turn",
+        json={
+            "itemId": "1",
+            "message": "bonjour",
+            "history": [],
+            "mcpToken": "x",
+            "currentConfig": {},
+            "clientTools": [],
+        },
+    )
+    assert resp.status_code == 429
+    assert "Quota" in resp.json()["detail"]

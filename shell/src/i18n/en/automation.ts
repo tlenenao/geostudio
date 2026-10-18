@@ -139,6 +139,12 @@ export const automationEn: Record<keyof typeof automation, string> = {
   "copilot.contextTooLarge":
     "The configuration is too large for the copilot, even compacted: only the active page is sent to it, so shrink it or split the app.",
   "copilot.confirmWritePrompt": "The copilot suggests running the action “{name}”.",
+  "copilot.confirmWriteKind": "Type",
+  "copilot.confirmWriteTitle": "Title",
+  "copilot.confirmWriteCollection": "Collection",
+  "copilot.confirmWriteTemplate": "Template",
+  "copilot.confirmWriteConfig": "Configuration",
+  "copilot.confirmWriteConfigSize": "{count} characters",
   "copilot.confirmWriteYes": "Confirm",
   "copilot.confirmWriteNo": "Cancel",
   "copilot.confirmWriteMessage": "Confirmation of the suggested action.",
