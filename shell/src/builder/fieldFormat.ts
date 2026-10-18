@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { CollectionFieldType } from "../api/types";
-import { APP_TIME_ZONE, formatDateTime } from "../lib/format";
+import { dateFormat, formatDateTime, getTimeZone, numberFormat } from "../lib/format";
 
 // D35 (Vague C, SP-C6) : formatage fr-FR des valeurs de champ affichées en
 // lecture seule (widget table, popup carte en mode `fields`). Le mode
@@ -32,11 +32,16 @@ import { APP_TIME_ZONE, formatDateTime } from "../lib/format";
 //    porte aucun type "year" dédié, donc un compteur entier à 4 chiffres
 //    perd aussi son séparateur dans ce cas précis — coût jugé négligeable
 //    (un entier à 4 chiffres reste lisible sans séparateur) face au gain.
-const NUMBER_FORMAT = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 6 });
-const YEAR_FORMAT = new Intl.NumberFormat("fr-FR", { useGrouping: false });
-const DATE_FORMAT = new Intl.DateTimeFormat("fr-FR");
+// Formateurs à la demande (locale active, AUD-115), mis en cache par `lib/format`.
+const NUMBER_FORMAT = {
+  format: (n: number) => numberFormat({ maximumFractionDigits: 6 }).format(n),
+};
+const YEAR_FORMAT = { format: (n: number) => numberFormat({ useGrouping: false }).format(n) };
+const DATE_FORMAT = { format: (d: Date) => dateFormat().format(d) };
 // Instant (non « date seule ») : fuseau d'affichage fixé comme formatDateTime.
-const INSTANT_DATE_FORMAT = new Intl.DateTimeFormat("fr-FR", { timeZone: APP_TIME_ZONE });
+const INSTANT_DATE_FORMAT = {
+  format: (d: Date) => dateFormat({ timeZone: getTimeZone() }).format(d),
+};
 
 const PLAUSIBLE_YEAR_MIN = 1000;
 const PLAUSIBLE_YEAR_MAX = 9999;

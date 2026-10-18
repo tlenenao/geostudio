@@ -3,7 +3,7 @@ import type { EChartsOption } from "echarts";
 import type { DataRecord } from "../../api/types";
 import { t } from "../../i18n";
 import type { BucketGranularity } from "../../lib/comparisonWindow";
-import { formatNumber } from "../../lib/format";
+import { formatNumber, numberFormat } from "../../lib/format";
 import "../../i18n/domains/widgets";
 
 export type ChartProps = {
@@ -97,7 +97,7 @@ function valueFormatter(props: ChartProps): ((val: unknown) => string) | undefin
   const unit = String(props.yAxisUnit ?? "");
   const fmt = String(props.yAxisFormat ?? "");
   if (!unit && !fmt) return undefined;
-  const nf = fmt ? new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 6 }) : null;
+  const nf = fmt ? numberFormat({ maximumFractionDigits: 6 }) : null;
   return (val: unknown) => {
     const s = nf && Number.isFinite(Number(val)) ? nf.format(Number(val)) : String(val);
     return unit ? `${s} ${unit}` : s;

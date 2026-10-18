@@ -10,7 +10,7 @@ import { Banner } from "../ui/kit/Banner";
 import { Radio } from "../ui/kit/Radio";
 import { SettingsNav } from "../shell/chrome/SettingsNav";
 import { TriptychLayout } from "../shell/chrome/TriptychLayout";
-import { t } from "../i18n";
+import { getLocale, setLocalePreference, t, type Locale } from "../i18n";
 import { readThemePreference, saveThemePreference, type ThemePreference } from "../lib/theme";
 import { LoadingState } from "../ui/kit/LoadingState";
 import { PageTitle } from "../ui/kit/PageTitle";
@@ -115,6 +115,22 @@ function AppearanceSection() {
   );
 }
 
+function LanguageSection() {
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-base font-semibold text-ink">{t("settings.languageTitle")}</h2>
+      <Radio.Group
+        aria-label={t("settings.languageTitle")}
+        value={getLocale()}
+        onValueChange={(value) => setLocalePreference(value as Locale)}
+      >
+        <Radio.Item value="fr">{t("settings.languageFr")}</Radio.Item>
+        <Radio.Item value="en">{t("settings.languageEn")}</Radio.Item>
+      </Radio.Group>
+    </section>
+  );
+}
+
 function AccountSection() {
   const config = useConfig();
   if (config.authMode === "mock") return null;
@@ -151,6 +167,7 @@ export function SettingsPage() {
               <ProfileSection />
               <NotificationsSection />
               <AppearanceSection />
+              <LanguageSection />
               <ApiKeysSection />
               <AccountSection />
             </div>

@@ -13,6 +13,8 @@ export default defineConfig({
     // manifest: filet de taille (scripts/check-bundle-size.mjs, Task 9) —
     // calcule la charge JS/CSS initiale réelle depuis dist/.vite/manifest.json.
     manifest: true,
+    // Attente au niveau module dans i18n/index.ts (locale active avant les `t()` de module).
+    target: "es2022",
     rollupOptions: {
       output: {
         // Chunks de vendeur pour les bibliothèques les plus volumineuses

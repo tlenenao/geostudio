@@ -8,7 +8,7 @@ import { Button } from "../../ui/kit/Button";
 import { DataTable } from "../../ui/kit/DataTable";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import { PipelinePreviewMap } from "./PipelinePreviewMap";
-import { formatDateTime } from "../../lib/format";
+import { compareText, formatDateTime, formatNumber } from "../../lib/format";
 import "../../i18n/domains/automation";
 
 const PAGE_SIZE = 20;
@@ -23,11 +23,11 @@ type IndexedRow = { row: Record<string, unknown>; i: number };
 
 function compareCells(a: unknown, b: unknown): number {
   if (typeof a === "number" && typeof b === "number") return a - b;
-  return String(a).localeCompare(String(b));
+  return compareText(String(a), String(b));
 }
 
 function formatCell(value: unknown): string {
-  if (typeof value === "number") return value.toLocaleString("fr-FR");
+  if (typeof value === "number") return formatNumber(value, 20);
   if (typeof value === "string" && ISO_DATE_RE.test(value)) {
     const parsed = new Date(value);
     if (!Number.isNaN(parsed.getTime())) return formatDateTime(parsed);
