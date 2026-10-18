@@ -31,6 +31,7 @@ from app.alerts import repository as alerts_repo
 from app.alerts.repository import _PENDING_RECLAIM_MINUTES
 from app.configs import repository as configs_repo
 from app.items import repository as items_repo
+from app.jobs.defer import defer_resilient
 from app.sharing.authorization import can
 from app.users.models import User
 
@@ -70,5 +71,11 @@ def evaluate_alert_now_service(session: Session, *, user: User, item_id: str) ->
     )
     # Commit avant de déférer — même raison que sweep_alert_rules_task.
     session.commit()
-    alerts_jobs.evaluate_alert_task.defer(evaluation_id=evaluation.id, tenant_id=user.tenant_id)
+    # AUD-025 (jumelle) : 503 propre plutôt qu'un 500 ; l'évaluation `pending` est reprise par
+    # list_due_rules après _PENDING_RECLAIM_MINUTES.
+    defer_resilient(
+        lambda: alerts_jobs.evaluate_alert_task.defer(
+            evaluation_id=evaluation.id, tenant_id=user.tenant_id
+        )
+    )
     return evaluation.id, True

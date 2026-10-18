@@ -65,4 +65,8 @@ def run_harvest_sweep_task(timestamp: int) -> None:
     with request_scoped_session(session_factory) as session:
         due = harvest_repo.list_due_sources(session)
         for source in due:
-            run_harvest_task.defer(source_id=source.id, tenant_id=source.tenant_id)
+            try:
+                run_harvest_task.defer(source_id=source.id, tenant_id=source.tenant_id)
+            except Exception:
+                # La source reste due : reprise au balayage suivant, sans bloquer les autres.
+                logger.exception("moissonnage %s : defer échoué, source suivante", source.id)
