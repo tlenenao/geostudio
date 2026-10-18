@@ -246,3 +246,20 @@ def test_translated_label_choice_ignores_column_order():
     assert _label({"label::français": "Nom", "label::english": "Name"}) == "Nom"
     assert _label({"label::german": "Name", "label::english": "Name en"}) == "Name en"
     assert _label({"label": "Base", "label::français": "Nom"}) == "Base"
+
+
+def test_translations_kept_in_form_field():
+    """AUD-115 c : `label::en` / `hint::en` conservés ; langue hors fr/en ignorée."""
+    plan = parse_xlsform(
+        _book(
+            [
+                ("type", "name", "label", "label::English (en)", "label::de", "hint::en"),
+                ("text", "nom", "Nom", "Name", "Nachname", "Your name"),
+            ]
+        )
+    )
+    field = plan.form_fields[0]
+    assert field["label"] == "Nom"
+    assert field["labels"] == {"en": "Name"}
+    assert field["hints"] == {"en": "Your name"}
+    assert any(r.code == "ignored" and "label::de" in r.message for r in plan.report)

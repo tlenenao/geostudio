@@ -17,6 +17,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 
 from app.cell_safety import unsanitize_cell
 from app.collections.domains import cel_syntax_error
+from app.i18n_core import normalize_locale
 
 MAX_BYTES = 2 * 1024 * 1024
 MAX_UNCOMPRESSED = 30 * 1024 * 1024
@@ -232,6 +233,26 @@ def _label(rec: dict[str, str]) -> str:
     return translated[0][1] if translated else ""
 
 
+_LANG_NAMES = {"english": "en", "anglais": "en", "français": "fr", "francais": "fr", "french": "fr"}
+
+
+def _translations(rec: dict[str, str], column: str) -> dict[str, str]:
+    """`label::English (en)`, `label::fr`, `hint::english` -> {"en": ..., "fr": ...} limité aux
+    langues du produit (AUD-115 c) ; les autres langues restent « ignorées » au rapport."""
+    out: dict[str, str] = {}
+    for key, value in rec.items():
+        if not key.startswith(f"{column}::") or not value:
+            continue
+        suffix = key.split("::", 1)[1].strip().lower()
+        coded = re.search(r"\(([a-z]{2,3})\)\s*$", suffix)
+        lang = normalize_locale(coded.group(1) if coded else suffix) or _LANG_NAMES.get(
+            suffix.split(" ")[0]
+        )
+        if lang:
+            out.setdefault(lang, value)
+    return out
+
+
 def _sanitize_name(raw: str) -> str:
     n = re.sub(r"[^A-Za-z0-9_]", "_", raw)
     if not n or n[0].isdigit():
@@ -326,8 +347,10 @@ def parse_xlsform(content: bytes) -> XlsFormPlan:
         if name != raw:
             rep.append(ReportItem("renamed", f"renommé en {name}", row, raw))
         label = _label(q) or raw
+        labels = _translations(q, "label")
         for k in q:
-            if k.startswith("label::") and q[k] and q.get("label"):
+            # Langue hors fr/en : non conservée (toujours « ignorée » si un label de base existe).
+            if k.startswith("label::") and q[k] and q.get("label") and q[k] not in labels.values():
                 rep.append(ReportItem("ignored", f"traduction {k} ignorée", row, raw))
         for c in _UNSUPPORTED_COLS:
             if q.get(c):
@@ -342,6 +365,11 @@ def parse_xlsform(content: bytes) -> XlsFormPlan:
         }
         if q.get("hint"):
             entry["hint"] = q["hint"]
+        if labels:
+            entry["labels"] = labels
+        hints = _translations(q, "hint")
+        if hints:
+            entry["hints"] = hints
 
         if typ in _GEO:
             if plan.geometry_type is None:

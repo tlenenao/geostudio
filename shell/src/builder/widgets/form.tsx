@@ -10,7 +10,7 @@ import { FeatureValidationError } from "../../api/itemClient";
 import { ApiError } from "../../api/ApiError";
 import type { CollectionSchema, DataRecord, DataSource, FieldDomain } from "../../api/types";
 import type { WidgetContext } from "../registry";
-import { plural, t } from "../../i18n";
+import { getLocale, plural, t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
 import { FeatureHistoryPanel } from "./FeatureHistoryPanel";
@@ -35,11 +35,27 @@ export type FormField = {
   // ARC-27 (XLSForm) : aide sous le libellé et condition CEL de pertinence (`relevant`),
   // évaluée sur les valeurs saisies ; un champ non pertinent est masqué, non validé, non envoyé.
   hint?: string;
+  // AUD-115 c : traductions du libellé/de l'aide (XLSForm `label::en`), par langue de l'interface.
+  labels?: Record<string, string>;
+  hints?: Record<string, string>;
   visibleWhen?: string;
   // ARC-13 : choix imposés par un domaine `list` ou par les sous-types (calculé à l'affichage
   // depuis le schéma courant, jamais persisté dans la config du widget).
   options?: { value: string | number; label: string }[];
 };
+
+/** Libellé/aide dans la langue active de l'interface (repli : texte source). */
+export function localizeField(f: FormField): FormField {
+  const locale = getLocale();
+  const label = f.labels?.[locale];
+  const hint = f.hints?.[locale];
+  if (label === undefined && hint === undefined) return f;
+  return {
+    ...f,
+    ...(label !== undefined ? { label } : {}),
+    ...(hint !== undefined ? { hint } : {}),
+  };
+}
 
 // ARC-13 : champs enrichis des domaines/sous-types du schéma courant ; le domaine du sous-type
 // sélectionné l'emporte sur celui du champ. Une plage devient min/max (validés par validateField).
@@ -677,7 +693,8 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const queryClient = useQueryClient();
   const baseFields = ((props.fields as FormField[] | undefined) ?? [])
     .filter((f) => !f.hidden && f.type !== "unsupported" && f.type !== "list")
-    .sort((a, b) => a.order - b.order);
+    .sort((a, b) => a.order - b.order)
+    .map(localizeField);
   // Les colonnes `list` (non éditables ici) sont renvoyées telles que chargées :
   // le PUT remplace tout, les omettre les mettrait à NULL (c01-004).
   const allFields = ((props.fields as FormField[] | undefined) ?? []).filter(
