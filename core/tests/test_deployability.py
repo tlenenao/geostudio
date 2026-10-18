@@ -434,6 +434,10 @@ ENV_WIRING_EXEMPTIONS = {
     # dans le zip — pas celui de ce dépôt.
     "APPEXPORT_STANDALONE_DATA_DIR",
     "APPEXPORT_STANDALONE_RUNTIME_DIR",
+    # AUD-115/099 : réglages optionnels à défaut sûr (langue fr, plafond SQL 60 s) ;
+    # non câblés par défaut, un opérateur les ajoute à `core` s'il veut les changer.
+    "CORE_DEFAULT_LOCALE",
+    "CORE_DB_STATEMENT_TIMEOUT_MS",
 }
 
 
