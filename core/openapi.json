@@ -5516,6 +5516,8 @@
           "exaggeration": {
             "anyOf": [
               {
+                "maximum": 20.0,
+                "minimum": 0.0,
                 "type": "number"
               },
               {
