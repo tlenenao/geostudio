@@ -39,6 +39,8 @@ export type FormField = {
   // ARC-13 : choix imposés par un domaine `list` ou par les sous-types (calculé à l'affichage
   // depuis le schéma courant, jamais persisté dans la config du widget).
   options?: { value: string | number; label: string }[];
+  // L8 (XLSForm `select_multiple`) : plusieurs valeurs parmi `options`, stockées en tableau.
+  multiple?: boolean;
 };
 
 // ARC-13 : champs enrichis des domaines/sous-types du schéma courant ; le domaine du sous-type
@@ -60,7 +62,10 @@ export function applyDomains(
     const dom = current?.domains?.[f.name] ?? domains.get(f.name);
     if (!dom) return f;
     if (dom.type === "list") {
-      return { ...f, options: dom.values.map((v) => ({ value: v, label: String(v) })) };
+      return {
+        ...f,
+        options: dom.values.map((v) => ({ value: v, label: dom.labels?.[String(v)] ?? String(v) })),
+      };
     }
     return {
       ...f,
@@ -319,7 +324,11 @@ async function uploadAttachment(
 }
 
 function validateField(field: FormField, value: unknown): string | null {
-  const empty = value === undefined || value === null || value === "";
+  const empty =
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    (Array.isArray(value) && !value.length);
   // Un champ attachment ne passe jamais par values/onChange
   // (AttachmentFieldInput gère son propre état via useQuery, cf. Task 11) —
   // required ne peut donc jamais être satisfait pour ce type, y compris pour
@@ -489,6 +498,52 @@ function AttachmentFieldInput({
               : t("widgetForm.attachmentError", { filename })}
           </p>
         ))}
+    </div>
+  );
+}
+
+// L8 : `select_multiple` — cases à cocher dans un groupe nommé par le libellé du champ.
+function MultiChoiceInput({
+  field,
+  value,
+  onChange,
+  onBlur,
+  error,
+}: {
+  field: FormField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  onBlur: () => void;
+  error: string | null;
+}) {
+  const picked = Array.isArray(value) ? (value as (string | number)[]) : [];
+  return (
+    <div
+      id={`field-${field.name}`}
+      role="group"
+      aria-labelledby={`field-${field.name}-label`}
+      {...(error ? { "aria-invalid": "true" as const } : {})}
+      {...(field.required ? { "aria-required": "true" as const } : {})}
+      tabIndex={-1}
+      className="flex flex-col gap-1"
+    >
+      {(field.options ?? []).map((o) => (
+        <label key={String(o.value)} className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={picked.some((p) => String(p) === String(o.value))}
+            onChange={(e) =>
+              onChange(
+                e.target.checked
+                  ? [...picked, o.value]
+                  : picked.filter((p) => String(p) !== String(o.value)),
+              )
+            }
+            onBlur={onBlur}
+          />
+          {o.label}
+        </label>
+      ))}
     </div>
   );
 }
@@ -1022,7 +1077,34 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           );
         })()}
       {fields.map((f) =>
-        f.type === "attachment" ? (
+        f.multiple && f.options ? (
+          <div key={f.name} className="flex flex-col gap-1">
+            <span id={`field-${f.name}-label`}>
+              {f.label}
+              {f.required ? " *" : ""}
+            </span>
+            {f.hint && <span className="text-xs text-ink-2">{f.hint}</span>}
+            <MultiChoiceInput
+              field={f}
+              value={values[f.name]}
+              onChange={(v) => {
+                editedRef.current.add(f.name);
+                setValues((old) => ({ ...old, [f.name]: v }));
+              }}
+              onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
+              error={errorFor(f)}
+            />
+            {errorFor(f) && (
+              <span
+                id={`field-${f.name}-error`}
+                role={summaryNames?.length ? undefined : "alert"}
+                className="text-xs text-danger"
+              >
+                {errorFor(f)}
+              </span>
+            )}
+          </div>
+        ) : f.type === "attachment" ? (
           <div key={f.name} className="flex flex-col gap-1">
             <span id={`field-${f.name}-label`}>
               {f.label}

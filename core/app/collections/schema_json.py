@@ -33,6 +33,8 @@ def table_info_to_schema(info: TableInfo, attachment_fields: list[dict] | None =
     geometry = None
     if info.geometry_column:
         geometry = {"column": info.geometry_column, "type": info.geometry_type, "srid": info.srid}
+        if info.geometry_required:  # L8 : le formulaire bloque l'envoi sans géométrie
+            geometry["required"] = True
     schema = {
         "collection": info.table_name,
         "pk": info.pk_column,

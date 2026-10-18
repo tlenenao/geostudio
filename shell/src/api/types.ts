@@ -617,7 +617,8 @@ export type CollectionFieldType =
 
 // ARC-13 : domaine d'attribut (liste de valeurs admises ou plage bornée incluse).
 export type FieldDomain =
-  { type: "list"; values: (string | number)[] } | { type: "range"; min?: number; max?: number };
+  | { type: "list"; values: (string | number)[]; labels?: Record<string, string> }
+  | { type: "range"; min?: number; max?: number };
 
 export type CollectionSubtypes = {
   field: string;
@@ -643,7 +644,7 @@ export type CollectionSchemaField = {
 export type CollectionSchema = {
   collection: string;
   pk: string;
-  geometry: { column: string; type: string | null; srid: number } | null;
+  geometry: { column: string; type: string | null; srid: number; required?: boolean } | null;
   fields: CollectionSchemaField[];
   subtypes?: CollectionSubtypes;
 };
