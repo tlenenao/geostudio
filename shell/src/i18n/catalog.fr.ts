@@ -66,6 +66,7 @@ export const fr = {
 
   // Palette de commandes ⌘K (D07, SP-C4/Task 21)
   "commandPalette.title": "Palette de commandes",
+  "commandPalette.empty": "Aucun résultat",
   "commandPalette.searchAria": "Rechercher une action",
   "commandPalette.newItemAction": "Nouvel élément",
   "commandPalette.triggerLabel": "Rechercher",

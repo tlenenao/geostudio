@@ -53,6 +53,21 @@ describe("CommandPalette", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("AUD-119 : option active annoncée (aria-activedescendant) et message « Aucun résultat »", async () => {
+    render(
+      <MemoryRouter>
+        <CommandPalette open onOpenChange={vi.fn()} profile={profile} />
+      </MemoryRouter>,
+    );
+    const input = screen.getByRole("combobox");
+    const active = screen.getAllByRole("option")[0];
+    expect(input).toHaveAttribute("aria-activedescendant", active.id);
+    expect(input).toHaveAttribute("aria-controls", screen.getByRole("listbox").id);
+    await userEvent.type(input, "zzzzqqq");
+    expect(screen.getByRole("status")).toHaveTextContent("Aucun résultat");
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+  });
+
   it("propose Nouvel élément et clique le vrai déclencheur du DOM", async () => {
     document.body.innerHTML = '<button id="new-item-trigger">Nouveau</button>';
     const realButton = document.getElementById("new-item-trigger")!;

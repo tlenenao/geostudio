@@ -55,6 +55,7 @@ export const coreEn: Record<keyof typeof fr, string> = {
   "bottomNav.more": "More",
 
   "commandPalette.title": "Command palette",
+  "commandPalette.empty": "No results",
   "commandPalette.searchAria": "Search for an action",
   "commandPalette.newItemAction": "New item",
   "commandPalette.triggerLabel": "Search",
