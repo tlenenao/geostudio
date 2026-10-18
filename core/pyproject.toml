@@ -590,6 +590,7 @@ allow_indirect_imports = true
 source_modules = [
     "app.sql_ident",
     "app.net_pin",
+    "app.tile_proxy",
     "app.bbox",
     "app.errors",
     "app.filter_values",
