@@ -3,6 +3,8 @@
 fournisseur propre au tenant (« apportez votre modèle »). Monté sans flag : les
 générateurs MCP consomment du LLM même quand le copilote est éteint."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -64,7 +66,7 @@ def _read(session: Session, tenant_id: str) -> LlmSettingsRead:
 def get_usage(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
-) -> dict:
+) -> dict[str, Any]:
     require_privilege(session, user, Privilege.SETTINGS_INSTANCE_MANAGE.value)
     return governance.usage_summary(session, user.tenant_id)
 
