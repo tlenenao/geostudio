@@ -181,6 +181,17 @@
             ],
             "title": "Groupby"
           },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          },
           "measures": {
             "anyOf": [
               {
@@ -194,6 +205,26 @@
               }
             ],
             "title": "Measures"
+          },
+          "order": {
+            "default": "desc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "orderBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderby"
           },
           "p": {
             "anyOf": [

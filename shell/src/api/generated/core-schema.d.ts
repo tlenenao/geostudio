@@ -3086,8 +3086,18 @@ export interface components {
             } | null;
             /** Groupby */
             groupBy?: string | string[] | null;
+            /** Limit */
+            limit?: number | null;
             /** Measures */
             measures?: components["schemas"]["AggregateMeasure"][] | null;
+            /**
+             * Order
+             * @default desc
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /** Orderby */
+            orderBy?: string | null;
             /** P */
             p?: number | null;
             /** Sample */
