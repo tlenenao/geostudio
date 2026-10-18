@@ -81,6 +81,8 @@ export function compileCron(form: ScheduleForm): string {
 function timezoneOptions(current: string): string[] {
   const all =
     typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+  // Valeur de sélecteur IANA, pas un format d'affichage (AUD-115).
+  // eslint-disable-next-line no-restricted-syntax
   return [...new Set(["UTC", "Europe/Paris", current, ...all])];
 }
 

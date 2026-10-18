@@ -3058,6 +3058,8 @@ export interface components {
             sample?: number | null;
             /** Split */
             split?: string | null;
+            /** Timezone */
+            timeZone?: string | null;
         };
         /**
          * AggregateResponse
