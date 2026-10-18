@@ -254,7 +254,7 @@ def test_materialization_is_bounded_by_the_statement_timeout(tmp_path, monkeypat
     monkeypatch.setattr("app.analytics.sql_sandbox.STATEMENT_TIMEOUT_S", 0.2)
 
     def _slow_materialize(
-        conn, *, name, table_info, base_uri, tenant_id, masked_fields=frozenset()
+        conn, *, name, table_info, base_uri, tenant_id, masked_fields=frozenset(), needed=None
     ):
         conn.execute("SELECT count(*) FROM range(100000000000) t1, range(100000) t2")
 
