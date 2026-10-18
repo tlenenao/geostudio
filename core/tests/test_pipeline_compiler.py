@@ -294,6 +294,27 @@ def test_compile_intersection_output_geometry_intersection(conn_spatial):
     assert all(t == ("POINT",) for t in types)  # point ∩ polygon == point
 
 
+def test_compile_intersection_survives_an_invalid_bowtie_input(conn_spatial):
+    """AUD-129 : une entrée invalide ne fait plus échouer l'intersection (TopologyException)."""
+    conn_spatial.execute("CREATE TABLE bow (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO bow VALUES (1, ST_GeomFromText('POLYGON((0 0,2 2,2 0,0 2,0 0))'))"
+    )
+    conn_spatial.execute("CREATE TABLE sq (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO sq VALUES (10, ST_GeomFromText('POLYGON((0 0,3 0,3 3,0 3,0 0))'))"
+    )
+    sql = compile_transform_sql(
+        "transform.intersection",
+        {"withCollectionId": "x", "outputGeometry": "intersection"},
+        input_view="bow",
+        join_view="sq",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    (area,) = conn_spatial.execute("SELECT ST_Area(geometry) FROM out").fetchone()
+    assert area == pytest.approx(2.0)  # deux triangles d'aire 1 (nœud papillon réparé)
+
+
 def test_compile_count_within_intersects_default(conn_spatial):
     conn_spatial.execute("CREATE TABLE other (id INTEGER, geometry GEOMETRY)")
     conn_spatial.execute("INSERT INTO other VALUES (10, ST_Buffer(ST_Point(3.0, 45.0), 1))")

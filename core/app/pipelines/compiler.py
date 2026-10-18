@@ -248,6 +248,12 @@ def _compile_reproject(
     )
 
 
+# AUD-129 : GEOS lève une TopologyException sur une entrée invalide (nœud papillon) ;
+# `ST_MakeValid` en amont de l'intersection évite d'échouer le run entier.
+_VALID_T = "ST_MakeValid(t.geometry)"
+_VALID_O = "ST_MakeValid(o.geometry)"
+
+
 def _compile_intersection(
     params: dict,
     *,
@@ -259,7 +265,7 @@ def _compile_intersection(
     assert join_view is not None, "transform.intersection requires join_view"
     join_kw = "LEFT JOIN" if p.how == "left" else "JOIN"
     geom_expr = (
-        "t.geometry" if p.outputGeometry == "left" else "ST_Intersection(t.geometry, o.geometry)"
+        "t.geometry" if p.outputGeometry == "left" else f"ST_Intersection({_VALID_T}, {_VALID_O})"
     )
     return (
         f"SELECT t.* EXCLUDE (geometry), {geom_expr} AS geometry "
