@@ -2,7 +2,7 @@
 
 **Généré le 2026-10-18** par `uv run python scripts/feature_health_cli.py --repo .. --write`. **Ne pas éditer à la main** : ce fichier est regénéré à chaque clôture de SP.
 
-344 fonctionnalités — santé médiane 98.8 sur 344 mesurables.
+345 fonctionnalités — santé médiane 98.8 sur 345 mesurables.
 
 La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** est déclarée (spec §4). Les deux ne sont jamais moyennées. Le tri est `priorité × (100 − santé)`.
 
@@ -60,7 +60,7 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | 1 | **IA** | 100.0 |
 | 1 | **Interne** | 74.4 |
 | 4 | **Navigation** | 100.0 |
-| 1 | **Paramètres** | 98.1 |
+| 2 | **Paramètres** | 90.1 |
 | 8 | **Plateforme IA** | 97.9 |
 | 1 | **Provisioning** | 100.0 |
 | 1 | **Recherche** | 100.0 |
@@ -83,10 +83,11 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 
 | Domaine | Fonctionnalité | id | Santé | Δ | Priorité | tests | atteignabilité | garde | dette |
 |---|---|---|---|---|---|---|---|---|---|
+| Paramètres | Préférences utilisateur : langue et fuseau | `parametres-preferences-de-langue-et-fuseau` | 82.1 | — | moyenne (amorcée) | — | 100.0 | 50.0 | 100.0 |
 | Builder — Widgets | Widget Table (tri, pagination, cross-filter, action setFilter) | `builder-widgets-widget-table-tri-pagination-cross-filter-action-setfilter` | 91.2 | = | haute (amorcée) | 85.3 | — | — | 100.0 |
 | Interne | Galerie interne de composants du kit UI | `interne-galerie-interne-de-composants-du-kit-ui` | 74.4 | = | basse (amorcée) | 36.1 | 100.0 | — | 100.0 |
 | Builder — Widgets | Widget Indicateur (KPI) avec comparaison de periode et sparkline | `builder-widgets-widget-indicateur-kpi-avec-comparaison-de-periode-et-sparkline` | 93.0 | = | haute (amorcée) | 88.3 | — | — | 100.0 |
-| Cartographie | Rasters hébergés (COG) : import, couche carte, statistiques par zone | `cartographie-rasters-heberges-cog-tuiles-et-statistiques-par-zone` | 89.5 | -1.2 | moyenne (amorcée) | 83.0 | 100.0 | 78.6 | 100.0 |
+| Cartographie | Rasters hébergés (COG) : import, couche carte, statistiques par zone | `cartographie-rasters-heberges-cog-tuiles-et-statistiques-par-zone` | 89.5 | = | moyenne (amorcée) | 83.0 | 100.0 | 78.6 | 100.0 |
 | Builder — Runtime | Runtime d'app a trois modes (edition/apercu/execution) | `builder-runtime-runtime-d-app-a-trois-modes-edition-apercu-execution` | 93.8 | = | haute (amorcée) | 89.7 | — | — | 100.0 |
 | Builder — CEL & expressions | Colonne calculee CEL sur le widget Table | `builder-cel-expressions-colonne-calculee-cel-sur-le-widget-table` | 91.2 | = | moyenne (amorcée) | 85.3 | — | — | 100.0 |
 | Builder — Widgets | Widget Liste (selection -> cross-filter) | `builder-widgets-widget-liste-selection-cross-filter` | 91.2 | = | moyenne (amorcée) | 85.3 | — | — | 100.0 |
@@ -426,4 +427,4 @@ La **santé** est calculée (quatre sous-scores, spec §3) ; la **priorité** es
 | Supervision | Observabilité packagée (Grafana + Prometheus + Loki + Tempo, dashboards pré-provisionnés) | `supervision-observabilite-packagee-grafana-prometheus-loki-tempo-dashboards-pre-` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | Supervision | Recevoir une alerte SLO par webhook (latence API/tuiles, backlog de jobs, taux de 5xx) | `supervision-recevoir-une-alerte-slo-par-webhook-latence-api-tuiles-backlog-de-jo` | 100.0 | = | moyenne (amorcée) | 100.0 | — | — | 100.0 |
 | IA | Copilote gouverné : quota LLM, fournisseur par tenant, outils MCP de lecture | `copilote-quota-et-fournisseur-par-tenant` | 100.0 | = | moyenne (amorcée) | 100.0 | 100.0 | 100.0 | 100.0 |
-| Analytique | Requêtes SQL Lab enregistrées | `analytique-requetes-sql-enregistrees` | 100.0 | — | moyenne (amorcée) | — | 100.0 | 100.0 | 100.0 |
+| Analytique | Requêtes SQL Lab enregistrées | `analytique-requetes-sql-enregistrees` | 100.0 | = | moyenne (amorcée) | — | 100.0 | 100.0 | 100.0 |
