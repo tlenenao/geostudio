@@ -7,10 +7,12 @@ emprunte le même chemin d'exécution que le SQL manuel
 UNE FOIS validé par l'utilisateur — jamais depuis ce module."""
 
 import json
+import logging
 import re
 import secrets
 from typing import Literal
 
+import anyio
 import httpx
 from fastapi import HTTPException
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -26,6 +28,7 @@ from app.collections.introspection_pg import introspect_table
 from app.collections.schema_json import table_info_to_schema
 from app.collections.schemas import AttributeRule
 from app.configs.document_validation import _cel_syntax_error
+from app.copilot import governance
 from app.copilot.egress import EgressBlockedError
 from app.copilot.llm_provider import LLMTurn, get_llm_provider
 from app.db import request_scoped_session
@@ -218,15 +221,43 @@ def _prompt_messages(
     return [{"role": "system", "content": system}, {"role": "user", "content": question}]
 
 
-async def _ask_llm(messages: list[dict[str, str]]) -> LLMTurn:
+logger = logging.getLogger(__name__)
+
+
+def _governed_provider(session_factory, who: tuple[str, str]):
+    """AUD-106/149 : quota quotidien puis fournisseur effectif du tenant (appel bloquant,
+    exécuté hors boucle). `get_llm_provider` est passé d'ici pour rester remplaçable."""
+    with request_scoped_session(session_factory) as session:
+        try:
+            governance.check_quota(session, who[0])
+        except governance.LlmQuotaExceeded as exc:
+            raise ValueError(
+                "quota quotidien de jetons LLM atteint pour cette organisation"
+            ) from exc
+        return governance.resolve_provider(session, who[0], get_llm_provider, generator=True)
+
+
+def _record_usage(session_factory, who: tuple[str, str], turn: LLMTurn) -> None:
+    try:
+        with request_scoped_session(session_factory) as session:
+            governance.record_usage(session, who[0], who[1], "mcp", turn)
+    except Exception:  # best-effort : une trace perdue ne fait pas échouer le brouillon
+        logger.exception("llm_usage write failed")
+
+
+async def _ask_llm(
+    messages: list[dict[str, str]], session_factory, who: tuple[str, str]
+) -> LLMTurn:
     """Point unique d'appel LLM des générateurs : fournisseur absent/mal configuré et
     réponse illisible deviennent une erreur d'outil lisible, jamais un 500 (D23-11)."""
     try:
-        provider = get_llm_provider()
+        provider = await anyio.to_thread.run_sync(_governed_provider, session_factory, who)
     except (ValueError, KeyError) as exc:
+        if "quota" in str(exc):
+            raise
         raise ValueError("le fournisseur LLM n'est pas configuré") from exc
     try:
-        return await provider.chat(messages=messages, tools=[])
+        turn = await provider.chat(messages=messages, tools=[])
     except (
         EgressBlockedError,
         httpx.HTTPError,
@@ -236,6 +267,8 @@ async def _ask_llm(messages: list[dict[str, str]]) -> LLMTurn:
         ValueError,
     ) as exc:
         raise ValueError("le fournisseur LLM est indisponible") from exc
+    await anyio.to_thread.run_sync(_record_usage, session_factory, who, turn)
+    return turn
 
 
 _SQL_REPAIRS = 2
@@ -302,6 +335,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError(exc.reason) from exc
             schema = table_info_to_schema(visible_table_info(session, user, col, info))
             tenant_id = col.tenant_id
+            who = (user.tenant_id, user.id)
 
         instructions = (
             "Écris une unique requête SQL SELECT (dialecte DuckDB) en "
@@ -314,7 +348,7 @@ def register(server: FastMCP, session_factory) -> None:
         extra = (schema["pk"], *([schema["geometry"]["column"]] if schema["geometry"] else []))
         last_error = ""
         for _ in range(1 + _SQL_REPAIRS):  # AUD-104 : validation + réparation
-            turn = await _ask_llm(messages)
+            turn = await _ask_llm(messages, session_factory, who)
             sql = _strip_code_fence(turn.text)
             if not sql:
                 raise ValueError("le fournisseur LLM n'a renvoyé aucun SQL")
@@ -360,6 +394,7 @@ def register(server: FastMCP, session_factory) -> None:
             except UnsupportedTable as exc:
                 raise ValueError(exc.reason) from exc
             schema = table_info_to_schema(visible_table_info(session, user, col, info))
+            who = (user.tenant_id, user.id)
 
             joined_schema = None
             if joinCollectionId:
@@ -392,7 +427,7 @@ def register(server: FastMCP, session_factory) -> None:
         data = {"SCHEMA_BASE": json.dumps(schema)}
         if joined_schema:
             data["SCHEMA_JOINTE"] = json.dumps(joined_schema)
-        turn = await _ask_llm(_prompt_messages(prompt, data, question))
+        turn = await _ask_llm(_prompt_messages(prompt, data, question), session_factory, who)
         cleaned = _strip_code_fence(turn.text)
         try:
             parsed = json.loads(cleaned)
@@ -441,6 +476,7 @@ def register(server: FastMCP, session_factory) -> None:
         with request_scoped_session(session_factory) as session:
             user = resolve_actor(session, access_token)
             require_access(session, user=user, item_id=itemId, action="write")
+            who = (user.tenant_id, user.id)
 
         prompt = (
             f"{_CEL_CONTEXT_PROMPTS[context]} N'utilise QUE les références listées dans le "
@@ -448,7 +484,9 @@ def register(server: FastMCP, session_factory) -> None:
             "autour (un bloc de code Markdown est toléré mais pas requis)."
         )
         turn = await _ask_llm(
-            _prompt_messages(prompt, {"REFERENCES": json.dumps(availableFields)}, question)
+            _prompt_messages(prompt, {"REFERENCES": json.dumps(availableFields)}, question),
+            session_factory,
+            who,
         )
         expression = _strip_code_fence(turn.text)
         if not expression:
@@ -485,6 +523,7 @@ def register(server: FastMCP, session_factory) -> None:
                 raise ValueError(exc.reason) from exc
             info = visible_table_info(session, user, col, info)
             schema = table_info_to_schema(info)
+            who = (user.tenant_id, user.id)
         names = {f["name"] for f in schema["fields"]}
         prompt = (
             "Écris UNE règle d'attribut CEL (Common Expression Language) de type "
@@ -498,7 +537,9 @@ def register(server: FastMCP, session_factory) -> None:
             "Les colonnes sont dans le bloc COLONNES (JSON)."
         )
         turn = await _ask_llm(
-            _prompt_messages(prompt, {"COLONNES": json.dumps(schema["fields"])}, question)
+            _prompt_messages(prompt, {"COLONNES": json.dumps(schema["fields"])}, question),
+            session_factory,
+            who,
         )
         try:
             parsed = json.loads(_strip_code_fence(turn.text))

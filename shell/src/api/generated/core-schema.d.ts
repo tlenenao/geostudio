@@ -1167,6 +1167,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/copilot/llm-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Llm Settings */
+        get: operations["get_llm_settings_v1_copilot_llm_settings_get"];
+        /** Put Llm Settings */
+        put: operations["put_llm_settings_v1_copilot_llm_settings_put"];
+        post?: never;
+        /** Delete Llm Settings */
+        delete: operations["delete_llm_settings_v1_copilot_llm_settings_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/copilot/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Usage */
+        get: operations["get_usage_v1_copilot_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/datasets/{item_id}/alerts": {
         parameters: {
             query?: never;
@@ -4756,6 +4792,33 @@ export interface components {
             nodes: components["schemas"]["LineageNodeRead"][];
             target: components["schemas"]["NodeRead"];
         };
+        /** LlmSettingsRead */
+        LlmSettingsRead: {
+            /** Apiurl */
+            apiUrl?: string | null;
+            /** Configured */
+            configured: boolean;
+            /** Dailytokenlimit */
+            dailyTokenLimit?: number | null;
+            /**
+             * Hasapikey
+             * @default false
+             */
+            hasApiKey: boolean;
+            /** Model */
+            model?: string | null;
+        };
+        /** LlmSettingsWrite */
+        LlmSettingsWrite: {
+            /** Apikey */
+            apiKey?: string | null;
+            /** Apiurl */
+            apiUrl?: string | null;
+            /** Dailytokenlimit */
+            dailyTokenLimit?: number | null;
+            /** Model */
+            model?: string | null;
+        };
         /** MapConfig */
         MapConfig: {
             basemap: components["schemas"]["BaseMap"];
@@ -6037,6 +6100,17 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** UsageDay */
+        UsageDay: {
+            /** Calls */
+            calls: number;
+            /** Completiontokens */
+            completionTokens: number;
+            /** Day */
+            day: string;
+            /** Prompttokens */
+            promptTokens: number;
+        };
         /** UsageResourceStatRead */
         UsageResourceStatRead: {
             /** Count */
@@ -6064,6 +6138,15 @@ export interface components {
             storageBytes: number;
             /** Usercount */
             userCount: number;
+        };
+        /** UsageSummary */
+        UsageSummary: {
+            /** Dailylimit */
+            dailyLimit: number | null;
+            /** Days */
+            days: components["schemas"]["UsageDay"][];
+            /** Usedtoday */
+            usedToday: number;
         };
         /** UsageSummaryRead */
         UsageSummaryRead: {
@@ -9036,6 +9119,132 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_llm_settings_v1_copilot_llm_settings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_llm_settings_v1_copilot_llm_settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_llm_settings_v1_copilot_llm_settings_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_usage_v1_copilot_usage_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

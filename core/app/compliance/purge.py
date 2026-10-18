@@ -39,6 +39,7 @@ from app.collections.publication import remove_table_from_publication
 from app.compliance.journal import schedule_erasure_journal
 from app.compliance.models import PurgeReceipt
 from app.configs.models import Config, ConfigRevision
+from app.copilot.models import LlmUsage, TenantLlmSettings
 from app.dataexport.models import CollectionExportJob
 from app.export.models import ExportJob
 from app.extensions.models import Extension
@@ -325,6 +326,8 @@ def purge_tenant(
     counts["map_icons"] = _delete_all(session, MapIcon, tenant_id)
     counts["tenant_basemaps"] = _delete_all(session, TenantBasemap, tenant_id)
     counts["tenant_limits"] = _delete_all(session, TenantLimits, tenant_id)  # AUD-098
+    counts["llm_usage"] = _delete_all(session, LlmUsage, tenant_id)  # AUD-106
+    counts["tenant_llm_settings"] = _delete_all(session, TenantLlmSettings, tenant_id)  # AUD-149
     counts["geocode_jobs"] = _delete_all(session, GeocodeJob, tenant_id)
     counts["extensions"] = _delete_all(session, Extension, tenant_id)
     counts["group_members"] = _delete_all(session, GroupMember, tenant_id)

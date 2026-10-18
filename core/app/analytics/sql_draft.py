@@ -44,6 +44,16 @@ def _cte_names(node: Any) -> set[str]:
     return names
 
 
+def _has_table_function(node: Any) -> bool:
+    if isinstance(node, dict):
+        return node.get("type") == "TABLE_FUNCTION" or any(
+            _has_table_function(v) for v in node.values()
+        )
+    if isinstance(node, list):
+        return any(_has_table_function(v) for v in node)
+    return False
+
+
 def validate_draft_sql(
     sql: str,
     *,
@@ -57,6 +67,8 @@ def validate_draft_sql(
     try:
         ast = parse_ast(conn, sql)
         validate_select_only(ast)
+        if _has_table_function(ast):  # read_csv('/etc/passwd'), glob… : jamais dans un brouillon
+            raise SqlSandboxError("fonction de table non autorisée (lecture de fichier ou réseau)")
         foreign = collect_table_refs(ast) - _cte_names(ast) - {table}
         if foreign:
             raise SqlSandboxError(

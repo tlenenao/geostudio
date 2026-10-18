@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.audit.context import args_sha256
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.copilot import governance
 from app.copilot.confirm_token import ConfirmTokenError, sign_confirmation, verify_confirmation
 from app.copilot.egress import EgressBlockedError
 from app.copilot.llm_provider import LLMTurn, get_llm_provider
@@ -271,6 +272,8 @@ async def _run_turn(
     mcp_session: McpLoopbackSession,
     tools_called: list[str],
     user_id: str = "",
+    session: Session | None = None,
+    tenant_id: str = "",
 ) -> CopilotTurnResponse:
     try:
         server_tools_raw = await mcp_session.list_tools()
@@ -287,7 +290,19 @@ async def _run_turn(
     messages.append({"role": "user", "content": request.message})
 
     try:
-        provider = get_llm_provider()
+        if session is None:
+            provider = get_llm_provider()
+        else:
+            # AUD-149 : surcharge du fournisseur par tenant ; AUD-106 : quota avant l'appel.
+            await anyio.to_thread.run_sync(governance.check_quota, session, tenant_id)
+            provider = await anyio.to_thread.run_sync(
+                governance.resolve_provider, session, tenant_id, get_llm_provider
+            )
+    except governance.LlmQuotaExceeded as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Quota quotidien de jetons LLM atteint pour cette organisation.",
+        ) from exc
     except (ValueError, KeyError) as exc:  # D23-11 : fournisseur non/mal configuré
         raise HTTPException(
             status_code=503, detail="Le fournisseur LLM n'est pas configuré."
@@ -311,6 +326,13 @@ async def _run_turn(
             ValueError,
         ) as exc:
             raise _llm_failure(exc) from exc
+        if session is not None:
+            try:  # trace de consommation best-effort (AUD-106)
+                await anyio.to_thread.run_sync(
+                    governance.record_usage, session, tenant_id, user_id, request.surface, turn
+                )
+            except Exception:
+                logger.exception("llm usage record failed")
         if not turn.tool_calls:
             return CopilotTurnResponse(reply=turn.text, clientOps=[])
 
@@ -456,7 +478,12 @@ async def copilot_turn(
             return await _run_confirmed_write(body.confirmWrite, mcp_session, tools_called, user.id)
         return await asyncio.wait_for(
             _run_turn(
-                request=body, mcp_session=mcp_session, tools_called=tools_called, user_id=user.id
+                request=body,
+                mcp_session=mcp_session,
+                tools_called=tools_called,
+                user_id=user.id,
+                session=session,
+                tenant_id=user.tenant_id,
             ),
             timeout=TURN_TIMEOUT_SECONDS,
         )

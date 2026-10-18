@@ -5181,6 +5181,111 @@
         "title": "LineageRead",
         "type": "object"
       },
+      "LlmSettingsRead": {
+        "properties": {
+          "apiUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apiurl"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "dailyTokenLimit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dailytokenlimit"
+          },
+          "hasApiKey": {
+            "default": false,
+            "title": "Hasapikey",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "title": "LlmSettingsRead",
+        "type": "object"
+      },
+      "LlmSettingsWrite": {
+        "properties": {
+          "apiKey": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apikey"
+          },
+          "apiUrl": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apiurl"
+          },
+          "dailyTokenLimit": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dailytokenlimit"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "title": "LlmSettingsWrite",
+        "type": "object"
+      },
       "MapConfig": {
         "properties": {
           "basemap": {
@@ -8495,6 +8600,34 @@
         "title": "UsageActorStatRead",
         "type": "object"
       },
+      "UsageDay": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "completionTokens": {
+            "title": "Completiontokens",
+            "type": "integer"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "promptTokens": {
+            "title": "Prompttokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "calls",
+          "promptTokens",
+          "completionTokens"
+        ],
+        "title": "UsageDay",
+        "type": "object"
+      },
       "UsageResourceStatRead": {
         "properties": {
           "count": {
@@ -8591,6 +8724,39 @@
           "maxStorageBytes"
         ],
         "title": "UsageSnapshotResponse",
+        "type": "object"
+      },
+      "UsageSummary": {
+        "properties": {
+          "dailyLimit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dailylimit"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/UsageDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "usedToday": {
+            "title": "Usedtoday",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dailyLimit",
+          "usedToday",
+          "days"
+        ],
+        "title": "UsageSummary",
         "type": "object"
       },
       "UsageSummaryRead": {
@@ -14584,6 +14750,177 @@
         "summary": "Conformance",
         "tags": [
           "conformance"
+        ]
+      }
+    },
+    "/v1/copilot/llm-settings": {
+      "delete": {
+        "operationId": "delete_llm_settings_v1_copilot_llm_settings_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Llm Settings",
+        "tags": [
+          "copilot"
+        ]
+      },
+      "get": {
+        "operationId": "get_llm_settings_v1_copilot_llm_settings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmSettingsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Llm Settings",
+        "tags": [
+          "copilot"
+        ]
+      },
+      "put": {
+        "operationId": "put_llm_settings_v1_copilot_llm_settings_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmSettingsWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmSettingsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Llm Settings",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
+    "/v1/copilot/usage": {
+      "get": {
+        "operationId": "get_usage_v1_copilot_usage_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Usage",
+        "tags": [
+          "copilot"
         ]
       }
     },
