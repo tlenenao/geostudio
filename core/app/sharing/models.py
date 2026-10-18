@@ -1,7 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    or_,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -61,6 +70,15 @@ class GroupClaimMapping(Base):
 _ROLE_CHECK = "role IN ('viewer', 'editor', 'manager')"
 
 
+def share_active(model):
+    """AUD-097 : filtre SQL « partage non expiré » (expires_at NULL = sans échéance). Colonne
+    DateTime naïve en UTC, comparée à un utcnow naïf (cf. sharing.repository._naive_utc_now).
+    Seul point de définition : TOUT lecteur de item_shares/collection_shares l'applique."""
+    return or_(
+        model.expires_at.is_(None), model.expires_at > datetime.now(UTC).replace(tzinfo=None)
+    )
+
+
 class ItemShare(Base):
     __tablename__ = "item_shares"
     __table_args__ = (CheckConstraint(_ROLE_CHECK, name="ck_item_shares_role"),)
@@ -73,6 +91,8 @@ class ItemShare(Base):
     )
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)  # "viewer" | "editor" | "manager"
+    # AUD-097 : échéance facultative du partage (NULL = sans échéance), lue via share_active().
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ShareLink(Base):
@@ -130,3 +150,5 @@ class CollectionShare(Base):
     )
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id"), nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)  # "viewer" | "editor" | "manager"
+    # AUD-097 : échéance facultative du partage (NULL = sans échéance), lue via share_active().
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

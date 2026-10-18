@@ -36,6 +36,7 @@ from app.attachments.models import Attachment
 from app.attachments.routes import get_attachments_bucket
 from app.collections.models import Collection
 from app.collections.publication import remove_table_from_publication
+from app.compliance.journal import schedule_erasure_journal
 from app.compliance.models import PurgeReceipt
 from app.configs.models import Config, ConfigRevision
 from app.dataexport.models import CollectionExportJob
@@ -55,6 +56,7 @@ from app.pipelines import checkpoints
 from app.pipelines.models import PipelineRun
 from app.public_submit.models import Submission, SubmissionToken
 from app.quality.models import QualityReport
+from app.quotas.models import TenantLimits
 from app.raster.models import RasterAsset, RasterJob
 from app.raster.routes import get_raster_bucket
 from app.relations.models import CollectionRelation
@@ -146,6 +148,9 @@ def _purge_tenant_s3(s3, tenant_id: str, export_result_keys, appexport_result_ke
     return total
 
 
+S3_PENDING = "done_with_s3_pending"
+
+
 def _make_s3_cleanup(
     bind, s3, *, tenant_id: str, receipt_id: str, export_result_keys, appexport_result_keys
 ):
@@ -156,6 +161,9 @@ def _make_s3_cleanup(
         except Exception:
             failed = True
             logger.exception("purge du tenant %s : nettoyage S3 incomplet", tenant_id)
+        # AUD-121 : jamais « done » avec des objets encore présents — le reçu passe en
+        # `done_with_s3_pending` (+ clés de sortie de job, introuvables après la purge) et
+        # `retry_pending_s3_purges` reprend le nettoyage.
         # Session dédiée : la transaction de la purge est déjà committée. Écrit le
         # comptage réel sur le reçu (best-effort, la purge elle-même est acquise).
         try:
@@ -165,8 +173,18 @@ def _make_s3_cleanup(
                     receipt.counts = {
                         **receipt.counts,
                         "s3_objects_deleted": deleted,
-                        **({"s3_cleanup_failed": 1} if failed else {}),
+                        **(
+                            {
+                                "s3_cleanup_failed": 1,
+                                "s3_pending_export_keys": list(export_result_keys),
+                                "s3_pending_appexport_keys": list(appexport_result_keys),
+                            }
+                            if failed
+                            else {}
+                        ),
                     }
+                    if failed:
+                        receipt.status = S3_PENDING
                     own.commit()
         except Exception:
             logger.exception("purge du tenant %s : comptage S3 non enregistré", tenant_id)
@@ -290,6 +308,8 @@ def purge_tenant(
         ),
     )
 
+    schedule_erasure_journal(session, kind="tenant", tenant_id=tenant_id, subject_id=tenant_id)
+
     # 5. Le reste des tables tenant-scoped indépendantes d'items/
     #    collections (ou déjà safe car leurs propres FK non-cascade ont
     #    été traitées plus haut).
@@ -304,6 +324,7 @@ def purge_tenant(
     counts["harvest_sources"] = _delete_all(session, HarvestSource, tenant_id)
     counts["map_icons"] = _delete_all(session, MapIcon, tenant_id)
     counts["tenant_basemaps"] = _delete_all(session, TenantBasemap, tenant_id)
+    counts["tenant_limits"] = _delete_all(session, TenantLimits, tenant_id)  # AUD-098
     counts["geocode_jobs"] = _delete_all(session, GeocodeJob, tenant_id)
     counts["extensions"] = _delete_all(session, Extension, tenant_id)
     counts["group_members"] = _delete_all(session, GroupMember, tenant_id)
@@ -327,9 +348,18 @@ def purge_tenant(
     # 8. audit_log (FK vers tenants.id sans ondelete= — la ligne tenants ne
     #    pourra pas être supprimée tant que des lignes audit_log la
     #    référencent).
+    from app.audit import chain as audit_chain
     from app.audit.models import AuditLog
 
-    counts["audit_log"] = _delete_all(session, AuditLog, tenant_id)
+    # AUD-092 : l'audit disparaît avec le tenant, mais son empreinte de tête survit dans
+    # le reçu (preuve d'intégrité de ce qui a été purgé, sans conserver de contenu).
+    audit_chain.seal_all(session, tenant_id)
+    audit_head = audit_chain.head(session, tenant_id)
+    if audit_head is not None:
+        counts["audit_log_chain_seq"] = audit_head[0]
+        counts["audit_log_head_hash"] = audit_head[1]  # type: ignore[assignment]
+    with audit_chain.audit_maintenance(session):
+        counts["audit_log"] = _delete_all(session, AuditLog, tenant_id)
     session.flush()
 
     # 9. Preuve de purge — écrite AVANT la suppression du tenant (étape
@@ -347,6 +377,7 @@ def purge_tenant(
         session.add(receipt)
     receipt.status = "done"
     receipt.error = None
+    receipt.purged_tenant_id = tenant_id
     receipt.completed_at = datetime.now(UTC)
     receipt.counts = counts
     session.flush()
@@ -356,3 +387,30 @@ def purge_tenant(
     session.flush()
 
     return receipt
+
+
+def retry_pending_s3_purges(session: Session, s3) -> int:
+    """Reprend le nettoyage S3 des purges terminées en base mais pas côté objets (AUD-121).
+    Retourne le nombre de reçus soldés."""
+    done = 0
+    receipts = session.scalars(select(PurgeReceipt).where(PurgeReceipt.status == S3_PENDING)).all()
+    for receipt in receipts:
+        tenant_id = receipt.purged_tenant_id or receipt.tenant_slug
+        counts = dict(receipt.counts)
+        try:
+            n = _purge_tenant_s3(
+                s3,
+                tenant_id,
+                counts.pop("s3_pending_export_keys", []),
+                counts.pop("s3_pending_appexport_keys", []),
+            )
+        except Exception:
+            logger.exception("rattrapage S3 de la purge %s échoué", receipt.id)
+            continue
+        counts.pop("s3_cleanup_failed", None)
+        counts["s3_objects_deleted"] = int(counts.get("s3_objects_deleted", 0)) + n
+        receipt.counts = counts
+        receipt.status = "done"
+        done += 1
+    session.flush()
+    return done

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -19,6 +19,9 @@ class AuditLog(Base):
     __table_args__ = (
         Index("ix_audit_log_tenant_created", "tenant_id", "created_at"),
         Index("ix_audit_log_tenant_actor_created", "tenant_id", "actor_id", "created_at"),
+        # AUD-092 : scellement (lignes sans hash) et vérification (ordre de la chaîne).
+        Index("ix_audit_log_tenant_chain", "tenant_id", "chain_seq"),
+        Index("ix_audit_log_unsealed", "tenant_id", "id", postgresql_where=text("hash IS NULL")),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -30,3 +33,9 @@ class AuditLog(Base):
     object_id: Mapped[str] = mapped_column(String, nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # AUD-092 : chaîne de hachage par tenant, posée par app.audit.chain.seal (jamais à
+    # l'écriture). Le hachage couvre qui/quoi/quand, PAS le payload (texte libre effaçable
+    # au titre du RGPD, cf. compliance.service.anonymize_user).
+    chain_seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prev_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    hash: Mapped[str | None] = mapped_column(String, nullable=True)

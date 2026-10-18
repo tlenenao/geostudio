@@ -33,6 +33,7 @@ from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections.repository import get_access_facts
 from app.collections.routes import get_collection_for_read, get_readable_collection
+from app.collections.sensitive import masked_attachment_keys
 from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.guest_access import GuestActor, get_share_link_actor
 from app.db import get_session
@@ -296,6 +297,8 @@ def list_attachments_route(
     rows = attachments_repo.list_attachments(
         session, tenant_id=col.tenant_id, collection_id=collection_id, fid=fid, field_key=fieldKey
     )
+    hidden = masked_attachment_keys(session, user, col)  # AUD-093
+    rows = [a for a in rows if a.field_key not in hidden]
     return AttachmentList(attachments=[_attachment_json(a) for a in rows])
 
 
@@ -319,8 +322,8 @@ def read_attachment_file(
         fid=fid,
         attachment_id=attachment_id,
     )
-    if attachment is None:
-        raise HTTPException(status_code=404, detail="attachment not found")
+    if attachment is None or attachment.field_key in masked_attachment_keys(session, user, col):
+        raise HTTPException(status_code=404, detail="attachment not found")  # AUD-093
     bucket = get_attachments_bucket()
     try:
         obj = s3.get_object(Bucket=bucket, Key=attachment.s3_key)
@@ -354,6 +357,17 @@ def delete_attachment_route(
 ) -> None:
     col = _get_writable_collection(session, user, collection_id)
     refuse_if_geo_limited(geo_limits, col.table_name, path="attachments")
+    hidden = masked_attachment_keys(session, user, col)  # AUD-093
+    if hidden:
+        target = attachments_repo.get_attachment(
+            session,
+            tenant_id=col.tenant_id,
+            collection_id=collection_id,
+            fid=fid,
+            attachment_id=attachment_id,
+        )
+        if target is not None and target.field_key in hidden:
+            raise HTTPException(status_code=404, detail="attachment not found")
     ok = attachments_repo.delete_attachment(
         session,
         s3,

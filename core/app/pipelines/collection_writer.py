@@ -184,8 +184,8 @@ def _sync_quarantine_shares(session: Session, target, col_id: str) -> None:
     session.execute(text("DELETE FROM collection_shares WHERE collection_id = :q"), {"q": col_id})
     session.execute(
         text(
-            "INSERT INTO collection_shares (collection_id, group_id, tenant_id, role) "
-            "SELECT :q, group_id, tenant_id, 'viewer' FROM collection_shares "
+            "INSERT INTO collection_shares (collection_id, group_id, tenant_id, role, expires_at) "
+            "SELECT :q, group_id, tenant_id, 'viewer', expires_at FROM collection_shares "
             "WHERE collection_id = :t AND role IN ('editor', 'manager')"
         ),
         {"q": col_id, "t": target.id},

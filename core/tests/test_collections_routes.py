@@ -776,10 +776,14 @@ def test_patch_collection_declares_attachment_fields(env):
         json={"attachmentFields": [{"key": "photos", "label": "Photos"}]},
     )
     assert res.status_code == 200
-    assert res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
+    assert res.json()["attachmentFields"] == [
+        {"key": "photos", "label": "Photos", "sensitive": False}
+    ]
 
     get_res = client.get("/v1/collections/incidents")
-    assert get_res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
+    assert get_res.json()["attachmentFields"] == [
+        {"key": "photos", "label": "Photos", "sensitive": False}
+    ]
 
 
 def test_patch_collection_rejects_attachment_field_key_colliding_with_real_column(env):
@@ -832,7 +836,9 @@ def test_patch_collection_without_attachment_fields_leaves_them_unchanged(env):
 
     res = client.patch("/v1/collections/incidents", json={"title": "Nouveau titre"})
     assert res.status_code == 200
-    assert res.json()["attachmentFields"] == [{"key": "photos", "label": "Photos"}]
+    assert res.json()["attachmentFields"] == [
+        {"key": "photos", "label": "Photos", "sensitive": False}
+    ]
 
 
 def test_patch_sets_sensitive_fields(env):

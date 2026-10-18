@@ -594,3 +594,46 @@ def test_purge_tenant_touches_s3_only_after_commit_and_never_after_rollback(pg_e
         receipt = session.get(PurgeReceipt, "rcpt-1")
         assert receipt.status == "done"
         assert receipt.counts["s3_objects_deleted"] >= 1  # comptage réel, écrit après commit
+
+
+def test_purge_tenant_s3_failure_leaves_the_receipt_pending_then_retry_settles_it(
+    pg_engine, monkeypatch
+):
+    """AUD-121 : un nettoyage S3 raté ne produit plus un reçu « done » ; le rattrapage le solde,
+    et l'empreinte de tête de l'audit purgé survit dans le reçu (AUD-092)."""
+    from app.compliance.models import PurgeReceipt
+    from app.compliance.purge import S3_PENDING, retry_pending_s3_purges
+    from app.db import make_session_factory
+
+    Session = make_session_factory(pg_engine)
+    with Session() as session:
+        tenant_id = _create_tenant_with_one_row_in_every_model(session)
+    monkeypatch.setenv("S3_UPLOADS_BUCKET", "geostudio-uploads")
+    key = f"{tenant_id}/a.bin"
+    s3 = _PaginatingFakeS3Client({key: b"x"}, bucket="geostudio-uploads")
+
+    def broken(**kwargs):
+        raise RuntimeError("s3 down")
+
+    real_list = s3.list_objects_v2
+    s3.list_objects_v2 = broken
+    with Session() as session:
+        purge_tenant(
+            session, s3, tenant_id=tenant_id, requested_by_user_id="r", receipt_id="rcpt-s3"
+        )
+        session.commit()
+    with Session() as session:
+        receipt = session.get(PurgeReceipt, "rcpt-s3")
+        assert receipt.status == S3_PENDING and receipt.purged_tenant_id == tenant_id
+        assert receipt.counts["s3_cleanup_failed"] == 1
+        assert receipt.counts["audit_log_head_hash"]
+    assert key in s3.objects
+
+    s3.list_objects_v2 = real_list
+    with Session() as session:
+        assert retry_pending_s3_purges(session, s3) == 1
+        session.commit()
+    assert s3.objects == {}
+    with Session() as session:
+        receipt = session.get(PurgeReceipt, "rcpt-s3")
+        assert receipt.status == "done" and "s3_cleanup_failed" not in receipt.counts

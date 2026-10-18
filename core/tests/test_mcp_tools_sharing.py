@@ -177,7 +177,7 @@ def test_set_sharing_then_get_sharing_round_trips(app_client):
 
     assert result == {
         "public": True,
-        "groups": [{"groupId": "g1", "role": "viewer", "name": "G"}],
+        "groups": [{"groupId": "g1", "role": "viewer", "expiresAt": None, "name": "G"}],
     }
 
 

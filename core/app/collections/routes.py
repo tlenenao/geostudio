@@ -14,7 +14,12 @@ from app.attachments import repository as attachments_repo
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional
 from app.collections import repository as repo
-from app.collections.ddl import TenantColumnMismatch, sync_masked_role_grants
+from app.collections.ddl import (
+    TenantColumnMismatch,
+    drop_managed_table,
+    is_managed_table,
+    sync_masked_role_grants,
+)
 from app.collections.domains import (
     check_domain_config,
     check_rules_config,
@@ -656,7 +661,9 @@ def list_candidate_tables(
     core = _core_tables()
     candidates = []
     for table_name in list_tables(session):
-        if table_name in core or _is_system_table(table_name):
+        # AUD-011 : une table ingest_*/query_* est créée par GeoStudio, jamais un
+        # candidat préexistant (orpheline éventuelle d'une collection supprimée).
+        if table_name in core or _is_system_table(table_name) or is_managed_table(table_name):
             continue
         # REV-011 : exclusion cross-tenant (pas seulement tenant-scopée) —
         # une table déjà enregistrée par N'IMPORTE QUEL tenant percuterait la
@@ -1059,6 +1066,7 @@ def unregister_collection(
         prefix=lake_purge.lake_prefix(col.tenant_id, col.id),
     )
     repo.delete_collection(session, col)
+    drop_managed_table(session, col.table_name)  # AUD-011
     write_audit(
         session,
         tenant_id=user.tenant_id,
@@ -1101,7 +1109,13 @@ def get_sharing(
     return {
         "public": col.is_public,
         "groups": [
-            {"groupId": s.group_id, "role": s.role, "name": names.get(s.group_id)} for s in shares
+            {
+                "groupId": s.group_id,
+                "role": s.role,
+                "name": names.get(s.group_id),
+                "expiresAt": s.expires_at,
+            }
+            for s in shares
         ],
     }
 
@@ -1124,7 +1138,7 @@ def put_sharing(
         session,
         tenant_id=user.tenant_id,
         collection_id=col.id,
-        groups=[(g.groupId, g.role) for g in body.groups],
+        groups=[(g.groupId, g.role, sharing_repo.to_naive_utc(g.expiresAt)) for g in body.groups],
     )
     if not ok:
         # Même statut/détail que le chemin items (items/routes.py) : ne jamais
