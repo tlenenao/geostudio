@@ -411,6 +411,7 @@ jobs:
       - run: npm audit --audit-level=high --json > npm-audit.json || true
       - run: node scripts/check-npm-audit.mjs npm-audit.json
       - run: node scripts/check-licenses.mjs
+      - run: node --test scripts/check-licenses.test.mjs
 
   feature-health:
     runs-on: ubuntu-latest

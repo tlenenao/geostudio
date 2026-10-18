@@ -55,7 +55,7 @@ export default defineConfig({
     // e2e/** — vitest ramasserait sinon *.spec.ts par son pattern d'include
     // par défaut et échouerait à la collecte (test.describe de Playwright,
     // pas de vitest).
-    exclude: ["e2e/**", "e2e-oidc/**", "node_modules/**"],
+    exclude: ["e2e/**", "e2e-oidc/**", "node_modules/**", "scripts/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],
