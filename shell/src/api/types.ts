@@ -1429,6 +1429,8 @@ export type DataSource = {
   layer: string; // résolu automatiquement si datasetId est présent
   datasetId?: string;
   query: Record<string, unknown>;
+  // AUD-131 : rafraîchissement planifié en secondes (5 à 3600), absent = jamais.
+  refreshSeconds?: number;
 };
 
 export type DatasetColumnMeta = {

@@ -3983,6 +3983,8 @@ export interface components {
             query?: {
                 [key: string]: unknown;
             };
+            /** Refreshseconds */
+            refreshSeconds?: number | null;
             /** Service */
             service: string;
             /** Type */

@@ -2652,6 +2652,19 @@
             "title": "Query",
             "type": "object"
           },
+          "refreshSeconds": {
+            "anyOf": [
+              {
+                "maximum": 3600.0,
+                "minimum": 5.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refreshseconds"
+          },
           "service": {
             "title": "Service",
             "type": "string"

@@ -11,6 +11,16 @@ import "../i18n/domains/widgets";
 
 type Measure = { field?: string; agg: string; label?: string; p?: number; metric?: string };
 
+// AUD-131 (D7) : paliers de rafraîchissement planifié ; le cœur borne à [5 s, 1 h].
+const REFRESH_CHOICES = [
+  [10, "dataSourcePanel.refresh10s"],
+  [30, "dataSourcePanel.refresh30s"],
+  [60, "dataSourcePanel.refresh1m"],
+  [300, "dataSourcePanel.refresh5m"],
+  [900, "dataSourcePanel.refresh15m"],
+  [3600, "dataSourcePanel.refresh1h"],
+] as const;
+
 // REV-119 : ajoute une mesure référençant une métrique nommée du dataset de la source.
 function MetricPicker({
   sourceId,
@@ -194,6 +204,25 @@ export function DataSourcePanel({
                 value={s.layer}
                 onChange={(e) => patch(s.id, { layer: e.target.value })}
               />
+            )}
+            {s.type !== "static" && (
+              <select
+                aria-label={t("dataSourcePanel.refreshAria", { id: s.id })}
+                className={`mt-1 ${inputCls}`}
+                value={String(s.refreshSeconds ?? "")}
+                onChange={(e) =>
+                  patch(s.id, {
+                    refreshSeconds: e.target.value ? Number(e.target.value) : undefined,
+                  })
+                }
+              >
+                <option value="">{t("dataSourcePanel.refreshNever")}</option>
+                {REFRESH_CHOICES.map(([seconds, key]) => (
+                  <option key={seconds} value={seconds}>
+                    {t(key)}
+                  </option>
+                ))}
+              </select>
             )}
             {s.type === "features" &&
               onPromote &&

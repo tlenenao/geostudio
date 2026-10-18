@@ -47,6 +47,9 @@ class DataSource(BaseModel):
     # (ConfigRevision.data), aucune migration nécessaire.
     datasetId: str | None = None
     query: dict = Field(default_factory=dict)
+    # AUD-131 / D7 : rafraîchissement planifié (secondes) des widgets qui lisent cette source.
+    # Pas de flux : le plancher de 5 s borne la charge exercée sur le cœur (rate limit).
+    refreshSeconds: int | None = Field(default=None, ge=5, le=3600)
 
 
 class LayoutItem(BaseModel):
