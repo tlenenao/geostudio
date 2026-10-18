@@ -314,3 +314,11 @@ Décisions de lot :
 ## Avancement (2026-10-17)
 
 Lots exécutés et fusionnés dans `dev` : L1a, L3, L5, L2, L1b, L6. Détail des AUD fermés/partiels : `docs/superpowers/2026-08-27-historique-execution-continu.md` (section « Lots L1a/L3/L5/L2/L1b/L6 »). Restent : L4, L7, L8, L9, L10, L11, L12, L13.
+
+## Avancement (2026-10-19)
+
+Lots exécutés et fusionnés dans `dev` : L0, L1a, L1b, L2, L3, L4, L5, L6, L7, L8, L9, L10, L11, L12, plus L13 tranches 1 et 2 (AUD-063/062/131/142 fermés, 143 partiel) et trois vagues de reliquats (`100-reliquats-partiels.md`). Cadrages : `101-reliquats-L-cadrage.md`, `102-l13-cadrage.md`.
+
+**Restent, par décision de Tanguy** : L13 classe (b) (PythonCaller, Airbyte, Postgres HA, commentaires, RGAA/ProConnect) et classe (c) (notebooks, lakehouse, SaaS) ; AUD-010 (D4), AUD-116 (D8), RTL.
+**Restent, techniques** : AUD-029 (sous-processus par nœud, SP à part), AUD-057 (rejeu export réel), cross-filter multi-entrées (AUD-059), cache de tuiles + `collection_indexes` (AUD-099, migration 0181), rapport par fid (AUD-129), `jobs/common.py`, matérialisation arcgis/SQL/pipeline à l'export, DCAT `@en`.
+**Jamais rejoués sur stack réelle** : L8 T21 (collecte hors-ligne), SSE derrière Traefik, cosign sur une vraie release (AUD-177).
