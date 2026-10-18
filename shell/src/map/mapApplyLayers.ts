@@ -261,8 +261,6 @@ export function applyLayers(
         map.addSource(layer.id, {
           type: "geojson",
           data: layer.url,
-          // AUD-049 : id d'entité = PK (MapLibre abandonne les id GeoJSON non numériques).
-          ...(layer.pkColumn ? { promoteId: layer.pkColumn } : {}),
           ...(cluster ? clusterSourceOptions(cluster) : {}),
         });
         const featureGeometryKind: GeometryKind =

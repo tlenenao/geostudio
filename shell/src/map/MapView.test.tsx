@@ -2624,8 +2624,9 @@ test("timeRange filters the effect sublayers too (shadow/bloom)", () => {
 });
 
 // AUD-049 : couche GeoJSON à pkColumn texte : la sélection (onFeatureClick) fonctionne
-// via properties[pkColumn] et la source promeut la PK en id.
-test("a feature layer with a text pkColumn emits onFeatureClick and promotes the id", () => {
+// via properties[pkColumn] (pas de promoteId : une PK absente des propriétés ferait perdre
+// l'id GeoJSON top-level, cf. e2e analytics-context SP-14h).
+test("a feature layer with a text pkColumn emits onFeatureClick from the property", () => {
   const onFeatureClick = vi.fn();
   const cfg: MapConfig = {
     ...config,
@@ -2642,7 +2643,7 @@ test("a feature layer with a text pkColumn emits onFeatureClick and promotes the
   };
   render(<MapView config={cfg} onFeatureClick={onFeatureClick} />);
   const map = mapInstances[0];
-  expect(map.getSource("a")).toMatchObject({ spec: { promoteId: "uid" } });
+  expect(map.getSource("a")).not.toMatchObject({ spec: { promoteId: expect.anything() } });
   map.fireOnLayer("click", "a", {
     features: [{ properties: { uid: "abc-1" }, geometry: { type: "Point", coordinates: [1, 2] } }],
   });
