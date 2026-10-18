@@ -5,6 +5,7 @@ import { loadRuntimeConfig } from "../config";
 import { ApiError } from "../api/ApiError";
 import { CoreUnreachableError } from "../api/CoreUnreachableError";
 import { fetchPublicKit, submitPublic } from "../api/domains/publicSubmit";
+import { KitUnavailableError, loadKit } from "../offline/kitCache";
 import type { CollectKit } from "../api/types";
 import {
   applyDomains,
@@ -51,6 +52,7 @@ function fieldsOf(kit: CollectKit): FormField[] {
 function loadErrorMessage(err: unknown): string {
   if (err instanceof ApiError && err.status === 404) return t("collect.notFound");
   if (err instanceof ApiError && err.status === 410) return t("collect.expired");
+  if (err instanceof KitUnavailableError) return t("collect.kitUnavailable");
   if (err instanceof CoreUnreachableError) return t("collect.unreachable");
   return t("collect.loadError");
 }
@@ -71,10 +73,11 @@ function sendErrorMessage(err: unknown): string {
 export function CollectPage({ token }: { token: string }) {
   const kitQuery = useQuery({
     queryKey: ["collect-kit", token],
-    queryFn: () => fetchPublicKit(coreV1, token),
+    queryFn: () =>
+      loadKit(`public:${token}`, `public:${token}`, (etag) => fetchPublicKit(coreV1, token, etag)),
     retry: false,
   });
-  const kit = kitQuery.data ?? null;
+  const kit = kitQuery.data?.kit ?? null;
   return (
     <main className="mx-auto flex max-w-xl flex-col gap-4 p-4">
       <h1 className="text-lg font-semibold text-ink">{kit?.title ?? t("docTitle.collect")}</h1>
@@ -82,6 +85,16 @@ export function CollectPage({ token }: { token: string }) {
       {kitQuery.isError && (
         <p role="alert" className="text-sm text-danger">
           {loadErrorMessage(kitQuery.error)}
+        </p>
+      )}
+      {kitQuery.data?.fromCache && (
+        <p role="status" className="text-xs text-ink-2">
+          {t("collect.offlineKit")}
+        </p>
+      )}
+      {kitQuery.data?.expired && (
+        <p role="status" className="text-xs text-danger">
+          {t("collect.kitExpired")}
         </p>
       )}
       {kit && <CollectForm key={token} kit={kit} token={token} />}

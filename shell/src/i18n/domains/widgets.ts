@@ -825,6 +825,11 @@ export const widgets = {
   "collect.fileField": "Fichier : {name}",
   "collect.honeypot": "Ne pas remplir ce champ",
   "collect.requiredNote": "Les champs marqués d'un astérisque sont obligatoires.",
+  "collect.kitUnavailable":
+    "Vous êtes hors ligne et ce formulaire n'a jamais été chargé sur cet appareil. Reconnectez-vous une première fois pour pouvoir saisir sans réseau.",
+  "collect.offlineKit": "Mode hors ligne : formulaire chargé depuis cet appareil.",
+  "collect.kitExpired":
+    "Ce formulaire n'a pas été mis à jour depuis plus de 14 jours : reconnectez-vous pour récupérer la dernière version.",
 } as const;
 
 registerMessages(widgets);

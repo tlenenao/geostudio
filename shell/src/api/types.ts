@@ -1139,6 +1139,8 @@ export interface ItemClient {
   deleteFeature(collectionId: string, fid: string, opts?: { ifMatch?: string }): Promise<void>;
   /** Saisies créées par l'appelant (ARC-27), plus récentes d'abord. Optionnel : sans cœur. */
   listMyEntries?(collectionId: string, limit?: number): Promise<MyEntry[]>;
+  /** L8 : kit de collecte (schéma, règles) ; `null` = 304, le `etag` fourni est à jour. */
+  getCollectKit?(collectionId: string, etag?: string): Promise<CollectKit | null>;
   /** Import XLSForm -> collection + App de collecte mobile (ARC-27). Optionnel : sans cœur. */
   importXlsForm?(file: File): Promise<XlsFormImportResult>;
   /** Soumission publique modérée (ARC-10). Optionnels : absents d'un client sans cœur. */

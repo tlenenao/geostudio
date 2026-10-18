@@ -761,4 +761,9 @@ export const widgetsEn: Record<keyof typeof widgets, string> = {
   "collect.fileField": "File: {name}",
   "collect.honeypot": "Leave this field empty",
   "collect.requiredNote": "Fields marked with an asterisk are required.",
+  "collect.kitUnavailable":
+    "You are offline and this form was never loaded on this device. Reconnect once to be able to fill it in without a network.",
+  "collect.offlineKit": "Offline mode: form loaded from this device.",
+  "collect.kitExpired":
+    "This form has not been updated for over 14 days: reconnect to get the latest version.",
 };

@@ -212,6 +212,15 @@ export async function getKit(
   return { ...rec, expired: now - rec.fetchedAt > KIT_MAX_AGE_MS };
 }
 
+/** Kit revalidé par un 304 : seule la date de fraîcheur avance, le contenu n'est pas réécrit. */
+export async function touchKit(ownerKey: string, key: string, now = Date.now()): Promise<void> {
+  await inTx(["kits"], "readwrite", async (tx) => {
+    const store = tx.objectStore("kits");
+    const rec = (await wrap(store.get(key))) as KitRecord | undefined;
+    if (rec && rec.ownerKey === ownerKey) store.put({ ...rec, fetchedAt: now });
+  });
+}
+
 /** Déconnexion : les kits partent, la file reste (perdre des saisies de terrain est pire). */
 export async function purgeKits(): Promise<void> {
   await inTx(["kits"], "readwrite", async (tx) => {

@@ -10,6 +10,7 @@ import {
 import { createAlertsMethods } from "./domains/alerts";
 import { createAppsMethods } from "./domains/apps";
 import { createAttachmentsMethods } from "./domains/attachments";
+import { createCollectKitMethods } from "./domains/collectKit";
 import { createCollectionsAdminMethods } from "./domains/collectionsAdmin";
 import { createImpactMethods } from "./domains/impact";
 import { createDatasetsMethods } from "./domains/datasets";
@@ -57,6 +58,7 @@ export function createItemClient(opts: {
     ...createReportsMethods(base),
     ...createAppsMethods(base),
     ...createAttachmentsMethods(base),
+    ...createCollectKitMethods(base),
     ...createFeaturesMethods(base),
     ...createExportsIngestionMethods(base),
     ...createTiles3dMethods(base),

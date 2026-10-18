@@ -99,6 +99,8 @@ export function getDb(): Promise<IDBDatabase> {
     };
     return db;
   });
+  // Une ouverture refusée ne reste pas mémorisée : l'appel suivant retentera.
+  cached.catch(() => (cached = null));
   return cached;
 }
 
