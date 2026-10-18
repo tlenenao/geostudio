@@ -532,7 +532,7 @@ def test_put_then_get_sharing_round_trips(client):
     assert get_response.status_code == 200
     assert get_response.json() == {
         "public": True,
-        "groups": [{"groupId": "g1", "role": "viewer", "name": "Reviewers"}],
+        "groups": [{"groupId": "g1", "role": "viewer", "expiresAt": None, "name": "Reviewers"}],
     }
 
 
@@ -578,7 +578,7 @@ def test_put_sharing_with_unknown_group_leaves_state_unchanged(client):
     unchanged = client.get(f"/v1/items/{item_id}/sharing")
     assert unchanged.json() == {
         "public": True,
-        "groups": [{"groupId": "g-real", "role": "viewer", "name": "Real"}],
+        "groups": [{"groupId": "g-real", "role": "viewer", "expiresAt": None, "name": "Real"}],
     }
 
 
