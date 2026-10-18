@@ -12,6 +12,7 @@ import type {
 } from "./types";
 import { CoreUnreachableError } from "./CoreUnreachableError";
 import { ApiError } from "./ApiError";
+import { getLocale } from "../i18n";
 
 // SP-B7 : borne toute requête cœur à 15s et convertit un fetch qui rejette
 // (réseau coupé, timeout, DNS, etc.) en CoreUnreachableError — distingué
@@ -311,7 +312,7 @@ export async function requestBlob(
   const token = getToken();
   const shareToken = getShareLinkToken?.();
   const send = (tok: string | undefined, m = method, p = path, b = body) => {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { "Accept-Language": getLocale() };
     if (tok) headers.Authorization = `Bearer ${tok}`;
     else if (shareToken) headers["X-Share-Link-Token"] = shareToken;
     if (b !== undefined) headers["Content-Type"] = "application/json";
@@ -395,6 +396,7 @@ export function createBase(opts: {
     }
     const send = (tok: string | undefined) => {
       const headers = new Headers(init.headers);
+      if (!headers.has("Accept-Language")) headers.set("Accept-Language", getLocale());
       if (tok) headers.set("Authorization", `Bearer ${tok}`);
       return fetchWithTimeout(href, { ...init, headers }, timeoutMs);
     };
@@ -416,7 +418,7 @@ export function createBase(opts: {
   ): Promise<T> {
     const shareToken = getShareLinkToken?.();
     const send = (token: string | undefined) => {
-      const headers: Record<string, string> = { ...extraHeaders };
+      const headers: Record<string, string> = { "Accept-Language": getLocale(), ...extraHeaders };
       if (token) headers.Authorization = `Bearer ${token}`;
       if (shareToken) headers["X-Share-Link-Token"] = shareToken;
       if (body !== undefined) headers["Content-Type"] = "application/json";

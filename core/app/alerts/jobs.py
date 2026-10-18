@@ -33,6 +33,7 @@ from app.configs import repository as configs_repo
 from app.configs.alert_condition import evaluate_condition
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook, AlertRulePayload
 from app.db import request_scoped_session
+from app.i18n_core import tr
 from app.items import repository as items_repo
 from app.items.models import Item
 from app.job_errors import INTERNAL_ERROR_MESSAGE
@@ -43,6 +44,7 @@ from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
 from app.sharing.repository import share_recipient_ids
 from app.users.models import User
+from app.users.repository import user_locale
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +326,12 @@ def _notify(
                     tenant_id=tenant_id,
                     item_id=item_id,
                     channel=channel,
-                    subject=f"[GeoStudio] {rule_name}: {state}",
+                    subject=tr(
+                        "alert.subject",
+                        user_locale(session, actor_id),
+                        rule=rule_name,
+                        state=state,
+                    ),
                     body=message,
                 )
             success = True

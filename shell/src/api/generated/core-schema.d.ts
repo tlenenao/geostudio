@@ -1978,6 +1978,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preferences */
+        get: operations["get_preferences_v1_me_preferences_get"];
+        /**
+         * Put Preferences
+         * @description AUD-115 : langue et fuseau de l'utilisateur courant (null = défaut d'instance / UTC).
+         */
+        put: operations["put_preferences_v1_me_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/metadata-catalog": {
         parameters: {
             query?: never;
@@ -5528,6 +5549,13 @@ export interface components {
              * @enum {string}
              */
             kind: "postgres_dsn";
+        };
+        /** PreferencesBody */
+        PreferencesBody: {
+            /** Locale */
+            locale?: ("fr" | "en") | null;
+            /** Timezone */
+            timezone?: string | null;
         };
         /** PresignRequest */
         PresignRequest: {
@@ -11320,6 +11348,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preferences_v1_me_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_preferences_v1_me_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferencesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesBody"];
                 };
             };
             /** @description Validation Error */

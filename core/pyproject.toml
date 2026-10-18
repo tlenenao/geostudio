@@ -591,6 +591,7 @@ source_modules = [
     "app.sql_ident",
     "app.net_pin",
     "app.tile_proxy",
+    "app.i18n_core",
     "app.bbox",
     "app.errors",
     "app.filter_values",

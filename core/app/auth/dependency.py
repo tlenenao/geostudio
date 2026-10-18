@@ -322,6 +322,7 @@ def _resolve_current_user(authorization: str, session: Session, *, is_read: bool
         last_name=oidc_claims.get("family_name", ""),
         bootstrap_admin=oidc_claims["sub"] in admin_subs(),
         bootstrap_analyst=oidc_claims["sub"] in analyst_subs(),
+        locale=oidc_claims.get("locale"),
     )
     # ARC-24 (ADR 0022) : appartenances alimentées par les claims, additif, jamais bloquant.
     apply_from_token_claims(session, tenant_id=tenant.id, user_id=user.id, claims=oidc_claims)
