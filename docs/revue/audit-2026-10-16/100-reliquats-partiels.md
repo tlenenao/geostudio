@@ -13,17 +13,17 @@ couloir ; « Déjà fait » = l'inventaire était périmé (piège n°12).
 
 | AUD | Reste | Effort | Statut |
 |---|---|---|---|
-| 051 | Filtre CEL par couche vers MapLibre / `ST_AsMVT` | M | Ouvert (non traité) |
+| 051 | Filtre CEL par couche vers MapLibre / `ST_AsMVT` | M | Fait sur le fond (relu, couloir C 4e mission) : `MapLayer.filter` en clauses ET + `LayerFilterEditor` + `applyLayerFilter` sur couches vector/feature, plage d'échelle, aller-retour par `toFrontLayer` ; seul reste un filtre CEL libre/`ST_AsMVT` côté serveur (choix produit : clauses suffisent) |
 | 052 | Contexte du popup CEL jusqu'à `MapView` ; sanitisation markdown | M | Ouvert (non traité) |
 | 056 | Cache de tuiles ; `AsyncClient` + `Semaphore` | M | Partiel : la session DB est déjà rendue avant l'appel TiTiler/terrain (`session.commit()` avant `httpx.get`, déjà fait) ; cache serveur et sémaphore restent ouverts |
 | 057 | Séries cartographiques, mise en page composable, pied de page PDF | L | Cadré dans `101-reliquats-L-cadrage.md` |
-| 059 | Comparaison conserve filtres et mesure ; cross-filter multi-entrées ; filtre au clic | M | Ouvert (non traité) |
-| 099 | Pré-agrégation/cache/backfill/index | L | Cadré dans `101` |
-| 014 | Lecture en flux OGR/GeoParquet/XML | L | Cadré dans `101` |
-| 029 | Arrêt d'un code Python bloquant en cours de nœud | M | Ouvert (non traité) |
-| 115 | Erreurs/e-mails/DCAT localisés, `users.locale`/`timezone`, timeZone alertes/rapports/exports | L | Cadré dans `101` |
+| 059 | Comparaison conserve filtres et mesure ; cross-filter multi-entrées ; filtre au clic | M | Partiel : comparaison de périodes garde les filtres de la source d'origine (fait) ; cross-filter multi-entrées : modèle `Record<dataset, Record<origine, entrée>>` spécifié dans `docs/superpowers/specs/2026-10-19-couloir-c4-reliquats-specs-courtes.md`, non implémenté |
+| 099 | Pré-agrégation/cache/backfill/index | L | Partiel : cache d'agrégat et `statement_timeout` déjà là (relu) ; fait : backfill CDC en flux par segments, créneaux d'agrégat par tenant (429). Ouverts : cache de tuiles, `CollectionIndex` (spec 0181 dans la spec courte) |
+| 014 | Lecture en flux OGR/GeoParquet/XML | L | Fait : fenêtres OGR/GeoParquet, `iterparse` XML ; import reste atomique (décision) ; reste le téléchargement S3 intégral en mémoire (`bytes`) |
+| 029 | Arrêt d'un code Python bloquant en cours de nœud | M | Ouvert : exige des sous-processus par nœud (spec courte), SP à part |
+| 115 | Erreurs/e-mails/DCAT localisés, `users.locale`/`timezone`, timeZone alertes/rapports/exports | L | Partiel : `users.timezone` consommé (défaut du `timeZone` d'agrégat sur routes/MCP/alertes, heure d'émission des e-mails d'alerte et de rapport, XLSX et nom de fichier d'export agrégé) ; XLSForm multilingue fait ; DCAT `@en` (D8) et RTL (décision) non entrepris |
 | 119 | Recherche d'items/récents dans ⌘K, `HelpHint` | M | Partiel : recherche d'items du catalogue faite (palette) ; récents et `HelpHint` ouverts |
-| 126/127 | Fonds de carte thémés, contrôles vers le kit | M | Ouvert (non traité) |
+| 126/127 | Fonds de carte thémés, contrôles vers le kit | M | Partiel : fond vierge thémé (`--gs-map-land`, repeint au changement de thème) ; 64 `<select>` migrés vers `NativeSelect`, cliquet `rawControlGuard` sur select/input/textarea hors kit ; restent les `<select>` à `className` dynamique et ~240 `<input>`/`<textarea>` (baseline `shell/src/test/rawControlBaseline.json`) ; NTF/CRS DOM (127 côté cœur) non traité |
 | 097 | `expires_at` : partage expiré encore listé dans GET sharing | S | Fait (`list_shares` et `get_collection_sharing` filtrent par `share_active`) |
 | SP-L4 | `/admin/usage` sans `maxUsers`/`maxActiveRuns` ; API d'écriture de `tenant_limits` | S/M | Partiel : `maxUsers`/`maxActiveRuns` exposés et affichés ; API d'écriture de `tenant_limits` ouverte |
 | L12 | `jobs/common.py` hors contrat de couches (cycle items/notifications) ; `jobs/__init__`, `recovery.py` hors strict | M | Ouvert : 32 importeurs de `jobs.common`, refonte par injection (rappel de notification) à planifier |
