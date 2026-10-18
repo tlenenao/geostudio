@@ -35,6 +35,7 @@ from app.harvest.egress import EgressBlockedError, build_guarded_client
 from app.harvest.jobs import run_harvest_task
 from app.harvest.schemas import HarvestSourceCreate, HarvestSourcePatch
 from app.items import repository as items_repo
+from app.jobs.defer import defer_resilient
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
 from app.sharing.authorization import can, decide
@@ -146,7 +147,7 @@ def _check_copy_support(type_: str, mode: str) -> None:
 
 def get_task_deferrer():  # overridé en test
     def deferrer(source_id: str, tenant_id: str) -> None:
-        run_harvest_task.defer(source_id=source_id, tenant_id=tenant_id)
+        defer_resilient(lambda: run_harvest_task.defer(source_id=source_id, tenant_id=tenant_id))
 
     return deferrer
 

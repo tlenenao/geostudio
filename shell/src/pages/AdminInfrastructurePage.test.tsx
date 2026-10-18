@@ -93,6 +93,8 @@ test("affiche l'utilisation avec les plafonds configurés", async () => {
         maxItems: 100,
         maxCollections: null,
         maxStorageBytes: null,
+        maxUsers: 10,
+        maxActiveRuns: 4,
       }),
     ),
   );
@@ -100,6 +102,8 @@ test("affiche l'utilisation avec les plafonds configurés", async () => {
   expect(await screen.findByText("Éléments : 12 / 100")).toBeInTheDocument();
   expect(screen.getByText(/Collections : 3/)).toBeInTheDocument();
   expect(screen.getByText(/pas de limite configurée/)).toBeInTheDocument();
+  expect(screen.getByText("Utilisateurs : 5 / 10")).toBeInTheDocument();
+  expect(screen.getByText(/simultanées : 4/)).toBeInTheDocument();
 });
 
 test("cliquer sur Martin appelle launch et ouvre l'URL retournée dans un nouvel onglet", async () => {

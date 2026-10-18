@@ -14,6 +14,12 @@ vi.mock("react-router-dom", async () => {
 
 vi.mock("../../api/hooks", () => ({
   useMe: () => ({ data: { privileges: ["apps.manage", "admin.users.manage"] } }),
+  useItems: (params: { q: string }) => ({
+    data:
+      params.q === "zonage"
+        ? { items: [{ pk: "42", resourceType: "map", title: "Zonage PLU" }] }
+        : undefined,
+  }),
 }));
 
 const profile: Profile = {
@@ -117,5 +123,17 @@ describe("CommandPalette", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByText("Automatisation")).toBeInTheDocument();
+  });
+
+  it("AUD-119 : trouve un item du catalogue et l'ouvre", async () => {
+    render(
+      <MemoryRouter>
+        <CommandPalette open onOpenChange={vi.fn()} profile={profile} />
+      </MemoryRouter>,
+    );
+    await userEvent.type(screen.getByRole("combobox"), "zonage");
+    const option = await screen.findByRole("option", { name: "Zonage PLU" });
+    await userEvent.click(option);
+    expect(navigateMock).toHaveBeenCalledWith("/maps/42");
   });
 });

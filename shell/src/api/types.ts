@@ -258,6 +258,8 @@ export type QuotaUsage = {
   maxItems: number | null;
   maxCollections: number | null;
   maxStorageBytes: number | null;
+  maxUsers: number | null;
+  maxActiveRuns: number | null;
 };
 
 export type PrivilegeCatalogEntry = {

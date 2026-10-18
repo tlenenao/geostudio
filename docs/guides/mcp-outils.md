@@ -26,6 +26,7 @@
 | `geocode` | lecture | Geocode a postal address or place name (3-200 characters) into coordinates. Returns {"results": [{"label", "lon", "lat"}]}, at most `limit` (1-10) entries. Read-only. REV-102. |
 | `geocode_batch` | lecture | Geocode up to 500 addresses (3-200 characters each) in one call. Returns {"results": [{"address", "status", "label", "lon", "lat"}], "found", "not_found", "errors"}; status is… |
 | `get_app_config` | lecture | Get the app/dashboard config for an item — mirrors GET /configs/by-item/{id}. |
+| `get_config_history` | lecture | List the saved versions of an item's config (version number and date) — mirrors GET /v1/configs/{id}/revisions. Use it to pick an `expectedVersion` or to tell the user what a… |
 | `get_item` | lecture | Get one catalog item by id — mirrors GET /items/{id}. |
 | `get_item_impact` | lecture | List what depends on an item (type="item", default) or a collection (type="collection") — i.e. what would break if it were deleted: visible dependents (transitive, with depth)… |
 | `get_sharing` | lecture | Get an item's sharing settings — mirrors GET /items/{id}/sharing. |
@@ -33,6 +34,7 @@
 | `list_attachments` | lecture | List the metadata of files attached to one entity of a collection (chantier 4.12) — read-only, never returns file bytes. No fileUrl: the REST proxy-read it would point to (GET… |
 | `list_groups` | lecture | List the caller's sharing groups, or search the tenant's groups by name with `q` (>= 2 characters, capped) — mirrors GET /groups. |
 | `list_items` | lecture | List catalog items — mirrors GET /items. scope: all\|mine\|shared\|public. |
+| `list_pipeline_ops` | lecture | List the pipeline operations available on this instance (catalogue with parameter schemas) — mirrors GET /v1/pipelines/ops. Read it before drafting a pipeline node so… |
 | `profile_dataset` | lecture | Exploratory profile of a collection-sourced dataset (REV-117, X-rays): per-column null/distinct counts, min/max/quantiles/histogram, top values, geometry extent and types.… |
 | `query_features` | lecture | Read features from a collection — mirrors GET /collections/{id}/items (bbox, attribute filters, pagination), same permissions/RLS. No natural-language-to-filter translation:… |
 | `raster_zonal_stats` | lecture | Zonal statistics of a raster item (COG) over GeoJSON polygons (Polygon/MultiPolygon, Feature or FeatureCollection, WGS84, at most 1000). `stats` among count, min, max, mean,… |

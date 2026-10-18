@@ -515,6 +515,8 @@ export const widgets = {
   // ExportPanel (builder/print)
   "exportPanel.stillRunning": "Export toujours en cours, réessayer plus tard.",
   "exportPanel.exportFailed": "Échec de l'export.",
+  "exportPanel.contextTooLarge":
+    "Les filtres actifs sont trop volumineux pour être transmis à l'export : réduisez-les puis réessayez.",
   "exportPanel.exportButton": "Exporter",
   "exportPanel.chooseFormatHeading": "Choisir le format d'export",
   "exportPanel.cancel": "Annuler",

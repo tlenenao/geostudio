@@ -217,3 +217,53 @@ def test_import_and_append_repair_invalid_polygon(env):
         rows = s.execute(text(f"SELECT ST_IsValid(geom), ST_Area(geom) FROM public.{cid}")).all()
     assert len(rows) == 2
     assert all(v and round(a, 6) == 2.0 for v, a in rows)
+
+
+def test_append_bowtie_into_polygon_column_is_reported_not_raw_error(env):
+    """AUD-129 (reliquat) : un nœud papillon réparé en MultiPolygon, ajouté à une colonne
+    Polygon, est rejeté dans le rapport (geometry_mismatch), pas par l'erreur PostGIS brute."""
+    import json
+
+    Session, tenant, user = env
+    square = {"type": "Polygon", "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]}
+    bowtie = {"type": "Polygon", "coordinates": [[[0, 0], [2, 2], [2, 0], [0, 2], [0, 0]]]}
+
+    def gj(*feats):
+        return json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {"type": "Feature", "properties": {"nom": n}, "geometry": g} for n, g in feats
+                ],
+            }
+        ).encode()
+
+    with Session() as s:
+        res = run_import(
+            s,
+            tenant_id=tenant.id,
+            created_by=user.id,
+            filename="p.geojson",
+            content=gj(("seed", square)),
+            collection_title="Polys",
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+        cid = res.collection_id
+    with Session() as s:
+        report = run_append(
+            s,
+            tenant_id=tenant.id,
+            user=user,
+            collection_id=cid,
+            filename="p2.geojson",
+            content=gj(("ok", square), ("noeud", bowtie)),
+            lat_field=None,
+            lon_field=None,
+        )
+        s.commit()
+    assert report["inserted"] == 1
+    assert report["rejectedCount"] == 1
+    assert report["rejected"][0]["row"] == 2
+    assert report["rejected"][0]["errors"][0]["code"] == "geometry_mismatch"

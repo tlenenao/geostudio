@@ -159,11 +159,14 @@ def compile_spatial_join(
     geom = (
         "t.geometry"
         if p.outputGeometry == "left"
-        else "coalesce(ST_Intersection(t.geometry, o.geometry), t.geometry)"
+        else (
+            "coalesce(ST_Intersection(ST_MakeValid(t.geometry), ST_MakeValid(o.geometry)), "
+            "t.geometry)"
+        )
     )
     # Surface d'intersection calculée seulement quand elle départage (largestOverlap).
     overlap = (
-        "ST_Area(ST_Intersection(t.geometry, o.geometry))"
+        "ST_Area(ST_Intersection(ST_MakeValid(t.geometry), ST_MakeValid(o.geometry)))"
         if p.match == "largestOverlap"
         else "NULL::DOUBLE"
     )

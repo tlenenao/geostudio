@@ -12,6 +12,7 @@ from app.collections.routes import get_collection_for_read
 from app.collections.sensitive import may_read_sensitive
 from app.configs.geo_limits_dep import get_request_geo_limits
 from app.db import get_session
+from app.jobs.defer import defer_resilient
 from app.quality import repository as repo
 from app.quality.jobs import run_quality_check_task
 from app.sharing.authorization import can
@@ -84,7 +85,10 @@ def start_quality_check(
         payload={"collectionId": col.id},
     )
     session.commit()  # visible avant le defer (piège n°14)
-    run_quality_check_task.defer(report_id=report.id, tenant_id=col.tenant_id)
+    # Rapport `pending` repris par sweep_quality_reports_task ; 503 propre sinon un 500.
+    defer_resilient(
+        lambda: run_quality_check_task.defer(report_id=report.id, tenant_id=col.tenant_id)
+    )
     return _out(report)
 
 

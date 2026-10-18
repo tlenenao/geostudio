@@ -627,4 +627,9 @@ def sweep_alert_rules_task(timestamp: int) -> None:
             )
             # Commit avant de déférer — même raison que run_pipeline_sweep_task.
             session.commit()
-            evaluate_alert_task.defer(evaluation_id=evaluation.id, tenant_id=tenant_id)
+            try:
+                evaluate_alert_task.defer(evaluation_id=evaluation.id, tenant_id=tenant_id)
+            except Exception:
+                # Une règle dont le defer échoue (évaluation `pending` reprise après
+                # _PENDING_RECLAIM_MINUTES) ne doit pas priver les suivantes de leur tour.
+                logger.exception("alerte %s : defer échoué, règle suivante", item_id)

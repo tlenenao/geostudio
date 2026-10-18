@@ -10,18 +10,36 @@ import os
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.analytics.aggregate import AggregateRequestBody
 from app.audit.writer import write_audit
+from app.auth.dependency import is_etl_enabled
+from app.collections import dataset_validation as _dataset_validation  # noqa: F401  (valideurs)
 from app.collections.ddl import apply_collection_ddl, quote_ident
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.collections.introspection_pg import introspect_table
 from app.collections.repository import create_collection, get_collection
 from app.configs.builder_templates import build_config_from_template
-from app.configs.schemas import BaseMap, BuilderConfig, MapConfig, MapLayer, MapView
+from app.configs.schemas import (
+    AlertChannelWebhook,
+    AlertCondition,
+    AlertRulePayload,
+    BaseMap,
+    BuilderConfig,
+    DatasetPayload,
+    MapConfig,
+    MapLayer,
+    MapView,
+    PipelineEdge,
+    PipelineNode,
+    PipelinePayload,
+    PipelineRefreshPolicy,
+)
 from app.configs.service import create_config_service
 from app.db import make_engine, make_session_factory
 from app.ingestion.importer import default_basemap_style
 from app.items.models import Item
 from app.mcp.form_app import build_config
+from app.pipelines import config_validation as _pipeline_validation  # noqa: F401  (valideurs)
 from app.tenants.repository import get_or_create_default_tenant
 from app.users.models import User
 from app.users.repository import get_or_create_user
@@ -149,17 +167,55 @@ def seed_objects(session: Session, owner_username: str | None = None) -> list[st
             ),
         ),
         ("Tableau de bord (modèle)", build_config_from_template("basic-dashboard")),
+        (
+            "Incidents (jeu de données)",
+            BuilderConfig(
+                kind="dataset",
+                dataset=DatasetPayload(source="collection", collectionId="incidents"),
+            ),
+        ),
     ]
+    if is_etl_enabled():  # sinon create_config_service refuse un pipeline (403)
+        wanted.append(
+            (
+                "Export des incidents (pipeline)",
+                BuilderConfig(
+                    kind="pipeline",
+                    pipeline=PipelinePayload(
+                        nodes=[
+                            PipelineNode(
+                                id="lecture",
+                                kind="reader",
+                                op="reader.collection",
+                                params={"collectionId": "incidents"},
+                            ),
+                            PipelineNode(
+                                id="export",
+                                kind="writer",
+                                op="writer.export",
+                                x=260,
+                                params={"format": "geojson", "key": "demo/incidents.geojson"},
+                            ),
+                        ],
+                        edges=[PipelineEdge(id="e1", **{"from": "lecture"}, to="export")],
+                    ),
+                ),
+            )
+        )
     created: list[str] = []
-    for title, config in wanted:
+    ids: dict[str, str] = {}
+
+    def _ensure(title: str, config: BuilderConfig) -> None:
         exists = session.scalar(
             select(Item.id).where(
                 Item.tenant_id == tenant.id, Item.owner_id == owner.id, Item.title == title
             )
         )
         if exists:
-            continue
+            ids[title] = exists
+            return
         done = create_config_service(session, config, title=title, user=owner)
+        ids[title] = done.item.id
         write_audit(
             session,
             tenant_id=tenant.id,
@@ -171,6 +227,23 @@ def seed_objects(session: Session, owner_username: str | None = None) -> list[st
             payload={"title": title, "seed": True},
         )
         created.append(title)
+
+    for title, config in wanted:
+        _ensure(title, config)
+    # Règle d'alerte DÉSACTIVÉE (jamais évaluée, webhook factice) : montre l'écran sans livrer.
+    _ensure(
+        "Alerte : incidents nombreux (inactive)",
+        BuilderConfig(
+            kind="alert",
+            alert=AlertRulePayload(
+                datasetItemId=ids["Incidents (jeu de données)"],
+                query=AggregateRequestBody(agg="count"),
+                condition=AlertCondition(expr="value > 100"),
+                refreshPolicy=PipelineRefreshPolicy(enabled=False, cron="0 * * * *"),
+                channels=[AlertChannelWebhook(url="https://example.invalid/geostudio-demo")],
+            ),
+        ),
+    )
     return created
 
 

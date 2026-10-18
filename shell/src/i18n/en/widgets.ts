@@ -471,6 +471,8 @@ export const widgetsEn: Record<keyof typeof widgets, string> = {
 
   "exportPanel.stillRunning": "Export still running, try again later.",
   "exportPanel.exportFailed": "Export failed.",
+  "exportPanel.contextTooLarge":
+    "The active filters are too large to be sent to the export: reduce them and try again.",
   "exportPanel.exportButton": "Export",
   "exportPanel.chooseFormatHeading": "Choose the export format",
   "exportPanel.cancel": "Cancel",

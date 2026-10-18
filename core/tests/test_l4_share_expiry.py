@@ -128,3 +128,12 @@ def test_replace_shares_stores_the_expiry(world):
     assert s.get(ItemShare, ("it-none", "g")).expires_at == FUTURE
     aware = FUTURE.replace(tzinfo=UTC)
     assert sharing_repo.to_naive_utc(aware) == FUTURE
+
+
+def test_listing_sharing_hides_expired_shares(world):
+    s, _ = world
+    assert sharing_repo.list_shares(s, item_id="it-past") == []
+    assert len(sharing_repo.list_shares(s, item_id="it-future")) == 1
+    assert len(sharing_repo.list_shares(s, item_id="it-none")) == 1
+    assert col_repo.get_collection_sharing(s, tenant_id="t", collection_id="c-it-past") == []
+    assert len(col_repo.get_collection_sharing(s, tenant_id="t", collection_id="c-it-none")) == 1
