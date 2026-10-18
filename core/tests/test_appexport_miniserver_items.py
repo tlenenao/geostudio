@@ -170,6 +170,47 @@ def test_select_features_reads_geometry_of_an_imported_collection(tmp_path):
     assert page.features[0]["geometry"]["coordinates"] == [2.5, 48.5]
 
 
+def test_select_features_reprojects_a_non_4326_snapshot_to_lon_lat(tmp_path):
+    """Reliquat SP-L0 : le lac est en SRID natif ; le mini-serveur sert du GeoJSON 4326 et
+    filtre le bbox (4326) dans le même repère."""
+    # Paris en Lambert-93 (EPSG:2154) : ~ (652469, 6862035).
+    row = ChangeRow(
+        op="insert",
+        lsn=0,
+        ts=0.0,
+        pk_column="id",
+        pk_value=1,
+        columns={"name": "Paris"},
+        geometry_column="geom",
+        geometry_wkb_hex=shapely_wkb.dumps(Point(652469, 6862035), hex=True),
+    )
+    part = tmp_path / "tenant_id=t1" / "collection_id=col1" / "dt=snapshot"
+    part.mkdir(parents=True)
+    write_geoparquet([row], srid=2154, path=str(part / "data.parquet"))
+    info = TableInfo(
+        table_name="t_x",
+        pk_column="id",
+        geometry_column="geom",
+        geometry_type="Point",
+        srid=2154,
+        columns=[
+            ColumnInfo(name="id", type="integer", required=True),
+            ColumnInfo(name="name", type="string", required=False),
+        ],
+    )
+    conn = open_local_connection()
+    try:
+        common = dict(base_uri=str(tmp_path), tenant_id="t1", collection_id="col1", table_info=info)
+        page = select_features(conn, **common, limit=10, offset=0, bbox=(2.0, 48.0, 3.0, 49.0))
+        single = get_feature(conn, **common, fid="1")
+    finally:
+        conn.close()
+    assert page.number_matched == 1
+    lon, lat = page.features[0]["geometry"]["coordinates"]
+    assert (round(lon, 2), round(lat, 2)) == (2.35, 48.86)
+    assert single["geometry"]["coordinates"] == page.features[0]["geometry"]["coordinates"]
+
+
 def test_get_feature_missing_returns_none(tmp_path):
     table_info = _write_fixture(tmp_path)
     conn = open_local_connection()
