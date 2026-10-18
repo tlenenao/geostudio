@@ -152,6 +152,12 @@ export const automation = {
   "copilot.contextTooLarge":
     "La configuration est trop volumineuse pour le copilote, même compactée : seule la page active lui est transmise, réduisez-la ou divisez l'app.",
   "copilot.confirmWritePrompt": "Le copilote propose d'exécuter l'action « {name} ».",
+  "copilot.confirmWriteKind": "Type",
+  "copilot.confirmWriteTitle": "Titre",
+  "copilot.confirmWriteCollection": "Collection",
+  "copilot.confirmWriteTemplate": "Gabarit",
+  "copilot.confirmWriteConfig": "Configuration",
+  "copilot.confirmWriteConfigSize": "{count} caractères",
   "copilot.confirmWriteYes": "Confirmer",
   "copilot.confirmWriteNo": "Annuler",
   "copilot.confirmWriteMessage": "Confirmation de l'action proposée.",

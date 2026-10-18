@@ -24,6 +24,33 @@ export const MAX_MESSAGE_CHARS = 4_000;
 export const MAX_HISTORY_MESSAGES = 40;
 const MAX_HISTORY_MESSAGE_CHARS = 8_000;
 
+/** Écriture proposée : le jeton lie la confirmation à ces arguments exacts (AUD-102). */
+export type PendingWrite = {
+  name: string;
+  arguments: Record<string, unknown>;
+  confirmToken: string;
+};
+
+/** Résumé lisible des arguments proposés (titre, type, collection, taille de config). */
+export function summarizeWrite(write: PendingWrite): { label: string; value: string }[] {
+  const a = write.arguments;
+  const rows: { label: string; value: string }[] = [];
+  if (typeof a.kind === "string")
+    rows.push({ label: t("copilot.confirmWriteKind"), value: a.kind });
+  if (typeof a.title === "string")
+    rows.push({ label: t("copilot.confirmWriteTitle"), value: a.title });
+  if (typeof a.collectionId === "string")
+    rows.push({ label: t("copilot.confirmWriteCollection"), value: a.collectionId });
+  if (typeof a.template === "string")
+    rows.push({ label: t("copilot.confirmWriteTemplate"), value: a.template });
+  if (a.config !== undefined)
+    rows.push({
+      label: t("copilot.confirmWriteConfig"),
+      value: t("copilot.confirmWriteConfigSize", { count: JSON.stringify(a.config).length }),
+    });
+  return rows;
+}
+
 /** Fenêtre glissante de l'historique envoyé au cœur. */
 export function boundHistory(history: CopilotMessage[]): CopilotMessage[] {
   return history
@@ -73,12 +100,9 @@ export function CopilotChat({
   const [error, setError] = useState<string | null>(null);
   const [lastOpsSummary, setLastOpsSummary] = useState<string[]>([]);
   // j11-012 : écriture proposée par le copilote, en attente d'un clic humain.
-  const [pendingWrite, setPendingWrite] = useState<{
-    name: string;
-    arguments: Record<string, unknown>;
-  } | null>(null);
+  const [pendingWrite, setPendingWrite] = useState<PendingWrite | null>(null);
 
-  async function confirmWrite(write: { name: string; arguments: Record<string, unknown> }) {
+  async function confirmWrite(write: PendingWrite) {
     setPendingWrite(null);
     setSending(true);
     setError(null);
@@ -124,8 +148,7 @@ export function CopilotChat({
       });
       setHistory([...nextHistory, { role: "assistant", content: result.reply }]);
       const writeOp = result.clientOps.find((o) => o.op === "confirmWrite");
-      if (writeOp)
-        setPendingWrite(writeOp.args as { name: string; arguments: Record<string, unknown> });
+      if (writeOp) setPendingWrite(writeOp.args as PendingWrite);
       result.clientOps = result.clientOps.filter((o) => o.op !== "confirmWrite");
       if (result.clientOps.length > 0) {
         // Appliquer D'ABORD, étiqueter ENSUITE (M1) : l'ordre inverse
@@ -183,6 +206,14 @@ export function CopilotChat({
       {pendingWrite && (
         <div role="alert" className="flex flex-col gap-1 rounded-md border border-rule p-2 text-xs">
           <p>{t("copilot.confirmWritePrompt", { name: pendingWrite.name })}</p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-2">
+            {summarizeWrite(pendingWrite).map((row) => (
+              <div key={row.label} className="contents">
+                <dt className="text-ink-2">{row.label}</dt>
+                <dd className="break-all">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
           <div className="flex gap-2">
             <Button size="sm" onClick={() => void confirmWrite(pendingWrite)}>
               {t("copilot.confirmWriteYes")}

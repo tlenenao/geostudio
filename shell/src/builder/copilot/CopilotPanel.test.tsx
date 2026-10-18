@@ -198,7 +198,12 @@ describe("CopilotPanel : lecture seule, compaction, confirmation d'écriture (P2
       .fn()
       .mockResolvedValueOnce({
         reply: "Je crée l'app.",
-        clientOps: [{ op: "confirmWrite", args: { name: "create_item", arguments: { a: 1 } } }],
+        clientOps: [
+          {
+            op: "confirmWrite",
+            args: { name: "create_item", arguments: { a: 1 }, confirmToken: "tok" },
+          },
+        ],
       })
       .mockResolvedValueOnce({ reply: "create_item effectué : ok", clientOps: [] });
     renderPanel({ copilotTurn }, vi.fn());
@@ -209,6 +214,7 @@ describe("CopilotPanel : lecture seule, compaction, confirmation d'écriture (P2
     expect(copilotTurn.mock.calls[1][1].confirmWrite).toEqual({
       name: "create_item",
       arguments: { a: 1 },
+      confirmToken: "tok",
     });
   });
 });
