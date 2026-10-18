@@ -438,6 +438,12 @@ layers = [
     "app.tenants",
     "app.search",
     "app.analytics",
+    # AUD-125 : feuilles du socle d'exécution, désormais sous contrat (elles n'importent
+    # que app.db) ; app.jobs.common reste hors couches (il tire items/notifications et est
+    # importé par des paquets situés sous eux : cycle à résoudre par injection, cf. 100-reliquats).
+    "app.jobs.engine",
+    "app.jobs.after_commit",
+    "app.ratelimit",
 ]
 ignore_imports = [
     # app.quotas (SP-58) sait compter/sommer des lignes appartenant à des
@@ -573,4 +579,85 @@ ignore_imports = [
     "app.db -> app.relations.models",
     "app.db -> app.public_submit.models",
     "app.db -> app.outbox.models",
+]
+
+# AUD-125 : les modules racine utilitaires et les feuilles du socle n'importent aucun
+# paquet de domaine (seul app.db, socle des modèles, leur est permis).
+[[tool.importlinter.contracts]]
+name = "leaf modules import no domain package"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = [
+    "app.sql_ident",
+    "app.net_pin",
+    "app.bbox",
+    "app.errors",
+    "app.filter_values",
+    "app.cell_safety",
+    "app.job_timeouts",
+    "app.ogc_crs",
+    "app.egress_guard",
+    "app.job_errors",
+    "app.jobs.after_commit",
+    "app.jobs.engine",
+    "app.ratelimit.limiter",
+]
+forbidden_modules = [
+    "app.admin_tools",
+    "app.alerts",
+    "app.analytics",
+    "app.apikeys",
+    "app.appexport",
+    "app.attachments",
+    "app.audit",
+    "app.auth",
+    "app.catalog",
+    "app.cdc",
+    "app.collections",
+    "app.compliance",
+    "app.configs",
+    "app.copilot",
+    "app.dataexport",
+    "app.dcat",
+    "app.export",
+    "app.extensions",
+    "app.features",
+    "app.geocoding",
+    "app.harvest",
+    "app.history",
+    "app.ingestion",
+    "app.instance",
+    "app.items",
+    "app.jobs",
+    "app.lineage",
+    "app.mapicons",
+    "app.mcp",
+    "app.notifications",
+    "app.outbox",
+    "app.ows",
+    "app.pipelines",
+    "app.public",
+    "app.public_submit",
+    "app.quality",
+    "app.quotas",
+    "app.raster",
+    "app.ratelimit",
+    "app.records",
+    "app.relations",
+    "app.reports",
+    "app.roles",
+    "app.routing",
+    "app.search",
+    "app.secrets",
+    "app.security",
+    "app.sharing",
+    "app.stac",
+    "app.styles",
+    "app.tenants",
+    "app.terrain3d",
+    "app.tileset3d",
+    "app.usage",
+    "app.users",
+    "app.webhooks",
+    "app.xlsform",
 ]

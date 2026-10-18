@@ -83,6 +83,10 @@ TITILER_DOCKERFILE = REPO / "deploy" / "titiler" / "Dockerfile"
 MINIO_DOCKERFILE = REPO / "deploy" / "minio" / "Dockerfile"
 
 # Préfixe des images que nous publions nous-mêmes.
+# AUD-112 : plus de repli `:-latest` — la version est exigée (install.sh la pose toujours).
+GEOSTUDIO_VERSION_REQUIRED = (
+    "${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}"
+)
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
 
 
@@ -866,7 +870,7 @@ def test_every_otel_process_exports_telemetry():
         # ferait annoncer v0.1.0 et épinglerait les bundles autoportés dessus.
         assert "GEOSTUDIO_VERSION" not in env, name
         prod_env = services(PROD)[name].get("environment") or {}
-        assert prod_env.get("GEOSTUDIO_VERSION") == "${GEOSTUDIO_VERSION:-latest}", name
+        assert prod_env.get("GEOSTUDIO_VERSION") == GEOSTUDIO_VERSION_REQUIRED, name
         checked.append(name)
     assert {"core", "worker", "export-worker", "cdc-worker"} <= set(checked), checked
 
@@ -1142,6 +1146,13 @@ def unpinned_reason(image: str) -> str | None:
     return None
 
 
+def test_prod_compose_has_no_latest_fallback():
+    """AUD-112 : sans GEOSTUDIO_VERSION, `compose up` doit échouer au lieu de tirer `latest`."""
+    text = PROD.read_text()
+    assert ":-latest" not in text
+    assert text.count(GEOSTUDIO_VERSION_REQUIRED) >= 10
+
+
 def test_images_are_pinned():
     """Une image sans tag, en `latest`, en tag mouvant (`stable`/`edge`/…),
     ou pinnée au majeur/mineur, change sous les pieds de l'opérateur : deux
@@ -1248,7 +1259,7 @@ def test_unpinned_reason_rejects_third_party_image_behind_substitution():
 def test_unpinned_reason_accepts_own_image_behind_substitution():
     """Miroir du cas précédent : une de nos propres images GHCR derrière une
     substitution reste exemptée, comme avant ce fix."""
-    assert unpinned_reason("ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}") is None
+    assert unpinned_reason("ghcr.io/tlenenao/geostudio-core:" + GEOSTUDIO_VERSION_REQUIRED) is None
 
 
 # Revue finale SP-26 (C1) : core/Dockerfile (service `worker`, même image que

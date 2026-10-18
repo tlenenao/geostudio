@@ -171,7 +171,15 @@ class MapLayer(BaseModel):
 class MapTerrain(BaseModel):
     tilesUrl: str
     encoding: Literal["terrarium"] = "terrarium"
-    exaggeration: float | None = None
+    # AUD-150 : NaN/inf/négatif/1e9 rendaient la carte inutilisable.
+    exaggeration: float | None = Field(None, ge=0, le=20, allow_inf_nan=False)
+
+    @field_validator("tilesUrl")
+    @classmethod
+    def _http_or_relative(cls, v: str) -> str:
+        if not (v.startswith(("http://", "https://")) or v.startswith("/")):
+            raise ValueError("tilesUrl doit être une URL http(s) ou un chemin relatif")
+        return v
 
 
 class MapTimePlayer(BaseModel):

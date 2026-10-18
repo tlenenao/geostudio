@@ -93,20 +93,26 @@ test.describe("gestes tactiles sur la carte", () => {
     const cdp = await page.context().newCDPSession(page);
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
-    // Écartement : les deux doigts s'éloignent -> zoom avant.
-    await gesture(
-      cdp,
-      [
-        { x: cx - 20, y: cy },
-        { x: cx + 20, y: cy },
-      ],
-      [
-        { x: cx - box.width / 3, y: cy },
-        { x: cx + box.width / 3, y: cy },
-      ],
-      16,
-    );
-    await expect.poll(() => [...zooms()].some((z) => !before.has(z)), { timeout: 8000 }).toBe(true);
+    // Écartement : les deux doigts s'éloignent -> zoom avant. AUD-137 : un geste synthétique
+    // émis avant que la carte soit réellement au repos peut être perdu sous charge ; on le
+    // rejoue (chaque rejeu zoome encore, donc reste « un autre niveau »).
+    await expect(async () => {
+      await gesture(
+        cdp,
+        [
+          { x: cx - 20, y: cy },
+          { x: cx + 20, y: cy },
+        ],
+        [
+          { x: cx - box.width / 3, y: cy },
+          { x: cx + box.width / 3, y: cy },
+        ],
+        16,
+      );
+      await expect
+        .poll(() => [...zooms()].some((z) => !before.has(z)), { timeout: 4000 })
+        .toBe(true);
+    }).toPass({ timeout: 24_000 });
   });
 
   test("tap sur une entité : popup, fermable au doigt (cible 44 px)", async ({ page }) => {

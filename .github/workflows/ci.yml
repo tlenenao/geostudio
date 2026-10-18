@@ -115,7 +115,7 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles app/net_pin.py
+      - run: uv run mypy --strict app/auth app/secrets app/analytics app/copilot app/admin_tools app/roles app/net_pin.py app/ratelimit app/sql_ident.py app/bbox.py app/errors.py app/filter_values.py app/cell_safety.py app/job_timeouts.py app/ogc_crs.py app/egress_guard.py app/job_errors.py app/jobs/engine.py app/jobs/after_commit.py
       # P27.09 : retention.py (rotation des sauvegardes) vit hors de
       # `testpaths = ["tests"]` — sans cette ligne, aucun job ne le garde.
       - run: uv run pytest --no-cov ../deploy/backup/test_retention.py
@@ -131,8 +131,9 @@ jobs:
         with:
           name: core-coverage
           path: core/coverage.xml
-      - name: Mypy (périmètre large, non bloquant)
-        run: uv run mypy app/ || true
+      # AUD-125 : cliquet par fichier (core/.mypy-baseline.json) — plus de `|| true`.
+      - name: Mypy (périmètre large, cliquet sans régression)
+        run: (uv run mypy app/ || true) | uv run python scripts/mypy_ratchet.py .mypy-baseline.json
       - run: uv run lint-imports
 
   # A20 (feuille de route §8) promet une conformité STAC « vérifiée par
@@ -249,6 +250,8 @@ jobs:
       # comme client via databricks-sql-connector, qui épingle <4). À retirer
       # dès que databricks-sql-connector accepte oauthlib>=4.
       - run: uv run pip-audit --strict --ignore-vuln PYSEC-2026-4114
+      # AUD-111 : GPL/AGPL refusées, LGPL seulement si déclarée dans license-exceptions.json.
+      - run: uv run python scripts/check_licenses.py license-exceptions.json
 
   api-types-drift:
     runs-on: ubuntu-latest
@@ -407,6 +410,8 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=high --json > npm-audit.json || true
       - run: node scripts/check-npm-audit.mjs npm-audit.json
+      - run: node scripts/check-licenses.mjs
+      - run: node --test scripts/check-licenses.test.mjs
 
   feature-health:
     runs-on: ubuntu-latest

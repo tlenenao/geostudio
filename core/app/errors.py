@@ -5,6 +5,8 @@ importée à la fois par app.features et app.harvest, deux couches non
 adjacentes du contrat — un module de contrat aurait dû se placer entre les
 deux sans raison métier, donc il reste en dehors, comme app.db."""
 
+from typing import Any
+
 from fastapi import HTTPException
 
 
@@ -15,6 +17,6 @@ class ValidationHTTPException(HTTPException):
     (design SP-26 §3.5a/§4.4, changement cassant assumé vis-à-vis de la
     forme précédente {"errors": [...]} nichée sous detail)."""
 
-    def __init__(self, errors: list[dict], status_code: int = 400) -> None:
+    def __init__(self, errors: list[dict[str, Any]], status_code: int = 400) -> None:
         super().__init__(status_code=status_code, detail="validation failed")
         self.errors = errors

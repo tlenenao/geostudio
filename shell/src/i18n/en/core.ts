@@ -60,6 +60,7 @@ export const coreEn: Record<keyof typeof fr, string> = {
   "commandPalette.newItemAction": "New item",
   "commandPalette.triggerLabel": "Search",
   "topbar.actions": "Actions",
+  "topbar.help": "Help",
 
   "common.clear": "Clear",
   "common.retry": "Retry",

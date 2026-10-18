@@ -13,7 +13,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends libexpat1 \
   && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv==0.11.21
 
 # Utilisateur non-root (SP-26/3.6) — créé avant l'installation des
 # extensions DuckDB : HOME doit être fixé ET rester identique entre le

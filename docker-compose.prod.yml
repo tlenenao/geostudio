@@ -20,7 +20,7 @@ volumes:
 services:
 
   postgis:
-    image: ghcr.io/tlenenao/geostudio-postgis:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-postgis:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
     restart: unless-stopped
 
@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
 
   minio:
-    image: ghcr.io/tlenenao/geostudio-minio:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-minio:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
     restart: unless-stopped
     ports: !reset []
@@ -78,7 +78,7 @@ services:
       - traefik.http.services.martin.loadbalancer.server.port=3000
 
   titiler:
-    image: ghcr.io/tlenenao/geostudio-titiler:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-titiler:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
     restart: unless-stopped
     ports: !reset []
@@ -164,14 +164,14 @@ services:
       - traefik.http.services.grafana.loadbalancer.server.port=3000
 
   core:
-    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
     ports: !reset []
     environment:
       # AUD-040 : service.version et /docs suivent le tag d'image déployé. Posé
       # ici seulement : le fichier de base construit depuis les sources (« dev »),
       # le GEOSTUDIO_VERSION de .env n'y décrit aucune image.
-      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
       CORE_AUTH_MODE: oidc
       CORE_OIDC_ISSUER: https://${GEOSTUDIO_PUBLIC_HOST}/auth/realms/geostudio
       CORE_OIDC_JWKS_URL: http://keycloak:8080/auth/realms/geostudio/protocol/openid-connect/certs
@@ -266,7 +266,7 @@ services:
   # release.yml ne construit que core/shell/postgis (matrice
   # build-and-push), donc ces deux services réutilisent geostudio-core.
   worker:
-    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
     environment:
       # REV-354 : sans cette ligne le worker garde `http://localhost:8200` du
@@ -280,35 +280,35 @@ services:
       CORE_CSP_MODE: ${CORE_CSP_MODE:-enforce}
       # P11.03 (j10b-009) : le compose des bundles autoportés épingle l'image
       # du mini-serveur à la version du cœur qui exporte (app/appexport/bundler.py).
-      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
 
   cdc-worker:
-    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
     environment:
       # AUD-040 : service.version et /docs suivent le tag d'image déployé. Posé
       # ici seulement : le fichier de base construit depuis les sources (« dev »),
       # le GEOSTUDIO_VERSION de .env n'y décrit aucune image.
-      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
 
   # SP-21 : ces deux services restaient en `build:` (fichier de base), donc
   # non déployables sans compiler sur l'hôte. Leurs `profiles:` restent ceux
   # du fichier de base — substituer l'image n'allume aucune capacité.
   export-worker:
-    image: ghcr.io/tlenenao/geostudio-export-worker:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-export-worker:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
     environment:
       # AUD-040 : service.version et /docs suivent le tag d'image déployé. Posé
       # ici seulement : le fichier de base construit depuis les sources (« dev »),
       # le GEOSTUDIO_VERSION de .env n'y décrit aucune image.
-      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:-latest}
+      GEOSTUDIO_VERSION: ${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
 
   appexport-runtime-builder:
-    image: ghcr.io/tlenenao/geostudio-appexport-runtime-builder:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-appexport-runtime-builder:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
 
   shell:
-    image: ghcr.io/tlenenao/geostudio-shell:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-shell:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
     ports: !reset []
     environment:
@@ -405,7 +405,7 @@ services:
     # SP-21 : `backup` n'existe que dans cet overlay et était le seul service
     # de production encore construit sur place — le mécanisme censé être le
     # dernier rempart contre la perte de données.
-    image: ghcr.io/tlenenao/geostudio-backup:${GEOSTUDIO_VERSION:-latest}
+    image: ghcr.io/tlenenao/geostudio-backup:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     restart: unless-stopped
     environment:
       PG_PASSWORD: ${PG_PASSWORD}

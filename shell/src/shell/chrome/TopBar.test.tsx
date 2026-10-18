@@ -53,6 +53,14 @@ test("affiche la marque, Nouveau, Importer, et le compte", async () => {
   expect(screen.getByRole("button", { name: "Compte" })).toBeInTheDocument();
 });
 
+test("AUD-118 : le lien Aide mène aux guides, dans un nouvel onglet sans opener", () => {
+  renderBar();
+  const help = screen.getByRole("link", { name: "Aide" });
+  expect(help).toHaveAttribute("href", expect.stringContaining("/docs/guides"));
+  expect(help).toHaveAttribute("target", "_blank");
+  expect(help).toHaveAttribute("rel", expect.stringContaining("noopener"));
+});
+
 test("masque le bouton tileset 3D quand la capacité est coupée", () => {
   renderBar();
   expect(screen.queryByRole("button", { name: "Téléverser un tileset" })).not.toBeInTheDocument();
