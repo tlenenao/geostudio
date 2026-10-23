@@ -47,7 +47,7 @@ from app.mapicons.schemas import (
 )
 from app.mapicons.svg import SvgRejected, sanitize_svg, sniff_content_type
 from app.quotas.service import enforce_storage_quota
-from app.roles.guards import require_privilege
+from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
 from app.users.models import User
 
@@ -221,7 +221,11 @@ def delete_map_icon(
     # exact de la trouvaille ouvert (Bob, Créateur par défaut, supprimant
     # l'icône d'Alice). Voir le rapport SP-42 pour l'alternative envisagée
     # et pourquoi elle a été écartée.
-    if icon.created_by != user.id:
+    # REV-401 : un administrateur (admin.users.manage) peut aussi supprimer, pour retirer
+    # l'icône d'un compte parti ; le Créateur par défaut, lui, ne le peut toujours pas.
+    if icon.created_by != user.id and not has_privilege(
+        session, user, Privilege.ADMIN_USERS_MANAGE.value
+    ):
         raise HTTPException(status_code=403, detail="not allowed")
     title, category, s3_key = icon.title, icon.category, icon.s3_key
     # Base d'abord, S3 ensuite en best-effort : la transaction reste ouverte

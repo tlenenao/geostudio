@@ -404,6 +404,31 @@ def test_a_non_owner_in_the_same_tenant_cannot_delete_someone_elses_icon(env):
     assert [i["id"] for i in client.get("/v1/map-icons").json()] == [icon_id]
 
 
+def test_an_administrator_can_delete_someone_elses_icon(env):
+    # REV-401 : l'administrateur (admin.users.manage) retire l'icône d'un compte parti.
+    from app.roles.repository import ensure_built_in_roles
+
+    app, client, Session, tenant, alice, _fake_s3 = env
+    _as(app, alice)
+    icon_id = _upload(client, title="Logo d'Alice").json()["id"]
+    with Session() as s:
+        roles = ensure_built_in_roles(s, tenant_id=tenant.id)
+        boss = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="adm",
+            username="boss",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        boss.role_id = roles["admin"].id
+        s.commit()
+        s.refresh(boss)
+    _as(app, boss)
+    assert client.delete(f"/v1/map-icons/{icon_id}").status_code == 204
+
+
 def test_map_icons_cannot_be_registered_as_a_business_collection(env):
     """core_table_names() est la denylist du registre de collections : sans
     l'import paresseux dans app/db.py, un admin pourrait exposer map_icons en

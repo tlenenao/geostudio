@@ -211,6 +211,11 @@ def test_101st_call_in_a_minute_is_429(api):
     r = api.post("/v1/routing/route", json={"points": [TULLE, BRIVE]})
     assert r.status_code == 429
     assert len(api.seen) == 100
+    from sqlalchemy.orm import Session
+
+    with Session(api.engine) as s:  # REV-401 : un appel refusé par le limiteur n'est pas audité
+        rows = [r for r in s.scalars(select(AuditLog)) if r.action.startswith("routing.")]
+    assert len(rows) == 100
 
 
 def test_every_call_is_audited_even_when_service_is_down(api, monkeypatch):
