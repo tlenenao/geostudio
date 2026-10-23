@@ -71,7 +71,7 @@ d'écriture ; voir la variable dans `.env.example`.
 
 ## Essayer en cinq minutes
 
-Prérequis : Docker 24+, Node 20+, [uv](https://docs.astral.sh/uv/) (pour
+Prérequis : Docker 24+, Node 22+ (version de la CI), [uv](https://docs.astral.sh/uv/) (pour
 contribuer côté cœur — pas nécessaire pour seulement lancer la stack).
 
 ```bash

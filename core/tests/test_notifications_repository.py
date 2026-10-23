@@ -315,3 +315,47 @@ def test_notification_preference_defaults_to_all_and_round_trips(env):
         )
         == "failures_only"
     )
+
+
+def test_mark_all_read_is_scoped_to_recipient_and_preference(env):
+    session, tenant, user, other = env
+    mine = _create(session, tenant_id=tenant.id, recipient_user_id=user.id)
+    fail = _create(session, tenant_id=tenant.id, recipient_user_id=user.id, status="failure")
+    theirs = _create(session, tenant_id=tenant.id, recipient_user_id=other.id)
+    session.commit()
+    notifications_repo.mark_all_notifications_read(
+        session, tenant_id=tenant.id, recipient_user_id=user.id, preference="failures_only"
+    )
+    session.commit()
+    session.refresh(mine), session.refresh(fail), session.refresh(theirs)
+    assert fail.read_at is not None
+    assert mine.read_at is None and theirs.read_at is None
+    notifications_repo.mark_all_notifications_read(
+        session, tenant_id=tenant.id, recipient_user_id=user.id, preference="all"
+    )
+    session.commit()
+    session.refresh(mine), session.refresh(theirs)
+    assert mine.read_at is not None and theirs.read_at is None
+
+
+def test_purge_expired_notifications_keeps_recent_and_old_unread_under_a_year(env):
+    from datetime import UTC, datetime, timedelta
+
+    session, tenant, user, _ = env
+    now = datetime.now(UTC)
+    ages = {
+        "read_old": (100, True),
+        "read_new": (10, True),
+        "unread_old": (200, False),
+        "unread_ancient": (400, False),
+    }
+    rows = {}
+    for name, (days, read) in ages.items():
+        n = _create(session, tenant_id=tenant.id, recipient_user_id=user.id)
+        n.created_at = (now - timedelta(days=days)).replace(tzinfo=None)
+        n.read_at = n.created_at if read else None
+        rows[name] = n.id
+    session.commit()
+    assert notifications_repo.purge_expired_notifications(session, now=now) == 2
+    left = {n.id for n in session.query(notifications_repo.Notification).all()}
+    assert left == {rows["read_new"], rows["unread_old"]}

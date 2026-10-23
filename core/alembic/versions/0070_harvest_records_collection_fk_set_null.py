@@ -13,8 +13,9 @@ Create Date: 2026-10-15
 from alembic import op
 
 revision = "0070"
-# ponytail: 0069 est réservé à une migration du lot 1 ; rebaser ce
-# `down_revision` au merge si elle existe (sinon deux têtes).
+# Trou 0069 volontaire et définitif (REV-401) : le numéro avait été réservé à un lot qui ne l'a
+# jamais livré. La chaîne Alembic suit `down_revision`, pas la numérotation : 0068 -> 0070 est
+# valide et NE DOIT PAS être renumérotée (des bases existantes portent déjà ces révisions).
 down_revision = "0068"
 branch_labels = None
 depends_on = None

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.notifications.models import Notification, NotificationPreference
@@ -110,16 +110,35 @@ def mark_all_notifications_read(
 ) -> None:
     if preference == "none":
         return
-    base = select(Notification).where(
+    stmt = update(Notification).where(
         Notification.tenant_id == tenant_id,
         Notification.recipient_user_id == recipient_user_id,
         Notification.read_at.is_(None),
     )
-    base = _scope(base, preference=preference)
-    now = datetime.now(UTC)
-    for notification in session.scalars(base).all():
-        notification.read_at = now
-    session.flush()
+    stmt = _scope(stmt, preference=preference)
+    # Un seul UPDATE (REV-401) : plus de chargement de toutes les lignes non lues en mémoire.
+    session.execute(
+        stmt.values(read_at=datetime.now(UTC)).execution_options(synchronize_session=False)
+    )
+
+
+READ_RETENTION_DAYS = 90
+UNREAD_RETENTION_DAYS = 365
+
+
+def purge_expired_notifications(session: Session, *, now: datetime | None = None) -> int:
+    """Rétention (REV-401) : lues > 90 j, non lues > 365 j. Balayage cron quotidien."""
+    now = (now or datetime.now(UTC)).replace(tzinfo=None)
+    res = session.execute(
+        delete(Notification).where(
+            (Notification.created_at < now - timedelta(days=UNREAD_RETENTION_DAYS))
+            | (
+                Notification.read_at.is_not(None)
+                & (Notification.created_at < now - timedelta(days=READ_RETENTION_DAYS))
+            )
+        )
+    )
+    return int(getattr(res, "rowcount", 0) or 0)
 
 
 def get_notification_preference(session: Session, *, tenant_id: str, user_id: str) -> str:

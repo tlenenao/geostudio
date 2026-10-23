@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """POST /v1/routing/{route,isochrone,service-area,matrix} (ARC-34, ADR 0025) : proxy
 authentifié vers Valhalla. Privilège `analytics.view`, 100 appels/min/utilisateur (429),
-une ligne d'audit par appel (écrite AVANT l'appel amont : un service absent est tracé aussi),
+une ligne d'audit par appel accepté par le limiteur (un service absent est tracé aussi),
 503 RFC 7807 quand le service est absent ou injoignable."""
 
 from collections.abc import Callable
@@ -73,30 +73,44 @@ def serve(
     audit: dict,
     call: Callable[[Valhalla], dict],
 ) -> Any:
-    """Porte commune : privilège -> audit (commité) -> appel Valhalla (débit compté par requête
-    amont, via `throttle`)."""
+    """Porte commune : privilège -> appel Valhalla ; l'audit (commité) est écrit une fois le
+    limiteur passé (débit compté par requête amont, via `throttle`), ou si le service est absent."""
     if not can_route(session, user):
         raise privilege_required_error(Privilege.ANALYTICS_VIEW.value)
-    write_audit(
-        session,
-        tenant_id=user.tenant_id,
-        actor_id=user.id,
-        actor_kind="user",
-        action=f"routing.{action}",
-        object_type="routing",
-        object_id=action,
-        payload=audit,
-    )
-    session.commit()
+    audited = False
+
+    def audit_once() -> None:
+        nonlocal audited
+        if audited:
+            return
+        audited = True
+        write_audit(
+            session,
+            tenant_id=user.tenant_id,
+            actor_id=user.id,
+            actor_kind="user",
+            action=f"routing.{action}",
+            object_type="routing",
+            object_id=action,
+            payload=audit,
+        )
+        session.commit()
+
+    def throttle() -> None:
+        rate_window.check(user.id)  # RateLimited : aucun audit pour un appel refusé (REV-401)
+        audit_once()
+
     try:
-        return call(get_routing(lambda: rate_window.check(user.id)))
+        return call(get_routing(throttle))
     except RateLimited:
         raise HTTPException(
             status_code=429, detail="Trop de requêtes de routage, réessayez dans une minute."
         ) from None
     except RoutingUnavailable as exc:
+        audit_once()  # service absent : tracé aussi
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (RoutingError, ValueError) as exc:
+        audit_once()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

@@ -7,14 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrade notes for 0.2.0 (breaking changes since 0.1.0, consolidated)
+
+Read before upgrading from 0.1.0 ([upgrade runbook](docs/runbooks/2026-10-17-montee-de-version.md):
+back up first, set `GEOSTUDIO_VERSION`, verify, roll back if needed). Each item is detailed in the
+sections below.
+
+- **Run the migrations on a backup first**: 0.1.0 → 0.2.0 applies 63 new migrations (0.1.0 ends at 0027), among them
+  0046 (aborts, listing the ids, if exact duplicate harvest sources exist), 0070 (FK
+  `ON DELETE SET NULL`) and 0071 (HNSW index rebuild, not concurrent).
+- **Public submission now requires proof-of-work** (`GET /v1/public/submit/{token}/challenge`);
+  third-party clients must solve the challenge. `CORE_PUBLIC_SUBMIT_POW_DISABLED=1` turns it
+  off (tests/demos only, never production); the shipped value is `0` in the compose,
+  `.env.example` and the Helm chart.
+- **Secrets to re-create**: blob secrets (Azure `accountName` format, GCS `token_uri`, mandatory
+  `bucketUrl`) and SMTP secrets with `useTls=false` (non-`localhost` host); no automatic
+  migration.
+- **`transform.qgis` and the `qgis-worker` sidecar are removed** (GPL); pipelines using it must be
+  rewritten with the DuckDB operations. The compose `etl` profile no longer exists.
+- **Configuration**: `S3_PUBLIC_ENDPOINT_URL` is required outside `CORE_ENV=development`;
+  `scripts/install.sh` sets `CORE_ENV=production` for a public host; Postgres defaults shrink
+  (`shared_buffers` 2GB → 512MB: set `PG_MEM_LIMIT`/`PG_SHARED_BUFFERS`/`PG_EFFECTIVE_CACHE_SIZE`
+  on a large host before upgrading); services carry `mem_limit`; tooling ports (Martin 3010,
+  TiTiler 8000, Grafana 3001, OTLP 4317/4318) and the production Traefik `:8080` are bound to
+  loopback only.
+- **API clients**: `size` is required on every presign route, the STAC search rejects unknown
+  parameters (400/422), OGC Tiles URLs use `{tileMatrix}/{tileRow}/{tileCol}`, app-config
+  writes with an unknown widget type, dangling action wiring or an invalid CEL expression are
+  refused (422), and failed jobs expose a generic error message.
+- **Pipelines**: `transform.join` collision naming (`rightPrefix`), no silent truncation in
+  `reader.wfs`/ArcGIS, schedules at least 5 minutes apart and suspended after 3 failures,
+  32 operations that talk to a third-party service are *experimental* and off unless
+  `CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED=true` (`core` **and** `worker`).
+- **Collection export**: `CORE_EXPORT_ITEMS_MAX` no longer caps `GET /collections/{id}/export/items`.
+
 ### Added
 
 - **Offline field collection (L8, AUD-004/070/071)**: public page `/collect/:token`, IndexedDB
   outbox with idempotent replay (`Idempotency-Key`, `clientOpId`), PWA (service worker, manifest),
   collect kit endpoints, faithful XLSForm import and re-import with diff report (migrations
   0160-0163, ADR 0029). **Breaking (ARC-10 third-party clients)**: proof-of-work is now required by
-  default on every public submission (`GET /v1/public/submit/{token}/challenge`); no compose
-  wiring exists yet to disable it. Offline data is stored unencrypted on the device (see
+  default on every public submission (`GET /v1/public/submit/{token}/challenge`); the flag
+  `CORE_PUBLIC_SUBMIT_POW_DISABLED` is now wired in the compose, `.env.example` and the Helm
+  chart with the value `0` (required) — `1` is for tests/demos only, never production. Offline data is stored unencrypted on the device (see
   `SECURITY.md`).
 
 - **Open standards and API (SP-L6)**: OGC API Records (`/v1/records`) over public item kinds

@@ -17,7 +17,7 @@ def parse_bbox_floats(
     raw: str | None, *, check_bounds: bool = True
 ) -> tuple[float, float, float, float] | None:
     """`None` si absent ; `ValueError` si malformé, non fini, ou (avec
-    `check_bounds`) hors lon ±180 / lat ±90."""
+    `check_bounds`) hors lon ±180 / lat ±90, ou si miny > maxy."""
     if raw is None:
         return None
     parts = raw.split(",")
@@ -26,6 +26,8 @@ def parse_bbox_floats(
     minx, miny, maxx, maxy = (float(p) for p in parts)
     vals = (minx, miny, maxx, maxy)
     if not all(math.isfinite(v) for v in vals):
+        raise ValueError(raw)
+    if miny > maxy:  # seul minx > maxx est légitime (antiméridien)
         raise ValueError(raw)
     if check_bounds and (max(abs(minx), abs(maxx)) > 180 or max(abs(miny), abs(maxy)) > 90):
         raise ValueError(raw)

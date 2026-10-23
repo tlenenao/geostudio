@@ -416,6 +416,9 @@ services:
       # AUD-122 : false = pas de fond tiers sur les nouvelles cartes ni dans la CSP
       # dynamique ; cartes existantes non réécrites (périmètre complet : .env.example).
       CORE_EXTERNAL_BASEMAPS_ENABLED: ${CORE_EXTERNAL_BASEMAPS_ENABLED:-true}
+      # L8/C3 : preuve de travail de la soumission publique EXIGÉE par défaut (0). "1" l'éteint —
+      # réservé aux tests/démos, jamais en production (cf. .env.example, CHANGELOG).
+      CORE_PUBLIC_SUBMIT_POW_DISABLED: ${CORE_PUBLIC_SUBMIT_POW_DISABLED:-0}
       # Lot 9 : op de pipeline expérimentales (docs/revue/2026-10-16-ops-experimentales.md) —
       # catalogue + validation d'écriture dans `core`, exécution dans `worker` (même valeur).
       CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED: ${CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED:-false}
