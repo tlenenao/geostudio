@@ -117,7 +117,7 @@ services:
   # ─── Serveurs de tuiles ────────────────────────────────
 
   martin:
-    image: ghcr.io/maplibre/martin:v0.18.0
+    image: ghcr.io/maplibre/martin:1.16.1
     environment:
       DATABASE_URL: postgresql://gis:${PG_PASSWORD}@pgbouncer:6432/gis
     volumes:
