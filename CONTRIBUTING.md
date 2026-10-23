@@ -11,7 +11,7 @@ same terms.
 ## Prerequisites
 
 - Docker 24+ and Docker Compose
-- Node.js 20+
+- Node.js 22+ (version de la CI)
 - Python 3.12, managed via [`uv`](https://docs.astral.sh/uv/)
 
 ## Running the project locally
