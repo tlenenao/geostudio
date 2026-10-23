@@ -46,9 +46,9 @@ def test_images_are_signed_by_digest_never_by_tag():
     steps = _steps()
     build = next(s for s in steps if str(s.get("uses", "")).startswith("docker/build-push-action"))
     assert build["id"] == "build"
-    sign = next(s for s in steps if "cosign sign" in str(s.get("run", "")))
+    sign = next(s for s in steps if "sign-image.sh" in str(s.get("run", "")))
     run = sign["run"]
-    assert "cosign sign --yes" in run
+    assert "cosign sign --yes" in (REPO / "scripts/ci/sign-image.sh").read_text()
     assert "@${DIGEST}" in run
     assert sign["env"]["DIGEST"] == "${{ steps.build.outputs.digest }}"
     assert not re.search(r"cosign sign[^\n]*:\$\{?(IMAGE_TAG|\{ ?inputs)", run)
@@ -146,3 +146,10 @@ def test_pin_override_refuses_a_missing_digest():
     except KeyError:
         return
     raise AssertionError("un digest manquant doit échouer, pas retomber sur le tag")
+
+
+def test_sign_step_goes_through_the_idempotent_script():
+    # AUD-177 : `cosign sign` nu échoue en 409 sur un digest déjà signé (build identique).
+    step = next(s for s in _steps() if s.get("name", "").startswith("Sign image"))
+    assert "scripts/ci/sign-image.sh" in step["run"]
+    assert "cosign sign" not in step["run"]
