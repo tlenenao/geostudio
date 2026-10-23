@@ -89,7 +89,7 @@ jobs:
       - run: helm version --short
       # Le test MinIO réel tourne dans le job `core-s3-real` (image construite depuis les sources).
       - run: >-
-          uv run pytest --cov=app --cov-report=
+          uv run pytest -rs --cov=app --cov-report=
           --deselect tests/test_s3_public_storage.py::test_real_minio_cors_bucket_and_presign_roundtrip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
