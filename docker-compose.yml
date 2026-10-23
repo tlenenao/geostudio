@@ -49,7 +49,7 @@ services:
         -c max_slot_wal_keep_size=${PG_MAX_SLOT_WAL_KEEP_SIZE:-10GB}
 
   pgbouncer:
-    image: edoburu/pgbouncer:1.22.1-p0
+    image: edoburu/pgbouncer:v1.26.1-p0
     environment:
       DB_HOST: postgis
       DB_NAME: gis
