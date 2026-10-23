@@ -157,3 +157,14 @@ def test_full_round_trip_on_populated_base(throwaway_database_url, monkeypatch):
     command.downgrade(_cfg(), "base")
     command.upgrade(_cfg(), "head")
     assert _scalar(url, "SELECT count(*) FROM alembic_version") == 1
+
+
+def test_downgrade_base_on_fresh_base_is_not_blocked_by_seeded_rows(
+    throwaway_database_url, monkeypatch
+):
+    """Le tenant `default` et les rôles prédéfinis sont semés par les migrations : la CI fait
+    `upgrade head` puis `downgrade base` sur une base vierge et doit passer sans dérogation."""
+    monkeypatch.delenv(ALLOW, raising=False)
+    command.upgrade(_cfg(), "head")
+    assert _scalar(throwaway_database_url, "SELECT count(*) FROM tenants") >= 1
+    command.downgrade(_cfg(), "base")

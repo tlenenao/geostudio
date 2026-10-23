@@ -2916,10 +2916,10 @@ def test_production_overlay_does_not_mount_the_demo_init_sql():
 @pytest.mark.parametrize("dockerfile", ["core/Dockerfile", "deploy/export-worker/Dockerfile"])
 def test_production_images_do_not_embed_the_whole_scripts_directory(dockerfile):
     """AUD-187 : liste blanche, jamais spike_*/measure_*/audit_*."""
-    text = (REPO / dockerfile).read_text()
+    text = (REPO / dockerfile).read_text().replace("\\\n", " ")  # lignes continuées jointes
     assert not re.search(r"^COPY\s+scripts\s+\./scripts/?\s*$", text, re.M)
-    copied = re.search(r"^COPY\s+((?:scripts/\S+\s*\\?\s*)+)\./scripts/", text, re.M)
+    copied = [ln for ln in text.splitlines() if ln.startswith("COPY scripts/")]
     assert copied, dockerfile
-    for name in re.findall(r"scripts/(\S+\.py)", copied.group(1)):
+    for name in re.findall(r"scripts/(\S+\.py)", copied[0]):
         assert not name.startswith(("spike_", "measure_", "audit_")), name
         assert (REPO / "core/scripts" / name).is_file(), name

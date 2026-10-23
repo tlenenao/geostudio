@@ -60,6 +60,13 @@ DROPPED_TABLES: dict[str, tuple[str, ...]] = {
     "0172": ("saved_queries",),
 }
 
+# Tables dont la migration sème elle-même des lignes (tenant `default`, rôles prédéfinis) : seules
+# les lignes hors semis comptent, sinon `downgrade base` serait refusé sur toute base neuve.
+SEEDED_FILTER: dict[str, str] = {
+    "tenants": "slug <> 'default'",
+    "roles": "NOT is_built_in",
+}
+
 # révision -> (libellé, SQL de comptage) : colonnes saisies par un humain (valeur ≠ défaut).
 DROPPED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
     "0033": (
@@ -101,7 +108,8 @@ def refuse_destructive_downgrade(connection: sa.Connection, revisions: set[str])
     found: list[str] = []
     for rev in sorted(revisions):
         for table in DROPPED_TABLES.get(rev, ()):
-            n = connection.execute(sa.text(f'SELECT count(*) FROM "{table}"')).scalar_one()
+            where = f" WHERE {SEEDED_FILTER[table]}" if table in SEEDED_FILTER else ""
+            n = connection.execute(sa.text(f'SELECT count(*) FROM "{table}"{where}')).scalar_one()
             if n:
                 found.append(f"{n} ligne(s) de {table} (migration {rev})")
         for what, sql in DROPPED_COLUMNS.get(rev, ()):
