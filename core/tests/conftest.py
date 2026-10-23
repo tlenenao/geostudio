@@ -141,6 +141,8 @@ def chromium_available():
     finally:
         driver.stop()
     if not executable.exists():
+        if os.environ.get("GEOSTUDIO_REQUIRE_CHROMIUM") == "1":
+            pytest.fail(f"binaire Chromium introuvable ({executable}) alors qu'il est exigé")
         pytest.skip(
             f"binaire Chromium introuvable ({executable}) — "
             "playwright install --with-deps chromium requis — test playwright skippé"
