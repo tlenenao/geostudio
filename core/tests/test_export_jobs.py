@@ -487,10 +487,19 @@ def test_launch_and_navigate_cleans_up_driver_and_browser_on_mid_sequence_failur
     assert driver.stopped is True
 
 
+_PORTS_HANDED_OUT: set[int] = set()
+
+
 def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    """Port libre, jamais renvoyé deux fois : l'OS réattribue volontiers le port qu'on vient de
+    fermer, et un serveur de test se retrouvait sur l'URL d'un cœur censé être injoignable."""
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        if port not in _PORTS_HANDED_OUT:
+            _PORTS_HANDED_OUT.add(port)
+            return port
 
 
 @pytest.mark.playwright
