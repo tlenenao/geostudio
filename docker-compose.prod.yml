@@ -23,6 +23,11 @@ services:
     image: ghcr.io/tlenenao/geostudio-postgis:${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}
     build: !reset null
     restart: unless-stopped
+    # AUD-183 : sql/init.sql (tables de démo communes/incidents, sans tenant_id ni RLS) ne
+    # doit pas être monté en production ; l'image crée déjà l'extension postgis
+    # (10_postgis.sh) et les migrations du cœur créent le reste.
+    volumes: !override
+      - pg-data:/var/lib/postgresql/data
 
   pgbouncer:
     restart: unless-stopped

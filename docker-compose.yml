@@ -23,6 +23,9 @@ services:
   postgis:
     build: ./deploy/postgis
     mem_limit: ${PG_MEM_LIMIT:-2g}
+    # AUD-184 : plafonds de CPU et de processus/threads (un emballement ne prive plus l'hôte).
+    cpus: ${PG_CPUS:-2}
+    pids_limit: ${PG_PIDS_LIMIT:-1024}
     environment:
       POSTGRES_DB: gis
       POSTGRES_USER: gis
@@ -96,6 +99,9 @@ services:
     # deploy/minio/Dockerfile.
     build: ./deploy/minio
     mem_limit: ${MINIO_MEM_LIMIT:-512m}
+    # AUD-184 : plafonds de CPU et de processus/threads (un emballement ne prive plus l'hôte).
+    cpus: ${MINIO_CPUS:-1}
+    pids_limit: ${MINIO_PIDS_LIMIT:-1024}
     environment:
       MINIO_ROOT_USER: ${MINIO_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
@@ -103,6 +109,9 @@ services:
       # (NotImplemented, RC-3) ; l'upload présigné vient du navigateur.
       MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_CORS_ALLOW_ORIGIN:-*}
     volumes: [minio-data:/data]
+    depends_on:
+      minio-data-init:
+        condition: service_completed_successfully
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -173,6 +182,9 @@ services:
   titiler:
     build: ./deploy/titiler
     mem_limit: ${TITILER_MEM_LIMIT:-1g}
+    # AUD-184 : plafonds de CPU et de processus/threads (un emballement ne prive plus l'hôte).
+    cpus: ${TITILER_CPUS:-2}
+    pids_limit: ${TITILER_PIDS_LIMIT:-512}
     environment:
       # gunicorn lance par défaut 1 worker par cœur (`gunicorn_conf.py` de l'image :
       # WEB_CONCURRENCY, sinon WORKERS_PER_CORE × cpu_count) — ~90 Mo chacun plus le
@@ -239,6 +251,9 @@ services:
   core:
     build: ./core
     mem_limit: ${CORE_MEM_LIMIT:-1536m}
+    # AUD-184 : plafonds de CPU et de processus/threads (un emballement ne prive plus l'hôte).
+    cpus: ${CORE_CPUS:-2}
+    pids_limit: ${CORE_PIDS_LIMIT:-1024}
     # Applique les migrations Alembic à chaque démarrage du conteneur, avant
     # de servir — idempotent (Alembic ne réapplique jamais une révision déjà
     # appliquée), même patron que le `command:` du service `worker` plus bas
@@ -566,6 +581,9 @@ services:
     # runs de pipeline) — sans elle un run lourd peut faire OOM-killer l'hôte.
     # À dimensionner avec CORE_WORKER_CONCURRENCY (~1 job lourd par unité).
     mem_limit: ${WORKER_MEM_LIMIT:-2g}
+    # AUD-184 : plafonds de CPU et de processus/threads (un emballement ne prive plus l'hôte).
+    cpus: ${WORKER_CPUS:-2}
+    pids_limit: ${WORKER_PIDS_LIMIT:-1024}
     # AUD-027 : défaut Compose = 10 s puis SIGKILL d'un job long ; procrastinate
     # attend --shutdown-graceful-timeout (< stop_grace_period, marge 30 s).
     stop_grace_period: ${CORE_WORKER_STOP_GRACE:-300}s
@@ -801,6 +819,9 @@ services:
     stop_grace_period: ${CORE_WORKER_STOP_GRACE:-300}s
     command: python -m procrastinate --app app.jobs.app worker --shutdown-graceful-timeout ${CORE_WORKER_GRACEFUL:-270} -q export
     mem_limit: ${EXPORT_WORKER_MEM_LIMIT:-1g}
+    # AUD-184 : plafonds de CPU et de processus/threads (un emballement ne prive plus l'hôte).
+    cpus: ${EXPORT_WORKER_CPUS:-1}
+    pids_limit: ${EXPORT_WORKER_PIDS_LIMIT:-2048}
     environment:
       DATABASE_URL: postgresql+psycopg://gis:${PG_PASSWORD}@pgbouncer:6432/gis
       S3_ENDPOINT_URL: http://minio:9000
@@ -861,8 +882,11 @@ services:
     build: ./core
     # wal2json format-version 2 (AUD-012) : un message par ligne, plus de transaction
     # entière en mémoire. Le backfill de démarrage charge encore une table entière
-    # (AUD-099, lot L7) : défaut 0 (= sans limite) conservé tant qu'il n'est pas borné.
-    mem_limit: ${CDC_WORKER_MEM_LIMIT:-0}
+    # (AUD-099, lot L7) : plafond par défaut 2g (AUD-184), relevable par CDC_WORKER_MEM_LIMIT.
+    mem_limit: ${CDC_WORKER_MEM_LIMIT:-2g}
+    # AUD-184 : plafonds de CPU et de processus/threads (un emballement ne prive plus l'hôte).
+    cpus: ${CDC_WORKER_CPUS:-1}
+    pids_limit: ${CDC_WORKER_PIDS_LIMIT:-512}
     command: python -m app.cdc.main
     environment:
       CDC_DATABASE_URL: postgresql://gis:${PG_PASSWORD}@postgis:5432/gis
@@ -1016,11 +1040,24 @@ services:
       - csp-dynamic-conf:/csp-dynamic
     networks: [gis-net]
 
+  # AUD-179 : `minio` tourne en uid 10001 ; un volume créé par une version antérieure (root)
+  # ou par Docker (root:root au premier montage) lui serait illisible. Même patron que
+  # `csp-dynamic-conf-init` : ce service n'est lancé qu'une fois, avant `minio`.
+  minio-data-init:
+    image: busybox:1.36.1
+    user: "0:0"
+    command: ["chown", "-R", "10001:10001", "/data"]
+    volumes: [minio-data:/data]
+    networks: [gis-net]
+
   # ─── Auth ──────────────────────────────────────────────
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.5
     mem_limit: ${KEYCLOAK_MEM_LIMIT:-1536m}
+    # AUD-184 : plafonds de CPU et de processus/threads (un emballement ne prive plus l'hôte).
+    cpus: ${KEYCLOAK_CPUS:-1}
+    pids_limit: ${KEYCLOAK_PIDS_LIMIT:-1024}
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KC_PASSWORD}

@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "../../map/maplibreWorkerSetup";
-import { DEFAULT_BASEMAP } from "../../map/basemaps";
+import { BLANK_BASEMAP, DEFAULT_BASEMAP, resolveBasemapStyle } from "../../map/basemaps";
 import { t } from "../../i18n";
 import type { MessageKey } from "../../i18n";
 import { bboxFromFeatureCollection } from "../../lib/geometryBbox";
@@ -65,7 +65,11 @@ export function PipelinePreviewMap({
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: DEFAULT_BASEMAP.style,
+      // AUD-161 : le desktop n'émet aucune requête de fond distant (VITE_DESKTOP_ETL posé au
+      // build par vite.desktop.config.ts, d'où aussi la CSP Tauri sans origine externe).
+      style: resolveBasemapStyle(
+        import.meta.env.VITE_DESKTOP_ETL ? BLANK_BASEMAP.style : DEFAULT_BASEMAP.style,
+      ),
       center: [0, 0],
       zoom: 1,
     });

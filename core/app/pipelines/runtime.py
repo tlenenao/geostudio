@@ -610,6 +610,7 @@ def _read_file(
     if not is_pipeline_file_io_enabled():
         raise PipelineRuntimeError("reader.file requires CORE_PIPELINE_FILE_IO_ENABLED=true")
     p = ReaderFileParams.model_validate(params)
+    _refuse_virtual_path("reader.file", p.path)
     probe_cols = conn.execute(f"SELECT * FROM ST_Read({_ql(p.path)}) LIMIT 0").description
     geom_cols = [d[0] for d in probe_cols if d[1].id == "geometry"]
     if not geom_cols:
@@ -647,6 +648,13 @@ def _read_file(
     if crs and crs.upper().startswith("EPSG:"):
         return int(crs.split(":", 1)[1])
     return 4326
+
+
+def _refuse_virtual_path(op: str, path: str) -> None:
+    """AUD-159 : ni chemin virtuel GDAL (/vsicurl/, /vsizip/…) ni URL (http://, s3://) sur un
+    reader/writer.file — l'accès fichier est local, jamais un egress contourné."""
+    if "\x00" in path or path.lower().startswith("/vsi") or "://" in path:
+        raise PipelineRuntimeError(f"{op}: chemin virtuel ou URL refusé")
 
 
 def _lock_down(
@@ -695,6 +703,7 @@ def _prepare(
     base_uri: str,
     reader_state: ReaderState | None = None,
     checkpoint: Checkpoint | None = None,
+    allow_writer_dirs: bool = True,
 ) -> tuple[list[PipelineNode], dict[str, str], dict[str, int], dict[str, int]]:
     """Passe 1 : matérialise tous les readers (+ le withCollectionId de
     chaque transform.join/intersection/countWithin), puis verrouille.
@@ -828,9 +837,12 @@ def _prepare(
         [
             os.path.dirname(node.params["path"])
             for node in payload.nodes
-            if node.op == "writer.file" and isinstance(node.params.get("path"), str)
+            if node.op == "writer.file"
+            and isinstance(node.params.get("path"), str)
+            and not node.params["path"].lower().startswith("/vsi")
+            and "://" not in node.params["path"]
         ]
-        if is_pipeline_file_io_enabled()
+        if allow_writer_dirs and is_pipeline_file_io_enabled()
         else []
     )
     # F5 : le répertoire des points de reprise DU RUN est le seul ajouté.
@@ -1271,6 +1283,7 @@ def _on_preview_view[T](
             tenant_id=tenant_id,
             user=user,
             base_uri=base_uri,
+            allow_writer_dirs=False,  # AUD-159 : un aperçu n'exécute aucun writer
         )
         _execute_transform_chain(
             conn,
@@ -1619,6 +1632,7 @@ def _write_file(conn, *, node: PipelineNode, view_by_node: dict, srid: int) -> N
     if not is_pipeline_file_io_enabled():
         raise PipelineRuntimeError("writer.file requires CORE_PIPELINE_FILE_IO_ENABLED=true")
     p = WriterFileParams.model_validate(node.params)
+    _refuse_virtual_path("writer.file", p.path)
     input_view = view_by_node[node.id]
     cols = [d[0] for d in conn.execute(f"SELECT * FROM {_qi(input_view)} LIMIT 0").description]
     # "fid"/"OGC_FID" sont les noms synthétiques que GDAL réserve à son

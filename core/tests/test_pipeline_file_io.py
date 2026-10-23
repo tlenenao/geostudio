@@ -444,3 +444,46 @@ def test_run_pipeline_file_to_file_round_trip(tmp_path, monkeypatch):
     check_conn = _connection()
     rows = check_conn.execute(f"SELECT label FROM ST_Read('{out_path}') ORDER BY label").fetchall()
     assert rows == [("a",), ("b",)]
+
+
+@pytest.mark.parametrize("path", ["/vsicurl/http://x/a.geojson", "/VSIZIP/a.zip", "s3://b/k.gpkg"])
+def test_read_file_refuses_virtual_paths_and_urls(path, monkeypatch):
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+    with pytest.raises(PipelineRuntimeError, match="refusé"):
+        runtime._read_file(
+            _connection(),
+            session=None,
+            tenant_id="t1",
+            node_id="r1",
+            params={"path": path},
+            view_name="node_r1",
+            user=None,
+            base_uri="unused",
+        )
+
+
+def test_prepare_without_writer_dirs_blocks_writes_even_when_enabled(tmp_path, monkeypatch):
+    # AUD-159 : un aperçu n'exécute aucun writer, il n'élargit donc rien.
+    monkeypatch.setenv("CORE_PIPELINE_FILE_IO_ENABLED", "true")
+    monkeypatch.setitem(registries.READERS, "reader.noop", _noop_reader)
+    conn = _connection()
+    payload = PipelinePayload.model_validate(
+        {
+            "nodes": [
+                {"id": "r1", "kind": "reader", "op": "reader.noop", "params": {}},
+                {
+                    "id": "w1",
+                    "kind": "writer",
+                    "op": "writer.file",
+                    "params": {"path": str(tmp_path / "out.gpkg")},
+                },
+            ],
+            "edges": [{"id": "e1", "from": "r1", "to": "w1"}],
+        }
+    )
+    runtime._prepare(
+        conn, None, payload, tenant_id="t1", user=None, base_uri="unused", allow_writer_dirs=False
+    )
+    conn.execute("CREATE TEMP TABLE t AS SELECT 1 AS n")
+    with pytest.raises(duckdb.PermissionException):
+        conn.execute(f"COPY (SELECT * FROM t) TO '{tmp_path}/leak.csv' WITH (FORMAT CSV)")

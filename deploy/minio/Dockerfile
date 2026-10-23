@@ -8,9 +8,14 @@
 # dépendance à un registre) reste reproductible — c'est elle que ce
 # Dockerfile reproduit, PAS `make docker`.
 ARG MINIO_RELEASE=RELEASE.2025-10-15T17-29-55Z
+# AUD-182 : commit attendu pour ce tag (ls-remote, 2026-10-23). Un tag déplacé ou réécrit
+# en amont fait échouer le build au lieu de compiler un autre code.
+# Changer MINIO_RELEASE exige de changer MINIO_COMMIT.
+ARG MINIO_COMMIT=9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a
 
-FROM --platform=$BUILDPLATFORM golang:1.24-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.24-bookworm@sha256:1a6d4452c65dea36aac2e2d606b01b4a029ec90cc1ae53890540ce6173ea77ac AS build
 ARG MINIO_RELEASE
+ARG MINIO_COMMIT
 ARG TARGETARCH
 WORKDIR /src
 # MINIO_RELEASE=RELEASE (variable d'environnement lue par
@@ -24,12 +29,13 @@ WORKDIR /src
 # de release — reconstituée ici par lecture de
 # buildscripts/gen-ldflags.go.
 RUN git clone --depth 1 --branch "${MINIO_RELEASE}" https://github.com/minio/minio . \
+    && test "$(git rev-parse HEAD)" = "${MINIO_COMMIT}" \
     && MINIO_RELEASE=RELEASE CGO_ENABLED=0 GOARCH="${TARGETARCH}" \
        go build -tags kqueue -trimpath \
        --ldflags "$(MINIO_RELEASE=RELEASE go run buildscripts/gen-ldflags.go)" \
        -o /out/minio
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
 # ca-certificates : TLS sortant (un déploiement peut pointer ce MinIO en
 # mode passerelle/réplication vers un vrai S3). curl : le healthcheck
 # compose existant (curl -f .../minio/health/live) reste inchangé.
@@ -40,6 +46,13 @@ RUN apt-get update \
 COPY --from=build /out/minio /usr/bin/minio
 COPY --from=build /src/dockerscripts/docker-entrypoint.sh /usr/bin/docker-entrypoint.sh
 RUN chmod +x /usr/bin/minio /usr/bin/docker-entrypoint.sh
+# AUD-179 : non-root. uid/gid 10001 figés : `minio-data-init` (docker-compose.yml) aligne la
+# propriété du volume /data sur cet uid avant le démarrage (un volume créé par une version
+# antérieure appartient à root).
+RUN groupadd --system --gid 10001 minio \
+    && useradd --system --uid 10001 --gid 10001 --no-create-home minio \
+    && mkdir -p /data && chown 10001:10001 /data
+USER 10001:10001
 
 # Cette image DISTRIBUE ET EXPOSE COMME SERVICE RÉSEAU un binaire AGPL —
 # contrairement à deploy/backup/Dockerfile (mc, invoqué en sous-processus,

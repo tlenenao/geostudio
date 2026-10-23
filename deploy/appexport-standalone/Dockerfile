@@ -7,7 +7,7 @@
 # de l'app, instantané GeoParquet) ne sont JAMAIS dans l'image — montées au
 # runtime via le volume /data (cf. docker-compose.yml généré par
 # build_standalone_bundle_zip, core/app/appexport/bundler.py).
-FROM node:22-slim AS shell-runtime
+FROM node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS shell-runtime
 WORKDIR /build
 COPY shell/package.json shell/package-lock.json ./
 RUN npm ci
@@ -18,7 +18,7 @@ RUN npm run build:export-runtime
 # (vite.export.config.ts's rollupOptions.input), jamais index.html.
 RUN mv dist-export/index.export.html dist-export/index.html
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 WORKDIR /app
 RUN groupadd --system app && useradd --system --gid app --home-dir /opt/geostudio-home --create-home app
 ENV HOME=/opt/geostudio-home
@@ -31,7 +31,9 @@ ENV HOME=/opt/geostudio-home
 # sqlalchemy.orm.Session pour un alias de type non utilisé ici — coûte
 # l'installation du paquet, jamais une connexion réelle (aucun driver
 # psycopg présent dans cette image).
-RUN pip install --no-cache-dir fastapi 'uvicorn[standard]' pydantic duckdb sqlalchemy
+# AUD-181 : versions figées sur celles de core/uv.lock (à tenir synchrones à la montée du verrou).
+# ponytail: dépendances transitives non verrouillées ici ; `uv export --frozen` si une dérive est mesurée.
+RUN pip install --no-cache-dir fastapi==0.138.1 'uvicorn[standard]==0.49.0' pydantic==2.13.4 duckdb==1.5.5 sqlalchemy==2.0.51
 RUN python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL spatial')"
 # Copie l'arbre app/ complet (même convention que core/Dockerfile et
 # deploy/export-worker/Dockerfile) plutôt qu'un COPY sélectif fragile :
@@ -45,4 +47,6 @@ ENV APPEXPORT_STANDALONE_RUNTIME_DIR=/runtime
 RUN mkdir -p /data && chown -R app:app /opt/geostudio-home /app /data
 USER app
 EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/', timeout=3)"
 CMD ["uvicorn", "app.appexport.miniserver.main:app", "--host", "0.0.0.0", "--port", "8000"]

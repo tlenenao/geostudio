@@ -42,7 +42,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-uri", default=None)
     args = parser.parse_args(argv)
     base_uri = args.base_uri or tempfile.mkdtemp(prefix="geostudio-sidecar-")
-    token = os.environ.get("GEOSTUDIO_SIDECAR_TOKEN") or None
+    token = os.environ.get("GEOSTUDIO_SIDECAR_TOKEN")
+    if not token:
+        print("GEOSTUDIO_SIDECAR_TOKEN est obligatoire (AUD-158)", file=sys.stderr)
+        return 2
     # Actif par défaut côté sidecar desktop, jamais côté cœur (design §3) ; posé au niveau du
     # process, pas dans create_sidecar_app (REV-328).
     os.environ["CORE_PIPELINE_FILE_IO_ENABLED"] = "true"

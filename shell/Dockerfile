@@ -1,4 +1,4 @@
-FROM node:22-slim AS build
+FROM node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -15,7 +15,7 @@ ENV VITE_CORE_URL=$VITE_CORE_URL \
 # Ni manifeste de build ni fixtures E2E (public/fixtures) dans l'image servie.
 RUN npm run build && rm -rf dist/.vite dist/fixtures
 
-FROM nginx:1.27-alpine
+FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY nginx-security-headers.conf /etc/nginx/snippets/security-headers-embed.conf

@@ -3,6 +3,7 @@ import asyncio
 import time
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.pipelines.sidecar.app import create_sidecar_app
@@ -38,8 +39,8 @@ def _file_io_enabled(monkeypatch):
 
 @pytest.fixture
 def client(tmp_path):
-    app = create_sidecar_app(base_uri=str(tmp_path))
-    return TestClient(app)
+    app = create_sidecar_app(base_uri=str(tmp_path), token="s3cr3t")
+    return TestClient(app, base_url="http://127.0.0.1", headers={"Authorization": "Bearer s3cr3t"})
 
 
 def test_get_ops_includes_reader_file_and_writer_file(client):
@@ -215,11 +216,39 @@ def test_runs_large_limit_does_not_error(client):
     assert res.json() == []
 
 
-def test_default_app_has_no_auth_and_ignores_host(client):
-    # Unauthenticated fixture (token=None, the default) — behavior for
-    # every other test in this file must stay exactly as before this task.
-    res = client.get("/pipelines/ops", headers={"Host": "anything-goes.example"})
-    assert res.status_code == 200
+def test_token_is_mandatory(tmp_path):
+    with pytest.raises(ValueError):
+        create_sidecar_app(base_uri=str(tmp_path), token="")
+
+
+def test_rejects_foreign_origin_even_with_valid_token(client):
+    res = client.get("/pipelines/ops", headers={"Origin": "https://evil.example"})
+    assert res.status_code == 403
+
+
+def test_put_rejects_op_outside_allowlist(client):
+    payload = {
+        "nodes": [{"id": "r1", "kind": "reader", "op": "reader.collection", "params": {}}],
+        "edges": [],
+    }
+    assert client.put("/pipelines/p", json=payload).status_code == 422
+
+
+def test_run_and_preview_recheck_allowlist(client):
+    payload = {
+        "nodes": [
+            {"id": "r", "kind": "reader", "op": "reader.file", "params": {"path": "/x"}},
+            {"id": "t", "kind": "transform", "op": "transform.httpCall", "params": {}},
+            {"id": "w", "kind": "writer", "op": "writer.file", "params": {"path": "/y"}},
+        ],
+        "edges": [{"id": "e", "from": "r", "to": "t"}, {"id": "f", "from": "t", "to": "w"}],
+    }
+    # contourne le PUT : le store est alimenté directement
+    from app.configs.schemas import PipelinePayload
+    from app.pipelines.sidecar.app import _check_pipeline_ops
+
+    with pytest.raises(HTTPException):
+        _check_pipeline_ops(PipelinePayload.model_validate(payload))
 
 
 @pytest.fixture
@@ -259,16 +288,35 @@ def test_authed_app_accepts_host_with_port_suffix(authed_client):
     assert res.status_code == 200
 
 
-def test_authed_app_allows_missing_host_header(authed_client):
-    # httpx always sends Host in practice; this documents the deliberate
-    # choice (design §4) to only reject a Host header that is PRESENT and
-    # wrong, never to require one — see the plan's rationale in Task 1.
-    res = authed_client.get(
-        "/pipelines/ops",
-        headers={"Authorization": "Bearer s3cr3t"},
-        extensions={},
-    )
-    assert res.status_code == 200
+def test_authed_app_rejects_missing_host_header(tmp_path):
+    # AUD-158 : Host contrôlé sans condition (HTTP/1.0 sans Host = rejeté).
+    app = create_sidecar_app(base_uri=str(tmp_path), token="s3cr3t")
+
+    async def run():
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/pipelines/ops",
+            "headers": [(b"authorization", b"Bearer s3cr3t")],
+            "query_string": b"",
+            "server": ("127.0.0.1", 80),
+            "client": ("127.0.0.1", 1),
+            "scheme": "http",
+            "root_path": "",
+        }
+        out = {}
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(m):
+            if m["type"] == "http.response.start":
+                out["s"] = m["status"]
+
+        await app(scope, receive, send)
+        return out["s"]
+
+    assert asyncio.run(run()) == 400
 
 
 def test_authed_app_rejects_non_ascii_authorization_header_without_crashing(tmp_path):
@@ -282,7 +330,7 @@ def test_authed_app_rejects_non_ascii_authorization_header_without_crashing(tmp_
             "type": "http",
             "method": "GET",
             "path": "/pipelines/ops",
-            "headers": [(b"authorization", b"Bearer \xe9")],
+            "headers": [(b"authorization", b"Bearer \xe9"), (b"host", b"127.0.0.1")],
             "query_string": b"",
             "server": ("127.0.0.1", 80),
             "client": ("127.0.0.1", 12345),
@@ -336,7 +384,7 @@ def test_preflight_options_is_not_blocked_by_auth(authed_client):
 
 def test_create_sidecar_app_does_not_write_os_environ(tmp_path, monkeypatch):
     monkeypatch.delenv("CORE_PIPELINE_FILE_IO_ENABLED", raising=False)
-    create_sidecar_app(base_uri=str(tmp_path))
+    create_sidecar_app(base_uri=str(tmp_path), token="s3cr3t")
     import os
 
     assert "CORE_PIPELINE_FILE_IO_ENABLED" not in os.environ
