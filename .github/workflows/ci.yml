@@ -291,7 +291,12 @@ jobs:
       # serveur `AuthorizationCode`, jamais utilisée ici (oauthlib n'entre que
       # comme client via databricks-sql-connector, qui épingle <4). À retirer
       # dès que databricks-sql-connector accepte oauthlib>=4.
-      - run: uv run pip-audit --strict --ignore-vuln PYSEC-2026-4114
+      # CVE-2026-112940 (filelock <4.2.1, `ReadWriteLock` SQLite) : ni le cœur ni
+      # snowflake-connector-python n'appellent `ReadWriteLock` (seulement `FileLock`) ; le correctif
+      # exige filelock 4.x, que snowflake-connector-python 4.x plafonne (`<4`). À retirer avec la
+      # montée vers snowflake-sqlalchemy 2 / connector 5 (connecteur non rejouable sans compte).
+      - run: >-
+          uv run pip-audit --strict --ignore-vuln PYSEC-2026-4114 --ignore-vuln CVE-2026-112940
       # AUD-111 : GPL/AGPL refusées, LGPL seulement si déclarée dans license-exceptions.json.
       - run: uv run python scripts/check_licenses.py license-exceptions.json
 
