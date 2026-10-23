@@ -91,7 +91,7 @@ jobs:
       - run: >-
           uv run pytest -rs --cov=app --cov-report=
           --deselect tests/test_s3_public_storage.py::test_real_minio_cors_bucket_and_presign_roundtrip
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: core-cov-shard-${{ matrix.shard }}
           path: core/cov-shard-${{ matrix.shard }}.dat
@@ -169,7 +169,7 @@ jobs:
       - run: uv run coverage combine cov-shard-*.dat
       - run: uv run coverage xml -o coverage.xml
       - run: uv run python scripts/check_coverage.py coverage.xml .coverage-threshold
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: core-coverage
           path: core/coverage.xml
@@ -334,7 +334,7 @@ jobs:
       - run: npm run format:check
       - run: npm run test -- --coverage
       - run: node scripts/check-coverage.mjs coverage/coverage-summary.json .coverage-threshold
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shell-coverage
           path: shell/coverage/coverage-summary.json
@@ -506,7 +506,7 @@ jobs:
         working-directory: core
         env:
           PYTHONPATH: .
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bilan-fonctionnalites
           path: |
