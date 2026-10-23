@@ -236,8 +236,12 @@ def test_put_rejects_op_outside_allowlist(client):
 
 def test_run_and_preview_recheck_allowlist(client):
     payload = {
-        "nodes": [{"id": "t", "kind": "transform", "op": "transform.httpCall", "params": {}}],
-        "edges": [],
+        "nodes": [
+            {"id": "r", "kind": "reader", "op": "reader.file", "params": {"path": "/x"}},
+            {"id": "t", "kind": "transform", "op": "transform.httpCall", "params": {}},
+            {"id": "w", "kind": "writer", "op": "writer.file", "params": {"path": "/y"}},
+        ],
+        "edges": [{"id": "e", "from": "r", "to": "t"}, {"id": "f", "from": "t", "to": "w"}],
     }
     # contourne le PUT : le store est alimenté directement
     from app.configs.schemas import PipelinePayload
