@@ -55,6 +55,7 @@ from app.ingestion.parsers import (
 )
 from app.items import repository as items_repo
 from app.quotas.service import check_quota_or_raise
+from app.relations.service import check_rows
 from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
 from app.sql_ident import quote_ident
@@ -653,35 +654,60 @@ def run_append(
     ignored: dict[str, None] = {}
     rejected: list[dict] = []
     rejected_count = inserted = 0
-    batch: list[tuple[dict, dict | None]] = []
+    batch: list[tuple[dict, dict | None, int]] = []  # (propriétés, géométrie, n° de ligne)
     geo_limits = resolve_geo_limits(session, tenant_id=tenant_id, user_id=user.id)
 
-    def flush() -> None:
-        nonlocal inserted
-        if batch:
-            insert_features(session, info, batch)
-            inserted += len(batch)
-            batch.clear()
+    def _scope(sess, tid, masked=False):
+        return rls_scope(sess, tid, masked=masked, geo_limits=geo_limits)
 
-    with rls_scope(session, tenant_id, geo_limits=geo_limits):
-        for number, (geom, props) in enumerate(typed_rows(), start=1):
-            clean = {}
-            for key, value in props.items():
-                if key in writable:
-                    clean[key] = _coerce_for_column(writable[key], value)
-                else:
-                    ignored.setdefault(key)
-            geometry = mapping(geom) if geom is not None and info.geometry_column else None
-            feature = {"type": "Feature", "properties": clean, "geometry": geometry}
-            if errors := validate_for_write(info, feature):
+    def flush() -> None:
+        nonlocal inserted, rejected_count
+        if not batch:
+            return
+        # AUD-165 : clé étrangère logique des relations (check_write ne couvrait que la route
+        # REST). Hors `rls_scope` : la lecture des parents ouvre le sien (un scope imbriqué
+        # rendrait le rôle propriétaire à la fin du scope interne).
+        bad = check_rows(session, user, col, [b[0] for b in batch], _scope, new_rows=True)
+        keep = []
+        for i, (props, geometry, number) in enumerate(batch):
+            if i in bad:
                 rejected_count += 1
                 if len(rejected) < REPORT_SAMPLE_MAX:
-                    rejected.append({"row": number, "errors": errors})
-                continue
-            batch.append((feature["properties"], geometry))
-            if len(batch) >= _APPEND_BATCH:
-                flush()
-        flush()
+                    e = bad[i]
+                    rejected.append(
+                        {
+                            "row": number,
+                            "errors": [
+                                {k: e[k] for k in ("field", "code", "message")},
+                            ],
+                        }
+                    )
+            else:
+                keep.append((props, geometry))
+        if keep:
+            with rls_scope(session, tenant_id, geo_limits=geo_limits):
+                insert_features(session, info, keep)
+            inserted += len(keep)
+        batch.clear()
+
+    for number, (geom, props) in enumerate(typed_rows(), start=1):
+        clean = {}
+        for key, value in props.items():
+            if key in writable:
+                clean[key] = _coerce_for_column(writable[key], value)
+            else:
+                ignored.setdefault(key)
+        geometry = mapping(geom) if geom is not None and info.geometry_column else None
+        feature = {"type": "Feature", "properties": clean, "geometry": geometry}
+        if errors := validate_for_write(info, feature):
+            rejected_count += 1
+            if len(rejected) < REPORT_SAMPLE_MAX:
+                rejected.append({"row": number, "errors": errors})
+            continue
+        batch.append((feature["properties"], geometry, number))
+        if len(batch) >= _APPEND_BATCH:
+            flush()
+    flush()
     write_audit(
         session,
         tenant_id=tenant_id,

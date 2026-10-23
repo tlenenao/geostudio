@@ -5,7 +5,7 @@ import os
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -834,6 +834,43 @@ def _reject_invalid_sensitive_fields(
         )
 
 
+def _relations_touching(session: Session, col) -> list:
+    """Relations (ARC-21) où `col` est parent, enfant ou association — SQL direct : app.relations
+    est au-dessus de app.collections (contrat de couches)."""
+    return list(
+        session.execute(
+            text(
+                "SELECT name, parent_collection_id, child_collection_id, link_collection_id, "
+                "parent_key, child_key, link_parent_key, link_child_key "
+                "FROM collection_relations WHERE tenant_id = :t AND "
+                "(parent_collection_id = :c OR child_collection_id = :c OR link_collection_id = :c)"
+            ),
+            {"t": col.tenant_id, "c": col.id},
+        ).mappings()
+    )
+
+
+def _reject_sensitive_relation_keys(session: Session, col, sensitive_fields: list[str]) -> None:
+    """AUD-164 : `create_relation` refuse une clé sensible ; le PATCH des `sensitiveFields` ne
+    doit pas la rendre sensible après coup (la relation lirait alors une colonne masquée)."""
+    used: dict[str, str] = {}
+    for r in _relations_touching(session, col):
+        if r["parent_collection_id"] == col.id:
+            used[r["parent_key"]] = r["name"]
+        if r["child_collection_id"] == col.id:
+            used[r["child_key"]] = r["name"]
+        if r["link_collection_id"] == col.id:
+            used[r["link_parent_key"]] = r["name"]
+            used[r["link_child_key"]] = r["name"]
+    clash = sorted((f, used[f]) for f in set(sensitive_fields) if f in used)
+    if clash:
+        joined = ", ".join(f"'{f}' (relation '{n}')" for f, n in clash)
+        raise HTTPException(
+            status_code=409,
+            detail=f"sensitiveFields would hide relation key(s): {joined}; remove it first",
+        )
+
+
 def _dump_domain(dom) -> dict:
     return {k: v for k, v in dom.model_dump().items() if v is not None}
 
@@ -899,6 +936,7 @@ def patch_collection(
         )
     if body.sensitiveFields is not None:
         _reject_invalid_sensitive_fields(session, col, body.sensitiveFields, introspect)
+        _reject_sensitive_relation_keys(session, col, body.sensitiveFields)  # AUD-164
     new_domains = (
         {k: _dump_domain(v) for k, v in body.fieldDomains.items()}
         if body.fieldDomains is not None
@@ -1044,6 +1082,15 @@ def unregister_collection(
         raise HTTPException(
             status_code=409,
             detail=configs_repo.referencing_message(referencing),
+        )
+    # AUD-167 : la FK `collection_relations` est ON DELETE CASCADE — sans cette garde, supprimer
+    # une collection effaçait ses relations sans contrôle ni audit. 409 : on supprime d'abord la
+    # relation (route dédiée, auditée `relation.delete`).
+    if relations := _relations_touching(session, col):
+        names = ", ".join(sorted({r["name"] for r in relations}))
+        raise HTTPException(
+            status_code=409,
+            detail=f"collection is used by relation(s): {names}; remove them first",
         )
     remove_table_from_publication(session, col.table_name)
     # SP-42/F-securite-tenant-rls-03 : sans cette purge explicite (lignes +

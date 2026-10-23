@@ -16,16 +16,23 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # `groups` was only introduced in migration 0006 of this same branch and
-    # no cutover to production has happened yet (see 0005's precedent: reset
-    # a stale dev DB rather than backfill). There is no real created_by data
-    # to reconstruct, so this column goes straight in as NOT NULL — matching
-    # the ORM model — rather than adding it nullable and leaving the schema
-    # and model inconsistent.
-    op.add_column(
-        "groups",
-        sa.Column("created_by", sa.String(), sa.ForeignKey("users.id"), nullable=False),
+    # AUD-191 : ajout nullable, backfill (plus ancien utilisateur du tenant), puis NOT NULL + FK.
+    op.add_column("groups", sa.Column("created_by", sa.String(), nullable=True))
+    conn = op.get_bind()
+    conn.execute(
+        sa.text(
+            "UPDATE groups g SET created_by = (SELECT u.id FROM users u "
+            "WHERE u.tenant_id = g.tenant_id ORDER BY u.created_at, u.id LIMIT 1)"
+        )
     )
+    orphans = conn.execute(
+        sa.text("SELECT count(*) FROM groups WHERE created_by IS NULL")
+    ).scalar_one()
+    if orphans:
+        msg = f"migration 0007 : {orphans} groupe(s) dans un tenant sans utilisateur."
+        raise RuntimeError(msg)
+    op.alter_column("groups", "created_by", nullable=False)
+    op.create_foreign_key("groups_created_by_fkey", "groups", "users", ["created_by"], ["id"])
 
 
 def downgrade() -> None:

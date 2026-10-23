@@ -202,6 +202,9 @@ class _NoRelationHooks:
     def check_write(self, session, user, col, properties, fid, rls) -> None:
         return None
 
+    def before_update(self, session, user, col, fid, properties, rls) -> None:
+        return None
+
     def before_delete(self, session, user, col, fid, rls, s3) -> None:
         return None
 
@@ -1197,6 +1200,7 @@ def _replace(
     if errors := validate_for_write(info, payload):
         raise _validation_error(errors)
     relations.check_write(session, user, col, sent, fid, rls)
+    relations.before_update(session, user, col, fid, sent, rls)  # AUD-166 : parent_key changé
     try:
         with rls(session, col.tenant_id):
             _enforce_if_match(session, repo, view_info, fid, if_match)

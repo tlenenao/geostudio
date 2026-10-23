@@ -62,6 +62,7 @@ from app.public_submit import service
 from app.public_submit.models import Submission, SubmissionFile, SubmissionToken
 from app.quotas.service import enforce_storage_quota
 from app.ratelimit.limiter import ip_bucket
+from app.relations import service as relations_service
 from app.sharing.geo_limits import refuse_if_geo_limited
 from app.upload_sniff import HEAD_BYTES, allowed_for_kind, looks_executable, sniff_content_type
 
@@ -511,6 +512,8 @@ def approve_submission(
     feature = {"type": "Feature", **copy.deepcopy(sub.payload)}
     if errors := validate_for_write(info, feature):
         raise _validation_error(errors)
+    # AUD-165 : clé étrangère logique des relations, comme le POST REST (422/409).
+    relations_service.check_write(session, user, col, feature.get("properties") or {}, None, rls)
     try:
         with rls(session, col.tenant_id):
             fid = repo.insert_feature(

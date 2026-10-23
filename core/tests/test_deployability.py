@@ -426,6 +426,9 @@ def test_prod_overlay_substitutes_every_build_with_an_image():
 # dépôt. Liste fermée : toute variable nouvelle est soit câblée, soit
 # ajoutée ici avec sa raison — c'est cette contrainte qui a de la valeur.
 ENV_WIRING_EXEMPTIONS = {
+    # AUD-192 : dérogation ponctuelle posée à la main sur la commande `alembic downgrade`
+    # (jamais en service) — la câbler dans un compose la rendrait permanente.
+    "GEOSTUDIO_ALLOW_DESTRUCTIVE_DOWNGRADE",
     # Couture de test : permet de lire des partitions CDC depuis le disque
     # local au lieu de S3 (tests analytiques). Jamais réglée en production.
     "S3_CDC_BUCKET_BASE_URI",

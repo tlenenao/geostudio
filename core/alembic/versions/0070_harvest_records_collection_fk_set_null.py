@@ -31,7 +31,9 @@ def _recreate(ondelete: str | None) -> None:
         ["collection_id"],
         ["id"],
         ondelete=ondelete,
+        postgresql_not_valid=True,  # AUD-189 : validation à part, sans bloquer les écritures
     )
+    op.execute(f'ALTER TABLE harvest_records VALIDATE CONSTRAINT "{_NAME}"')
 
 
 def upgrade() -> None:

@@ -24,13 +24,18 @@ _INDEXES = [("ix_items_embedding", "items"), ("ix_collections_embedding", "colle
 def _rebuild(using: str) -> None:
     if op.get_bind().dialect.name != "postgresql":
         return
-    for name, table in _INDEXES:
-        op.execute(f"DROP INDEX IF EXISTS {name}")
-        with_clause = " WITH (lists = 100)" if using == "ivfflat" else ""
-        op.execute(
-            f"CREATE INDEX {name} ON {table} USING {using} "
-            f"(embedding vector_cosine_ops){with_clause}"
-        )
+    # AUD-190 : jamais de DROP avant CREATE (les lectures sémantiques perdraient leur index) ;
+    # nouvel index en CONCURRENTLY sous un nom provisoire, puis échange. Hors transaction.
+    with_clause = " WITH (lists = 100)" if using == "ivfflat" else ""
+    with op.get_context().autocommit_block():
+        for name, table in _INDEXES:
+            op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {name}_new")  # reste d'un échec
+            op.execute(
+                f"CREATE INDEX CONCURRENTLY {name}_new ON {table} USING {using} "
+                f"(embedding vector_cosine_ops){with_clause}"
+            )
+            op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {name}")
+            op.execute(f"ALTER INDEX {name}_new RENAME TO {name}")
 
 
 def upgrade() -> None:

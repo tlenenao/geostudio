@@ -30,21 +30,40 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
-    # No pre-existing `configs` rows are expected in any real deployment yet
-    # (no prod cutover has happened — see A15). If a dev database has stale
-    # rows from manual testing, reset it (`docker compose down -v` on
-    # `postgis`) rather than migrating them: there is no real title/owner
-    # data to reconstruct an `items` row from at the DB level.
-    op.drop_column("configs", "item_id")
-    op.add_column(
-        "configs",
-        sa.Column(
-            "item_id", sa.String(), sa.ForeignKey("items.id", ondelete="CASCADE"), nullable=False
-        ),
+    # AUD-191 : backfill avant contrainte. Chaque config existante reçoit un item (id = ancien
+    # item_id, sinon l'id de la config), propriété du plus ancien utilisateur de son tenant ; la
+    # colonne est conservée (pas de drop/add qui perdait la valeur) puis passée NOT NULL + FK.
+    conn = op.get_bind()
+    orphans = conn.execute(
+        sa.text(
+            "SELECT count(*) FROM configs c WHERE NOT EXISTS "
+            "(SELECT 1 FROM users u WHERE u.tenant_id = c.tenant_id)"
+        )
+    ).scalar_one()
+    if orphans:
+        msg = (
+            f"migration 0005 : {orphans} config(s) dans un tenant sans utilisateur — "
+            "aucun propriétaire possible pour l'item à créer ; créez un utilisateur ou purgez-les."
+        )
+        raise RuntimeError(msg)
+    conn.execute(
+        sa.text(
+            "INSERT INTO items (id, tenant_id, owner_id, resource_type, title, abstract, keywords,"
+            " is_published, created_at, updated_at) "
+            "SELECT COALESCE(c.item_id, c.id), c.tenant_id, "
+            "(SELECT u.id FROM users u WHERE u.tenant_id = c.tenant_id ORDER BY u.created_at, u.id "
+            "LIMIT 1), c.kind, c.kind || ' ' || c.id, '', '[]', false, now(), now() "
+            "FROM configs c ON CONFLICT (id) DO NOTHING"
+        )
+    )
+    op.execute("UPDATE configs SET item_id = id WHERE item_id IS NULL")
+    op.alter_column("configs", "item_id", nullable=False)
+    op.create_foreign_key(
+        "configs_item_id_fkey", "configs", "items", ["item_id"], ["id"], ondelete="CASCADE"
     )
 
 
 def downgrade() -> None:
-    op.drop_column("configs", "item_id")
-    op.add_column("configs", sa.Column("item_id", sa.String(), nullable=True))
+    op.drop_constraint("configs_item_id_fkey", "configs", type_="foreignkey")
+    op.alter_column("configs", "item_id", nullable=True)
     op.drop_table("items")
