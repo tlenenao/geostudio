@@ -924,7 +924,7 @@ services:
   # défaut du collecteur embarqué (pas de fusion partielle) et lui ajoute
   # le scraping Prometheus de martin/postgres-exporter (cf. Task 2).
   otel-lgtm:
-    image: grafana/otel-lgtm:0.11.4
+    image: grafana/otel-lgtm:0.37.0
     profiles: ["observability"]
     restart: unless-stopped
     healthcheck:
