@@ -7,35 +7,18 @@ import time
 import httpx
 
 
-def test_entrypoint_prints_port_and_serves_ops(tmp_path):
-    proc = subprocess.Popen(
+def test_entrypoint_refuses_to_start_without_token(tmp_path):
+    env = {k: v for k, v in __import__("os").environ.items() if k != "GEOSTUDIO_SIDECAR_TOKEN"}
+    proc = subprocess.run(
         [sys.executable, "scripts/pipeline_sidecar.py", "--base-uri", str(tmp_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         cwd=".",
+        env=env,
+        timeout=30,
     )
-    try:
-        first_line = proc.stdout.readline()
-        match = re.match(r"PORT=(\d+)\n", first_line)
-        assert match, f"unexpected first line: {first_line!r}, stderr={proc.stderr.read()}"
-        port = int(match.group(1))
-
-        deadline = time.monotonic() + 5.0
-        last_exc = None
-        while time.monotonic() < deadline:
-            try:
-                res = httpx.get(f"http://127.0.0.1:{port}/pipelines/ops", timeout=1.0)
-                assert res.status_code == 200
-                assert "reader.file" in res.json()
-                return
-            except httpx.TransportError as exc:
-                last_exc = exc
-                time.sleep(0.1)
-        raise AssertionError(f"sidecar never became reachable: {last_exc}")
-    finally:
-        proc.terminate()
-        proc.wait(timeout=5)
+    assert proc.returncode == 2
+    assert "PORT=" not in proc.stdout
 
 
 def test_entrypoint_requires_token_when_env_var_set(tmp_path, monkeypatch):
