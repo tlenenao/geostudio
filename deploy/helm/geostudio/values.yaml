@@ -202,7 +202,7 @@ shell:
 
 observability:                      # profil compose « observability » (otel-lgtm ; dashboards non provisionnés par le chart)
   enabled: false
-  image: grafana/otel-lgtm:0.11.4
+  image: grafana/otel-lgtm:0.37.0
   existingClaim: ""                 # PVC monté sur /data (métriques, logs, traces, base Grafana) ; vide = emptyDir, perdu au redémarrage
   resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 3Gi}}
 
