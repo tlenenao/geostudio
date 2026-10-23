@@ -61,6 +61,8 @@ jobs:
       # P27.01 : base réelle obligatoire en CI — sans elle les tests postgis
       # échouent au lieu de skipper en vert (core/tests/conftest.py).
       CORE_REQUIRE_DB: "1"
+      # helm est préinstallé sur ubuntu-latest : son absence fait échouer au lieu de skipper.
+      GEOSTUDIO_REQUIRE_HELM: "1"
       CORE_TEST_SHARD: ${{ matrix.shard }}/4
       COVERAGE_FILE: cov-shard-${{ matrix.shard }}.dat
     steps:
@@ -84,12 +86,50 @@ jobs:
           done
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       - run: uv sync
-      - run: uv run pytest --cov=app --cov-report=
+      - run: helm version --short
+      # Le test MinIO réel tourne dans le job `core-s3-real` (image construite depuis les sources).
+      - run: >-
+          uv run pytest --cov=app --cov-report=
+          --deselect tests/test_s3_public_storage.py::test_real_minio_cors_bucket_and_presign_roundtrip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: core-cov-shard-${{ matrix.shard }}
           path: core/cov-shard-${{ matrix.shard }}.dat
           include-hidden-files: true
+
+  # Test MinIO réel (CORS, bucket, URL présignées) : l'image est construite depuis les sources
+  # AGPL (deploy/minio), le skip est interdit (CORE_REQUIRE_S3).
+  core-s3-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: core
+    env:
+      CORE_REQUIRE_S3: "1"
+      CORE_TEST_S3_ENDPOINT: http://localhost:9000
+      CORE_TEST_S3_KEY: ci-minio-user
+      CORE_TEST_S3_SECRET: ci-minio-password
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/docker-mirror
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build MinIO
+        run: docker build -t geostudio-minio-ci:latest ../deploy/minio
+      - name: Start MinIO
+        run: |
+          docker run -d --name ci-minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=ci-minio-user -e MINIO_ROOT_PASSWORD=ci-minio-password \
+            geostudio-minio-ci:latest server /data
+          for _ in $(seq 1 30); do
+            curl -fs http://localhost:9000/minio/health/live && break
+            sleep 2
+          done
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync
+      - run: uv run pytest --no-cov tests/test_s3_public_storage.py
 
   # Job d'agrégation : garde le nom `core` (check requis par la protection de
   # branche, runbook 2026-10-10-release-v0.1.1) et porte les portes qui ne
@@ -97,7 +137,7 @@ jobs:
   # échoué/annulé fait échouer `core` (jamais « skipped »), et les jobs en aval
   # (`api-types-drift`, `feature-health`) ne sont plus sautés en silence.
   core:
-    needs: core-tests
+    needs: [core-tests, core-s3-real]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -109,7 +149,9 @@ jobs:
         working-directory: .
         run: |
           echo "core-tests : ${{ needs.core-tests.result }}"
+          echo "core-s3-real : ${{ needs.core-s3-real.result }}"
           [ "${{ needs.core-tests.result }}" = "success" ]
+          [ "${{ needs.core-s3-real.result }}" = "success" ]
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
       - run: uv sync

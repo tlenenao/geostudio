@@ -25,17 +25,15 @@ def test_lambert93_unchanged():
     assert (round(lon, 6), round(lat, 6)) == (3.0, 46.5)
 
 
-@pytest.mark.skipif(_grid_available(), reason="grille installée : branche couverte ci-dessous")
-def test_ntf_without_grid_is_refused():
-    with pytest.raises(IngestionParseError, match="fr_ign_gr3df97a.tif"):
-        _crs_transform("EPSG:27572")
-
-
-@pytest.mark.skipif(not _grid_available(), reason="grille IGN absente (python -m pyproj sync)")
-def test_ntf_with_grid_is_metric():
-    lon, lat = _crs_transform("EPSG:27572")(600000.0, 2428000.0)
-    assert lon == pytest.approx(WITH_GRID[0], abs=1e-7)
-    assert lat == pytest.approx(WITH_GRID[1], abs=1e-7)
+def test_ntf_refused_without_grid_and_metric_with_it():
+    """Une seule branche s'exécute selon la machine (grille installée ou non) : jamais ignoré."""
+    if _grid_available():
+        lon, lat = _crs_transform("EPSG:27572")(600000.0, 2428000.0)
+        assert lon == pytest.approx(WITH_GRID[0], abs=1e-7)
+        assert lat == pytest.approx(WITH_GRID[1], abs=1e-7)
+    else:
+        with pytest.raises(IngestionParseError, match="fr_ign_gr3df97a.tif"):
+            _crs_transform("EPSG:27572")
 
 
 def test_ntf_geoparquet_follows_the_same_rule():
