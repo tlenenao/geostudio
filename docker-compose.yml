@@ -1056,7 +1056,7 @@ services:
   # ─── Auth ──────────────────────────────────────────────
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0.5
+    image: quay.io/keycloak/keycloak:26.8.1-1
     mem_limit: ${KEYCLOAK_MEM_LIMIT:-1536m}
     # AUD-184 : plafonds de CPU et de processus/threads (un emballement ne prive plus l'hôte).
     cpus: ${KEYCLOAK_CPUS:-1}
