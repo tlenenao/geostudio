@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 
 WORKDIR /app
 
@@ -67,7 +67,11 @@ RUN python -m pyproj sync --file fr_ign_gr3df97a.tif
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
-COPY scripts ./scripts
+# AUD-187 : liste blanche des scripts d'exploitation — jamais spike_*/measure_*/audit_*/
+# *_cli.py, qui n'ont rien à faire dans une image de production.
+COPY scripts/__init__.py scripts/ensure_procrastinate_schema.py scripts/healthcheck_worker_stalled.py \
+     scripts/healthcheck_cdc.py scripts/rotate_secrets_master_key.py scripts/seed_demo.py \
+     scripts/backfill_item_bbox.py ./scripts/
 
 # /scratch (revue finale SP-26, C1) : cette même image sert aussi le service
 # `worker` de docker-compose.yml, qui monte le volume nommé `etl-scratch` sur

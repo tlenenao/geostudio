@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-FROM alpine:3.20
+FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
 
 # NB: le paquet Alpine `mc` est Midnight Commander (gestionnaire de fichiers
 # terminal), pas le client MinIO — découvert en vérifiant Step 11 (lance une

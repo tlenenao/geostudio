@@ -54,6 +54,7 @@ preuve plus large qu'elle n'est :
 import ast
 import base64
 import json
+import os
 import pathlib
 import re
 import shlex
@@ -768,7 +769,7 @@ MEM_LIMITS = {
     "core": ("CORE_MEM_LIMIT", "1536m"),
     "worker": ("WORKER_MEM_LIMIT", "2g"),
     "export-worker": ("EXPORT_WORKER_MEM_LIMIT", "1g"),
-    "cdc-worker": ("CDC_WORKER_MEM_LIMIT", "0"),  # sans borne : cf. test dédié
+    "cdc-worker": ("CDC_WORKER_MEM_LIMIT", "2g"),  # AUD-184 : plafond par défaut
     "keycloak": ("KEYCLOAK_MEM_LIMIT", "1536m"),
     "minio": ("MINIO_MEM_LIMIT", "512m"),
     "titiler": ("TITILER_MEM_LIMIT", "1g"),
@@ -841,13 +842,12 @@ def test_duckdb_memory_limit_is_well_below_the_container_limit(service):
     assert _bytes(env["CORE_DUCKDB_MEMORY_LIMIT"]) * 2 <= _bytes(env[var])
 
 
-def test_cdc_worker_is_unbounded_by_default_and_titiler_concurrency_is_pinned():
-    """Revue finale SP-L3 (C1/I1). cdc-worker : wal2json v1 livre une transaction
-    entière en un message — une borne fixe le tue en boucle sur un gros import.
-    titiler : gunicorn = 1 worker par cœur de l'hôte sans WEB_CONCURRENCY."""
+def test_cdc_worker_is_bounded_by_default_and_titiler_concurrency_is_pinned():
+    """Revue finale SP-L3 (C1/I1) puis AUD-184. cdc-worker : plafond par défaut 2g
+    (wal2json v2 : une ligne par message, backfill en flux). titiler : gunicorn = 1 worker par cœur de l'hôte sans WEB_CONCURRENCY."""
     assert _resolve_effective_value(
         str(services(BASE)["cdc-worker"]["mem_limit"]), "CDC_WORKER_MEM_LIMIT"
-    ) == "0"
+    ) == "2g"
     env = services(BASE)["titiler"]["environment"]
     assert _resolve_effective_value(str(env["WEB_CONCURRENCY"]), "TITILER_WEB_CONCURRENCY") == "2"
     assert "GDAL_CACHEMAX" in env
@@ -2641,6 +2641,7 @@ def test_titiler_pins_starlette_below_1():
 LONG_LIVED_EXEMPTIONS = {
     "appexport-runtime-builder": "one-shot (build du runtime, aucun restart voulu)",
     "csp-dynamic-conf-init": "one-shot (init de propriété du volume)",
+    "minio-data-init": "one-shot (chown du volume minio-data, AUD-179)",
     "docker-socket-proxy": "image sans shell ni wget : sonde impossible (restart seul)",
 }
 
@@ -2784,3 +2785,130 @@ def test_dev_cors_origin_is_the_quickstart_shell_and_prod_clears_it():
     raw = services(BASE)["core"]["environment"]["CORE_CORS_ALLOWED_ORIGINS"]
     assert _resolve_effective_value(raw, "CORE_CORS_ALLOWED_ORIGINS") == "http://localhost:8300"
     assert services(PROD)["core"]["environment"]["CORE_CORS_ALLOWED_ORIGINS"] == ""
+
+
+# ─── Couloir B (AUD-178/179/181/182/183/184/187) ────────────────────────────
+
+DOCKERFILES = sorted(
+    p
+    for p in [REPO / "core/Dockerfile", REPO / "shell/Dockerfile", *REPO.glob("deploy/*/Dockerfile")]
+    if p.is_file()
+)
+
+
+@pytest.mark.parametrize("dockerfile", DOCKERFILES, ids=lambda p: str(p.relative_to(REPO)))
+def test_every_base_image_is_pinned_by_digest(dockerfile):
+    """AUD-178 : un tag flottant change sous les pieds d'un build « reproductible »."""
+    stages = set()
+    for line in dockerfile.read_text().splitlines():
+        m = re.match(r"FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?", line, re.I)
+        if not m:
+            continue
+        image, stage = m.groups()
+        if image not in stages and image != "scratch":
+            assert re.search(r"@sha256:[0-9a-f]{64}$", image), f"{dockerfile}: {image}"
+        if stage:
+            stages.add(stage)
+
+
+def test_dependabot_watches_every_dockerfile_directory():
+    cfg = yaml.safe_load((REPO / ".github/dependabot.yml").read_text())
+    docker = next(u for u in cfg["updates"] if u["package-ecosystem"] == "docker")
+    watched = {d.strip("/") for d in docker["directories"]}
+    assert {str(p.parent.relative_to(REPO)) for p in DOCKERFILES} <= watched
+
+
+def test_minio_build_verifies_the_upstream_commit():
+    """AUD-182 : un tag amont déplacé ne doit pas compiler un autre code en silence."""
+    text = (REPO / "deploy/minio/Dockerfile").read_text()
+    assert re.search(r"^ARG MINIO_COMMIT=[0-9a-f]{40}$", text, re.M)
+    assert 'test "$(git rev-parse HEAD)" = "${MINIO_COMMIT}"' in text
+
+
+def test_appexport_standalone_pins_its_pip_dependencies_and_has_a_healthcheck():
+    """AUD-181."""
+    text = (REPO / "deploy/appexport-standalone/Dockerfile").read_text()
+    install = next(line for line in text.splitlines() if line.startswith("RUN pip install"))
+    for pkg in ("fastapi", "uvicorn[standard]", "pydantic", "duckdb", "sqlalchemy"):
+        assert re.search(rf"{re.escape(pkg)}==\d", install), pkg
+    assert "\nHEALTHCHECK " in text
+
+
+@pytest.mark.parametrize("dockerfile", ["deploy/minio/Dockerfile", "deploy/titiler/Dockerfile"])
+def test_minio_and_titiler_images_run_as_a_non_root_user(dockerfile):
+    """AUD-179 (postgis : l'entrypoint officiel abandonne lui-même les privilèges)."""
+    text = (REPO / dockerfile).read_text()
+    users = re.findall(r"^USER\s+(\S+)", text, re.M)
+    assert users and users[-1].split(":")[0] not in ("root", "0"), users
+
+
+def test_minio_data_volume_is_chowned_before_minio_starts():
+    """AUD-179 : un volume créé en root par une version antérieure serait illisible."""
+    svcs = services(BASE)
+    init = svcs["minio-data-init"]
+    assert "10001" in " ".join(init["command"])
+    assert any(str(v).startswith("minio-data:") for v in init["volumes"])
+    assert svcs["minio"]["depends_on"]["minio-data-init"]["condition"] == (
+        "service_completed_successfully"
+    )
+
+
+LIMITS = {
+    "postgis": "PG",
+    "core": "CORE",
+    "worker": "WORKER",
+    "export-worker": "EXPORT_WORKER",
+    "cdc-worker": "CDC_WORKER",
+    "keycloak": "KEYCLOAK",
+    "minio": "MINIO",
+    "titiler": "TITILER",
+}
+
+
+@pytest.mark.parametrize("service", sorted(LIMITS))
+def test_long_running_services_have_resolved_cpu_and_pids_limits(service):
+    """AUD-184 : valeurs RÉSOLUES sans .env (piège n°2), bornées par la VM de référence (4 vCPU)."""
+    prefix = LIMITS[service]
+    svc = services(BASE)[service]
+    cpus = float(_resolve_effective_value(str(svc["cpus"]), f"{prefix}_CPUS"))
+    pids = int(_resolve_effective_value(str(svc["pids_limit"]), f"{prefix}_PIDS_LIMIT"))
+    assert 0 < cpus <= 2
+    assert 256 <= pids <= 4096
+
+
+def test_production_overlay_does_not_mount_the_demo_init_sql():
+    """AUD-183 : sql/init.sql (tables de démo sans tenant_id/RLS) hors production.
+    Statique (l'overlay remplace la liste) puis, si Docker est là, par valeur sur la
+    configuration résolue `docker compose -f … -f … config`."""
+    prod_volumes = services(PROD)["postgis"]["volumes"]
+    assert prod_volumes == ["pg-data:/var/lib/postgresql/data"]
+    assert "volumes: !override" in PROD.read_text()
+    if shutil.which("docker") is None:
+        return
+    required = re.findall(r"\$\{([A-Z0-9_]+):\?", BASE.read_text() + PROD.read_text())
+    env = {k: "x" for k in required}
+    env["GEOSTUDIO_VERSION"] = "v0.0.0"
+    env["PATH"] = os.environ["PATH"]
+    res = subprocess.run(
+        ["docker", "compose", "-f", str(BASE), "-f", str(PROD), "config", "--format", "json"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=REPO,
+    )
+    if res.returncode != 0:
+        pytest.skip(f"docker compose config indisponible : {res.stderr[:200]}")
+    resolved = json.loads(res.stdout)["services"]["postgis"]["volumes"]
+    assert [v["source"] for v in resolved] == ["pg-data"], resolved
+
+
+@pytest.mark.parametrize("dockerfile", ["core/Dockerfile", "deploy/export-worker/Dockerfile"])
+def test_production_images_do_not_embed_the_whole_scripts_directory(dockerfile):
+    """AUD-187 : liste blanche, jamais spike_*/measure_*/audit_*."""
+    text = (REPO / dockerfile).read_text()
+    assert not re.search(r"^COPY\s+scripts\s+\./scripts/?\s*$", text, re.M)
+    copied = re.search(r"^COPY\s+((?:scripts/\S+\s*\\?\s*)+)\./scripts/", text, re.M)
+    assert copied, dockerfile
+    for name in re.findall(r"scripts/(\S+\.py)", copied.group(1)):
+        assert not name.startswith(("spike_", "measure_", "audit_")), name
+        assert (REPO / "core/scripts" / name).is_file(), name
