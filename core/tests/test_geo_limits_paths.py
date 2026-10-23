@@ -133,7 +133,9 @@ _RAW_TABLE_READS = {
     "cdc/backfill.py": 1,  # lac CDC, système
     # ARC-21 : contrôles d'intégrité (restrict/cascade/1-1) au rang propriétaire, tenant explicite ;
     # ne renvoient jamais de ligne ni de géométrie à l'appelant (valeurs de clé internes seulement)
-    "relations/service.py": 3,
+    # + AUD-165/166 : unicité 1-1 contre l'existant (valeurs de clé), comptage et propagation de
+    # clé en cascade — mêmes garanties, rien n'est renvoyé à l'appelant.
+    "relations/service.py": 5,
     # ARC4-F1 (writer.collection upsert/update/delete) : instantané du journal d'entité, recherche
     # de clés et DELETE ... RETURNING pk, au rang propriétaire avec tenant explicite ; ces modes
     # sont refusés quand la cible est sous limite géographique (runtime._write_collection).
