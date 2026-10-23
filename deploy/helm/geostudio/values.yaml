@@ -58,6 +58,7 @@ config:
   CORE_GEOCODING_PROVIDER: "ban"
   CORE_GEOCODING_URL: "https://data.geopf.fr/geocodage/search"
   CORE_GEOCODING_USER_AGENT: ""
+  CORE_PUBLIC_SUBMIT_POW_DISABLED: "0"   # "1" éteint la preuve de travail de la soumission publique (jamais en production)
   CORE_HARVEST_EGRESS_ALLOWLIST: ""
   CORE_HARVEST_MAX_RESPONSE_BYTES: ""
   CORE_INTERNAL_BASE_URL: "http://localhost:8200"

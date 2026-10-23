@@ -429,9 +429,6 @@ ENV_WIRING_EXEMPTIONS = {
     # Couture de test : permet de lire des partitions CDC depuis le disque
     # local au lieu de S3 (tests analytiques). Jamais réglée en production.
     "S3_CDC_BUCKET_BASE_URI",
-    # L8 : éteint la preuve de travail de la soumission publique — réservé aux tests
-    # (tests/conftest.py), jamais câblé en production où la preuve est toujours exigée.
-    "CORE_PUBLIC_SUBMIT_POW_DISABLED",
     # Lues par l'image mini-serveur de l'export autoporté (SP-18c), dont le
     # docker-compose est **généré** par build_standalone_bundle_zip et livré
     # dans le zip — pas celui de ce dépôt.
@@ -743,6 +740,17 @@ def test_wms_flag_is_wired_to_core_and_off_by_default():
     RÉSOLUE sans .env est « false » (piège n°2, par valeur)."""
     raw = services(BASE)["core"]["environment"]["CORE_OWS_WMS_ENABLED"]
     assert _resolve_effective_value(raw, "CORE_OWS_WMS_ENABLED") == "false"
+
+
+def test_public_submit_pow_is_required_by_default_and_wired():
+    """C3 (décision 2026-10-23) : la preuve de travail de la soumission publique est exigée
+    par défaut — valeur RÉSOLUE du compose sans .env = « 0 » (jamais « 1 »), nom documenté
+    dans .env.example et présent dans les valeurs du chart Helm (piège n°2)."""
+    raw = services(BASE)["core"]["environment"]["CORE_PUBLIC_SUBMIT_POW_DISABLED"]
+    assert _resolve_effective_value(raw, "CORE_PUBLIC_SUBMIT_POW_DISABLED") == "0"
+    assert "CORE_PUBLIC_SUBMIT_POW_DISABLED" in documented_env_vars(include_commented=False)
+    values = (REPO / "deploy/helm/geostudio/values.yaml").read_text()
+    assert 'CORE_PUBLIC_SUBMIT_POW_DISABLED: "0"' in values
 
 
 def test_lake_snapshot_is_on_by_default():

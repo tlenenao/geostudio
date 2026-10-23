@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outbox with idempotent replay (`Idempotency-Key`, `clientOpId`), PWA (service worker, manifest),
   collect kit endpoints, faithful XLSForm import and re-import with diff report (migrations
   0160-0163, ADR 0029). **Breaking (ARC-10 third-party clients)**: proof-of-work is now required by
-  default on every public submission (`GET /v1/public/submit/{token}/challenge`); no compose
-  wiring exists yet to disable it. Offline data is stored unencrypted on the device (see
+  default on every public submission (`GET /v1/public/submit/{token}/challenge`); the flag
+  `CORE_PUBLIC_SUBMIT_POW_DISABLED` is now wired in the compose, `.env.example` and the Helm
+  chart with the value `0` (required) — `1` is for tests/demos only, never production. Offline data is stored unencrypted on the device (see
   `SECURITY.md`).
 
 - **Open standards and API (SP-L6)**: OGC API Records (`/v1/records`) over public item kinds
