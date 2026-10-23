@@ -302,6 +302,7 @@ def related_records(
                 if direction == "children"
                 else (rel.link_child_key, rel.link_parent_key)
             )
+            assert lk_in is not None
             l_info, l_masked = _read_ctx(session, user, link_col, rls)  # type: ignore[arg-type]
             with rls(session, link_col.tenant_id, masked=l_masked):  # type: ignore[union-attr]
                 try:
@@ -502,9 +503,10 @@ def parent_key_blocker(
             target_id, lk = rel.link_collection_id, rel.link_parent_key
         else:
             target_id, lk = rel.child_collection_id, rel.child_key
-        target = _same_tenant_collection(session, col.tenant_id, target_id)  # type: ignore[arg-type]
+        assert lk is not None  # clé de liaison validée à la création de la relation
+        target = _same_tenant_collection(session, col.tenant_id, target_id)
         t_info = introspect_table(session, target.table_name)
-        if _owner_values(session, target, t_info, t_info.pk_column, lk, old, cap=1):  # type: ignore[arg-type]
+        if _owner_values(session, target, t_info, t_info.pk_column, lk, old, cap=1):
             return rel.name
     return None
 
@@ -532,6 +534,7 @@ def before_update(session: Session, user, col: Collection, fid: str, properties:
             target_id, lk = rel.link_collection_id, rel.link_parent_key
         else:
             target_id, lk = rel.child_collection_id, rel.child_key
+        assert lk is not None  # clé de liaison validée à la création de la relation
         target = _same_tenant_collection(session, col.tenant_id, target_id)  # type: ignore[arg-type]
         t_info = introspect_table(session, target.table_name)
         ids = _owner_values(
@@ -541,7 +544,7 @@ def before_update(session: Session, user, col: Collection, fid: str, properties:
             t_info.pk_column,
             lk,
             old,
-            cap=MAX_LINKED + 1,  # type: ignore[arg-type]
+            cap=MAX_LINKED + 1,
         )
         if not ids:
             continue
@@ -626,6 +629,7 @@ def before_delete(session: Session, user, col: Collection, fid: str, rls, s3, *,
             key, lk, target_id = rel.parent_key, rel.child_key, rel.child_collection_id
         else:
             continue
+        assert lk is not None
         value = _key_value(session, col, info, key, fid)
         if value is None:
             continue
@@ -638,7 +642,7 @@ def before_delete(session: Session, user, col: Collection, fid: str, rls, s3, *,
             t_info.pk_column,
             lk,
             value,
-            cap=MAX_LINKED + 1,  # type: ignore[arg-type]
+            cap=MAX_LINKED + 1,
         )
         if not ids:
             continue
