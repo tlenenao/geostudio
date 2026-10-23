@@ -79,6 +79,13 @@ export const automation = {
   "sqlLab.emptyHistory": "Aucune requête exécutée pour l'instant.",
   "sqlLab.errorLineLabel": "Ligne {line} : ",
   "sqlLab.reloadQueryAria": "Recharger la requête : {sql}",
+  "sqlLab.savedHeading": "Requêtes enregistrées",
+  "sqlLab.savedEmpty": "Aucune requête enregistrée.",
+  "sqlLab.saveNameLabel": "Nom d'enregistrement",
+  "sqlLab.saveButton": "Enregistrer",
+  "sqlLab.savedLoadAria": "Charger la requête enregistrée « {name} »",
+  "sqlLab.savedDeleteAria": "Supprimer la requête enregistrée « {name} »",
+  "sqlLab.savedError": "Enregistrement impossible : {message}",
 
   // VisualQueryWizardPage
   "visualQuery.pipelineFailedError": "L'exécution du pipeline a échoué.",
@@ -152,6 +159,12 @@ export const automation = {
   "copilot.contextTooLarge":
     "La configuration est trop volumineuse pour le copilote, même compactée : seule la page active lui est transmise, réduisez-la ou divisez l'app.",
   "copilot.confirmWritePrompt": "Le copilote propose d'exécuter l'action « {name} ».",
+  "copilot.confirmWriteKind": "Type",
+  "copilot.confirmWriteTitle": "Titre",
+  "copilot.confirmWriteCollection": "Collection",
+  "copilot.confirmWriteTemplate": "Gabarit",
+  "copilot.confirmWriteConfig": "Configuration",
+  "copilot.confirmWriteConfigSize": "{count} caractères",
   "copilot.confirmWriteYes": "Confirmer",
   "copilot.confirmWriteNo": "Annuler",
   "copilot.confirmWriteMessage": "Confirmation de l'action proposée.",

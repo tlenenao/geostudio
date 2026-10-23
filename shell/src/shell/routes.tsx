@@ -92,6 +92,9 @@ const RolesAdminPage = lazy(() =>
 const ComplianceAdminPage = lazy(() =>
   import("../pages/ComplianceAdminPage").then((m) => ({ default: m.ComplianceAdminPage })),
 );
+const LlmGovernancePage = lazy(() =>
+  import("../pages/LlmGovernancePage").then((m) => ({ default: m.LlmGovernancePage })),
+);
 const UsersAdminPage = lazy(() =>
   import("../pages/UsersAdminPage").then((m) => ({ default: m.UsersAdminPage })),
 );
@@ -101,6 +104,9 @@ const KitGalleryPage = lazy(() =>
 const UsagePage = lazy(() => import("../pages/UsagePage").then((m) => ({ default: m.UsagePage })));
 const SettingsPage = lazy(() =>
   import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+);
+const CollectPage = lazy(() =>
+  import("../pages/CollectPage").then((m) => ({ default: m.CollectPage })),
 );
 const EmbedPage = lazy(() => import("../pages/EmbedPage").then((m) => ({ default: m.EmbedPage })));
 
@@ -245,6 +251,11 @@ function EmbedRoute() {
   return <EmbedPage token={token!} />;
 }
 
+function CollectRoute() {
+  const { token } = useParams();
+  return <CollectPage token={token!} />;
+}
+
 function ProtectedLayout() {
   return (
     <RequireAuth>
@@ -353,6 +364,17 @@ function routeElements() {
           }
         />
         <Route
+          path="/admin/copilot"
+          element={
+            <RequirePrivilege
+              privilege="settings.instance.manage"
+              deniedMessage={t("routes.adminOnly")}
+            >
+              <LlmGovernancePage />
+            </RequirePrivilege>
+          }
+        />
+        <Route
           path="/admin/infrastructure"
           element={
             <RequirePrivilege
@@ -376,6 +398,7 @@ function routeElements() {
       </Route>
       <Route path="/apps/:pk/:pageId?" element={<AppRuntimeRoute />} />
       <Route path="/embed/:token" element={<EmbedRoute />} />
+      <Route path="/collect/:token" element={<CollectRoute />} />
       <Route path="/sites/:slug" element={<SitePublicRoute />} />
       <Route path="/public" element={<PublicCatalogPage />} />
       <Route path="/public/items/:pk" element={<PublicItemRoute />} />

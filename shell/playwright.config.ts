@@ -2,7 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  use: { baseURL: "http://localhost:4173", locale: "fr-FR" },
+  // L8 : le service worker (build de prod) est bloqué par défaut — il court-circuiterait les
+  // `page.route` des mocks ; seul `collect-offline.spec.ts` le réautorise.
+  use: { baseURL: "http://localhost:4173", locale: "fr-FR", serviceWorkers: "block" },
   retries: process.env.CI ? 2 : 0,
   // Tâche 36 (SP-C6, D16) : la suite existante n'avait aucun tableau
   // `projects` (un seul projet implicite, chromium desktop). On l'explicite
@@ -39,6 +41,7 @@ export default defineConfig({
       command: "npm run build && npm run preview -- --port 4173",
       url: "http://localhost:4173",
       reuseExistingServer: false,
+      timeout: 240_000,
       env: {
         VITE_AUTH_MODE: "mock",
         VITE_CORE_URL: "https://core.test",
@@ -48,6 +51,7 @@ export default defineConfig({
       command: "node e2e/external-widget-server.mjs",
       url: "http://localhost:4174/widget.js",
       reuseExistingServer: false,
+      timeout: 240_000,
     },
   ],
 });

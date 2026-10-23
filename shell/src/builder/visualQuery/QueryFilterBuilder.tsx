@@ -4,6 +4,7 @@ import { FilterOperator, FilterRow } from "./compileFilter";
 import { t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import "../../i18n/domains/automation";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 const OPERATOR_LABELS: Record<FilterOperator, string> = {
   eq: t("queryFilterBuilder.operatorEq"),
@@ -41,9 +42,9 @@ export function QueryFilterBuilder({
         const isNumeric = fieldType === "integer" || fieldType === "number";
         return (
           <div key={i} className="flex items-center gap-2">
-            <select
+            <NativeSelect
               aria-label={t("queryFilterBuilder.columnAria", { n: i + 1 })}
-              className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink w-auto"
               value={row.column}
               onChange={(e) => updateRow(i, { column: e.target.value })}
             >
@@ -52,10 +53,10 @@ export function QueryFilterBuilder({
                   {f.name}
                 </option>
               ))}
-            </select>
-            <select
+            </NativeSelect>
+            <NativeSelect
               aria-label={t("queryFilterBuilder.operatorAria", { n: i + 1 })}
-              className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink"
+              className="h-9 rounded border border-control bg-surface px-2 text-xs text-ink w-auto"
               value={row.operator}
               onChange={(e) => updateRow(i, { operator: e.target.value as FilterOperator })}
             >
@@ -64,7 +65,7 @@ export function QueryFilterBuilder({
                   {label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <input
               aria-label={t("queryFilterBuilder.valueAria", { n: i + 1 })}
               inputMode={isNumeric ? "numeric" : undefined}

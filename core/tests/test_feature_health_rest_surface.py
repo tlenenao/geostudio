@@ -129,10 +129,10 @@ def test_public_by_design_routes_carry_no_guard():
     facts = [f for f in index_rest_routes(REPO) if not f.guards and f.auth == "none"]
     unguarded = {f.function for f in facts}
     assert {"public_sitemap", "public_robots", "get_public_item", "conformance"} <= unguarded
-    # 25 : +6 SP-L6 (queryables, tiles/TMS, records, fiche ISO…) ;
+    # 27 (+2 L8 : kit et challenge publics) ; 25 : +6 SP-L6 (queryables, tiles/TMS, records, ISO) ;
     # 19 : + `app/public_submit/routes.py::submit` (ARC-10), public par conception — son
     # jeton de lien fait office d authentification, la soumission reste en attente.
-    assert len({(f.module, f.function) for f in facts}) == 25
+    assert len({(f.module, f.function) for f in facts}) == 27
 
 
 def test_surface_id_is_method_space_path():
@@ -154,7 +154,7 @@ def test_rest_surface_ids_feeds_the_reachability_facts():
     # +11 SP-L6 (records, ISO, tiles, tileMatrixSets, queryables…) ;
     # +2 SP-L5 (pipelines/preview brouillon, pipelines/target-collection) ;
     # +3 SP-L4 (compliance/audit, audit/verify, users/{id}/export) ;
-    assert len(ids) == 261
+    assert len(ids) == 277
     # +16 vague 4 ARC (webhooks/déclencheurs 9, impact/lineage 4, retry + reader-state 3) ;
     # +5 lot 4b (basemaps 3, geocode jobs 2) ;
     # +2 lot 1 (admin api-keys, REV-366) ; +10 vague 5 ARC (raster 6, routage 4) ;

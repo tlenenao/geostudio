@@ -9,6 +9,7 @@ import { LoadingState } from "../ui/kit/LoadingState";
 import { GeoLimitsSection } from "./GeoLimitsSection";
 import "../i18n/domains/admin";
 import "../i18n/domains/misc";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 export function CollectionSharePanel({
   collectionId,
@@ -92,9 +93,9 @@ export function CollectionSharePanel({
                   />
                   {g.title}
                 </label>
-                <select
+                <NativeSelect
                   aria-label={t("sharePanel.roleAria", { group: g.title })}
-                  className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+                  className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
                   disabled={!roles[g.id]}
                   value={roles[g.id] ?? "viewer"}
                   onChange={(e) => setRoles((r) => ({ ...r, [g.id]: e.target.value as ShareRole }))}
@@ -102,7 +103,7 @@ export function CollectionSharePanel({
                   <option value="viewer">{t("sharePanel.roleViewer")}</option>
                   <option value="editor">{t("sharePanel.roleEditor")}</option>
                   <option value="manager">{t("sharePanel.roleManager")}</option>
-                </select>
+                </NativeSelect>
               </div>
             ))}
           </div>

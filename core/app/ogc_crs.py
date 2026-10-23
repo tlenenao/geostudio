@@ -3,6 +3,8 @@
 par `app.features` (paramètre `crs`, en-tête `Content-Crs`) et `app.collections`
 (`storageCrs`/`crs` de la description de collection)."""
 
+from typing import Any
+
 # 4326 = lon/lat (CRS84) comme GeoJSON.
 # AUD-127 : Lambert-93 + coniques conformes CC42..CC50 + UTM outre-mer (Guyane RGFG95/UTM22N,
 # Réunion RGR92/UTM40S, Mayotte RGM04/UTM38S, Antilles RGAF09/UTM20N).
@@ -16,7 +18,7 @@ def crs_uri(srid: int) -> str:
     return CRS84_URI if srid == 4326 else f"http://www.opengis.net/def/crs/EPSG/0/{srid}"
 
 
-def collection_crs_fields(storage_srid: int | None) -> dict:
+def collection_crs_fields(storage_srid: int | None) -> dict[str, Any]:
     """`crs` (liste des CRS servis, dont le CRS de stockage) et `storageCrs`."""
     if not storage_srid:
         return {}

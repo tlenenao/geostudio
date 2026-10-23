@@ -47,6 +47,9 @@ uv run pytest        # tests marked `postgis` are skipped unless CORE_TEST_DATAB
 uv run lint-imports   # enforces the module-boundary contracts in pyproject.toml
 ```
 
+Local test pitfalls (`DATABASE_URL`, `--basetemp`, stale `gis_test`, missing `helm`):
+see [`docs/runbooks/2026-10-19-environnement-de-test.md`](docs/runbooks/2026-10-19-environnement-de-test.md).
+
 All five commands (`npm run test`, `npm run e2e`, `npm run build`, `uv run
 pytest`, `uv run lint-imports`) must be green before opening a pull request.
 

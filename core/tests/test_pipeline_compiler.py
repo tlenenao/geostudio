@@ -294,6 +294,53 @@ def test_compile_intersection_output_geometry_intersection(conn_spatial):
     assert all(t == ("POINT",) for t in types)  # point ∩ polygon == point
 
 
+def test_compile_intersection_survives_an_invalid_bowtie_input(conn_spatial):
+    """AUD-129 : une entrée invalide ne fait plus échouer l'intersection (TopologyException)."""
+    conn_spatial.execute("CREATE TABLE bow (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO bow VALUES (1, ST_GeomFromText('POLYGON((0 0,2 2,2 0,0 2,0 0))'))"
+    )
+    conn_spatial.execute("CREATE TABLE sq (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO sq VALUES (10, ST_GeomFromText('POLYGON((0 0,3 0,3 3,0 3,0 0))'))"
+    )
+    sql = compile_transform_sql(
+        "transform.intersection",
+        {"withCollectionId": "x", "outputGeometry": "intersection"},
+        input_view="bow",
+        join_view="sq",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    (area,) = conn_spatial.execute("SELECT ST_Area(geometry) FROM out").fetchone()
+    assert area == pytest.approx(2.0)  # deux triangles d'aire 1 (nœud papillon réparé)
+
+
+@pytest.mark.parametrize("mode", ["skip", "error"])
+def test_intersection_invalid_geometry_modes(conn_spatial, mode):
+    """AUD-129 : `skip` écarte la ligne invalide, `error` fait échouer le run."""
+    conn_spatial.execute("CREATE TABLE bow (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO bow VALUES (1, ST_GeomFromText('POLYGON((0 0,2 2,2 0,0 2,0 0))')),"
+        " (2, ST_GeomFromText('POLYGON((0 0,1 0,1 1,0 1,0 0))'))"
+    )
+    conn_spatial.execute("CREATE TABLE sq (id INTEGER, geometry GEOMETRY)")
+    conn_spatial.execute(
+        "INSERT INTO sq VALUES (10, ST_GeomFromText('POLYGON((0 0,3 0,3 3,0 3,0 0))'))"
+    )
+    sql = compile_transform_sql(
+        "transform.intersection",
+        {"withCollectionId": "x", "outputGeometry": "intersection", "invalidGeometry": mode},
+        input_view="bow",
+        join_view="sq",
+    )
+    conn_spatial.execute(f"CREATE TEMP VIEW out AS {sql}")
+    if mode == "error":
+        with pytest.raises(Exception, match="géométrie invalide"):
+            conn_spatial.execute("SELECT count(*) FROM out").fetchall()
+    else:
+        assert conn_spatial.execute("SELECT id FROM out").fetchall() == [(2,)]
+
+
 def test_compile_count_within_intersects_default(conn_spatial):
     conn_spatial.execute("CREATE TABLE other (id INTEGER, geometry GEOMETRY)")
     conn_spatial.execute("INSERT INTO other VALUES (10, ST_Buffer(ST_Point(3.0, 45.0), 1))")
@@ -1137,6 +1184,16 @@ def test_snap_to_layer_tolerance_must_be_positive_and_finite(bad):
 
     with pytest.raises(ValidationError):
         TransformSnapToLayerParams(tolerance=bad)
+
+
+@pytest.mark.parametrize("bad", [-1, float("inf"), float("nan")])
+def test_simplify_tolerance_must_be_non_negative_and_finite(bad):
+    from pydantic import ValidationError
+
+    from app.pipelines.ops.schemas import TransformSimplifyParams
+
+    with pytest.raises(ValidationError):
+        TransformSimplifyParams(tolerance=bad)
 
 
 def test_compile_snap_to_layer_without_join_view_raises():

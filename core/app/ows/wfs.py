@@ -23,7 +23,9 @@ GML_FORMAT = "application/gml+xml; version=3.2"
 GML_ALIASES = {GML_FORMAT, "application/gml+xml", "gml32", "text/xml; subtype=gml/3.2.1"}
 JSON_ALIASES = {"application/json", "json", "geojson", "application/geo+json"}
 NCNAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
-_BAD_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
+_BAD_XML = dict.fromkeys(
+    [*range(0x09), 0x0B, 0x0C, *range(0x0E, 0x20), 0xFFFE, 0xFFFF]
+)  # XML 1.0 interdits : str.translate
 _XSD = {
     "string": "xsd:string",
     "enum": "xsd:string",
@@ -48,11 +50,11 @@ _OTHER_CRS = "".join(
 
 
 def _t(value: str) -> str:
-    return escape(_BAD_XML.sub("", value))
+    return escape(value.translate(_BAD_XML))
 
 
 def _a(value: str) -> str:
-    return quoteattr(_BAD_XML.sub("", value))
+    return quoteattr(value.translate(_BAD_XML))
 
 
 def exposed_columns(info: TableInfo) -> list[ColumnInfo]:

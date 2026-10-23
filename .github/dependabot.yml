@@ -60,3 +60,29 @@ updates:
     target-branch: "dev"
     schedule:
       interval: "weekly"
+
+  # AUD-112 : écosystèmes jusque-là ignorés — sidecar Rust, e2e desktop, images `image:`
+  # des compose (Keycloak, pgbouncer, martin, traefik…) et du chart Helm.
+  - package-ecosystem: "cargo"
+    directory: "/desktop-etl/src-tauri"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/desktop-etl/e2e"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "helm"
+    directory: "/deploy/helm/geostudio"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"

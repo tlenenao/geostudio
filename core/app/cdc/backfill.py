@@ -49,6 +49,7 @@ offsets (`+00`, `+05`, `+05:30`, `-05:30`) via `SET timezone` + lecture
 `::text` côté serveur. `_pg_timestamp_str` reproduit ce format Postgres
 plutôt que `.isoformat()` brut pour les valeurs `datetime.datetime`."""
 
+from collections.abc import Iterator
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -124,7 +125,12 @@ def current_wal_lsn(session: Session) -> int:
     return (int(hi, 16) << 32) + int(lo, 16)
 
 
-def backfill_table(
+def backfill_table(session: Session, **kwargs) -> list:
+    """Version liste de `iter_backfill_rows` (tests, petites tables)."""
+    return list(iter_backfill_rows(session, **kwargs))
+
+
+def iter_backfill_rows(
     session: Session,
     *,
     table_name: str,
@@ -132,29 +138,29 @@ def backfill_table(
     geometry_column: str | None,
     boundary_lsn: int,
     flush_ts: float,
-) -> list:
-    """Lit l'état courant de la table et produit des ChangeRow op="insert"
+) -> Iterator[ChangeRow]:
+    """AUD-099 : curseur serveur (`stream_results`), une ligne à la fois — la table n'est
+    jamais matérialisée ; l'appelant vide son tampon par lots. Lit l'état courant de la table
+    et produit des ChangeRow op="insert"
     tagués `boundary_lsn`. La colonne géométrie est lue en texte (format de
     sortie par défaut de Postgres pour le type `geometry` = hex EWKB), même
     représentation que celle produite par wal2json — aucune conversion
     supplémentaire nécessaire côté parquet_writer."""
     t = quote_ident(session, table_name)
-    rows = session.execute(text(f"SELECT * FROM public.{t}")).mappings().all()
-    out = []
-    for r in rows:
+    result = session.execute(
+        text(f"SELECT * FROM public.{t}").execution_options(stream_results=True)
+    )
+    for r in result.mappings():
         record = _normalize_record(dict(r))
         geom_wkb_hex = record.pop(geometry_column, None) if geometry_column else None
         pk_value = record.get(pk_column)
-        out.append(
-            ChangeRow(
-                op="insert",
-                lsn=boundary_lsn,
-                ts=flush_ts,
-                pk_column=pk_column,
-                pk_value=pk_value,
-                columns=record,
-                geometry_column=geometry_column,
-                geometry_wkb_hex=geom_wkb_hex,
-            )
+        yield ChangeRow(
+            op="insert",
+            lsn=boundary_lsn,
+            ts=flush_ts,
+            pk_column=pk_column,
+            pk_value=pk_value,
+            columns=record,
+            geometry_column=geometry_column,
+            geometry_wkb_hex=geom_wkb_hex,
         )
-    return out

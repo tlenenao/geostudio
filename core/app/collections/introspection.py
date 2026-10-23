@@ -51,6 +51,8 @@ class TableInfo:
     domains: dict = field(default_factory=dict)
     subtypes: dict = field(default_factory=dict)
     rules: list = field(default_factory=list)
+    # L8 : géométrie obligatoire à l'écriture (XLSForm `required` sur geopoint/geotrace/geoshape).
+    geometry_required: bool = False
 
 
 Introspector = Callable[[Session, str], TableInfo]

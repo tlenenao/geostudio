@@ -587,6 +587,22 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await runAxeAudit(page, "ComplianceAdminPage");
   });
 
+  test("LlmGovernancePage (famille Administration — IA et consommation)", async ({ page }) => {
+    await mockCore(page);
+    await mockMe(page, ADMIN_ME);
+    await page.route("https://core.test/v1/copilot/usage", (route) =>
+      route.fulfill({ json: { dailyLimit: null, usedToday: 0, days: [] } }),
+    );
+    await page.route("https://core.test/v1/copilot/llm-settings", (route) =>
+      route.fulfill({ json: { configured: false, hasApiKey: false } }),
+    );
+    await page.goto("/admin/copilot");
+    await expect(
+      page.getByRole("heading", { name: "IA : consommation et fournisseur" }),
+    ).toBeVisible();
+    await runAxeAudit(page, "LlmGovernancePage");
+  });
+
   test("SettingsPage (Paramètres, profil courant)", async ({ page }) => {
     await mockCore(page);
     // Seule route que mockCore() ne fournit pas par défaut pour cette page
@@ -664,6 +680,31 @@ test.describe("audit d'accessibilité (axe-core)", () => {
     await page.goto("/embed/e2e-audit-embed-token");
     await expect(page.locator("body")).not.toContainText("Chargement");
     await runAxeAudit(page, "EmbedRoute");
+  });
+
+  test("CollectRoute (page publique de collecte, formulaire du kit)", async ({ page }) => {
+    await page.route("**/v1/public/submit/e2e-audit-collect/kit", async (route) => {
+      await route.fulfill({
+        json: {
+          version: 1,
+          title: "Signalement citoyen",
+          schema: {
+            geometry: { column: "geom", type: "Point", srid: 4326 },
+            fields: [
+              { name: "nom", type: "string", required: true, label: "Votre nom" },
+              { name: "photo", type: "attachment", required: false, label: "Photo", kind: "image" },
+            ],
+          },
+          rules: [],
+          geometryRequired: false,
+          updatedAt: null,
+          etag: "audit",
+        },
+      });
+    });
+    await page.goto("/collect/e2e-audit-collect");
+    await expect(page.getByLabel(/Votre nom/)).toBeVisible();
+    await runAxeAudit(page, "CollectRoute");
   });
 
   test("PublicItemRoute (item publié consulté en anonyme)", async ({ page }) => {

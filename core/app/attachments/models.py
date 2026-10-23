@@ -29,6 +29,8 @@ class Attachment(Base):
             "fid",
             "field_key",
         ),
+        # L8 (M1) : un objet S3 ne porte qu'une pièce jointe (rejeu de confirm).
+        Index("uq_attachments_tenant_s3_key", "tenant_id", "s3_key", unique=True),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)

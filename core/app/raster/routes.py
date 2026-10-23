@@ -38,6 +38,7 @@ from app.raster.models import RasterAsset
 from app.raster.schemas import (
     RasterInfo,
     RasterJobStatus,
+    RasterPointValue,
     RasterPresignRequest,
     RasterPresignResponse,
     RasterUploadCreate,
@@ -49,6 +50,7 @@ from app.raster.schemas import (
 from app.raster.service import open_asset, polygons_from_geojson, refuse_if_raster_geo_limited
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
+from app.tile_proxy import TileProxyBusyError, fetch_tile
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -254,20 +256,60 @@ def read_raster_tile(
     # (une rafale vers un TiTiler lent épuisait le pool).
     session.commit()
     try:
-        resp = httpx.get(
-            f"{titiler_url.rstrip('/')}/cog/tiles/{z}/{x}/{y}.png", params=params, timeout=10.0
-        )
+        status, content = fetch_tile(f"{titiler_url.rstrip('/')}/cog/tiles/{z}/{x}/{y}.png", params)
+    except TileProxyBusyError as exc:
+        raise HTTPException(
+            status_code=503, detail="raster tile service busy", headers={"Retry-After": "2"}
+        ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="raster tile service unavailable") from exc
-    if resp.status_code == 404:  # hors emprise : cas nominal d'une source raster MapLibre
+    if status == 404:  # hors emprise : cas nominal d'une source raster MapLibre
         raise HTTPException(status_code=404, detail="tile not found")
-    if resp.status_code != 200:
+    if status != 200:
         raise HTTPException(status_code=502, detail="raster tile service error")
     return Response(
-        content=resp.content,
+        content=content,
         media_type="image/png",
         headers={"Cache-Control": "private, max-age=300"},
     )
+
+
+@router.get("/raster/{item_id}/point", response_model=RasterPointValue)
+def read_raster_point(
+    item_id: str,
+    lon: float = Query(ge=-180, le=180),
+    lat: float = Query(ge=-90, le=90),
+    session: Session = Depends(get_session, scope="function"),
+    user: User | None = Depends(get_current_user_optional),
+    guest: GuestActor | None = Depends(get_share_link_actor),
+    limits=Depends(get_request_geo_limits),
+    bucket: str = Depends(get_raster_bucket),
+    titiler_url: str = Depends(get_titiler_url),
+) -> RasterPointValue:
+    """AUD-142 : identify — valeur des bandes au point (lon, lat) en WGS84. Mêmes gardes que
+    les tuiles (lecture de l'item, limites géographiques) ; l'URL source reste celle du serveur."""
+    asset = _readable_asset(session, user, guest, item_id)
+    refuse_if_raster_geo_limited(session, asset, limits, "raster point")
+    session.commit()  # AUD-056 : on rend la connexion avant l'appel sortant
+    try:
+        resp = httpx.get(
+            f"{titiler_url.rstrip('/')}/cog/point/{lon!r},{lat!r}",
+            params={"url": f"s3://{bucket}/{asset.source_key}"},
+            timeout=10.0,
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="raster service unavailable") from exc
+    if resp.status_code == 404:  # hors emprise
+        raise HTTPException(status_code=404, detail="point outside the raster")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="raster service error")
+    try:
+        data = resp.json()
+        values = [None if v is None else float(v) for v in data["values"]]
+        names = [str(n) for n in data.get("band_names") or []]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail="raster service error") from exc
+    return RasterPointValue(lon=lon, lat=lat, values=values, bandNames=names)
 
 
 @router.post("/raster/{item_id}/zonal-stats", response_model=ZonalStatsResponse)

@@ -25,6 +25,10 @@ def create_extension(
     actions: list[str] | None,
     default_size: dict,
     permissions: dict,
+    sdk_version: int = 1,
+    integrity: str | None = None,
+    connect_hosts: list[str] | None = None,
+    img_hosts: list[str] | None = None,
 ) -> Extension:
     ext = Extension(
         id=id,
@@ -38,6 +42,10 @@ def create_extension(
         actions=actions,
         default_size=default_size,
         permissions=permissions,
+        sdk_version=sdk_version,
+        integrity=integrity,
+        connect_hosts=connect_hosts or [],
+        img_hosts=img_hosts or [],
     )
     session.add(ext)
     session.flush()

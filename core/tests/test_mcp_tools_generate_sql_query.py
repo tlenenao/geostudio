@@ -201,3 +201,62 @@ def test_never_calls_run_analyst_sql(app_client, monkeypatch):  # noqa: F811
             {"collectionId": collection_id, "question": "liste les titres"},
         )
     assert called == []
+
+
+class _ScriptedLLMProvider:
+    """Réponses successives ; garde les messages reçus (réparation)."""
+
+    def __init__(self, *texts):
+        self._texts = list(texts)
+        self.calls: list[list[dict]] = []
+
+    async def chat(self, messages, tools):
+        self.calls.append(list(messages))
+        return LLMTurn(text=self._texts[min(len(self.calls), len(self._texts)) - 1])
+
+
+def test_repairs_a_draft_that_references_a_foreign_table(app_client, monkeypatch):  # noqa: F811
+    # AUD-104 : SELECT sur une autre table -> renvoyé au LLM avec l'erreur, puis corrigé.
+    _grant_sql_lab_access(app_client)
+    collection_id = _register_incidents_collection(app_client)
+    provider = _ScriptedLLMProvider(
+        'SELECT * FROM "autre_table"', f'SELECT titre FROM "{collection_id}"'
+    )
+    monkeypatch.setattr("app.mcp.tools.query_generation.get_llm_provider", lambda: provider)
+    with app_client:
+        result = call_tool(
+            app_client,
+            "generate_sql_query",
+            {"collectionId": collection_id, "question": "titres"},
+        )
+    assert result["sql"] == f'SELECT titre FROM "{collection_id}"'
+    assert len(provider.calls) == 2
+    assert "non autorisée" in provider.calls[1][-1]["content"]
+
+
+def test_gives_up_after_two_failed_repairs(app_client, monkeypatch):  # noqa: F811
+    _grant_sql_lab_access(app_client)
+    collection_id = _register_incidents_collection(app_client)
+    provider = _ScriptedLLMProvider('SELECT colonne_inventee FROM "' + collection_id + '"')
+    monkeypatch.setattr("app.mcp.tools.query_generation.get_llm_provider", lambda: provider)
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client,
+            "generate_sql_query",
+            {"collectionId": collection_id, "question": "x"},
+        )
+    assert "invalide après réparation" in error_text and "colonne_inventee" in error_text
+    assert len(provider.calls) == 3
+
+
+def test_unconfigured_provider_is_a_readable_tool_error(app_client, monkeypatch):  # noqa: F811
+    _grant_sql_lab_access(app_client)
+    collection_id = _register_incidents_collection(app_client)
+    monkeypatch.setenv("CORE_LLM_PROVIDER", "")
+    with app_client:
+        error_text = call_tool_expecting_error(
+            app_client,
+            "generate_sql_query",
+            {"collectionId": collection_id, "question": "x"},
+        )
+    assert "pas configuré" in error_text

@@ -47,6 +47,9 @@ class DataSource(BaseModel):
     # (ConfigRevision.data), aucune migration nécessaire.
     datasetId: str | None = None
     query: dict = Field(default_factory=dict)
+    # AUD-131 / D7 : rafraîchissement planifié (secondes) des widgets qui lisent cette source.
+    # Pas de flux : le plancher de 5 s borne la charge exercée sur le cœur (rate limit).
+    refreshSeconds: int | None = Field(default=None, ge=5, le=3600)
 
 
 class LayoutItem(BaseModel):
@@ -132,6 +135,20 @@ class ClusterConfig(BaseModel):
     label: bool | None = None
 
 
+class LayerFilterClause(BaseModel):
+    """AUD-051 : clause de filtre par couche (ET entre clauses), compilée en filtre MapLibre."""
+
+    field: str = Field(min_length=1)
+    op: Literal["eq", "ne", "gt", "gte", "lt", "lte", "in"]
+    value: str | float | bool | list[str | float | bool]
+
+    @model_validator(mode="after")
+    def _value_matches_op(self) -> "LayerFilterClause":
+        if (self.op == "in") != isinstance(self.value, list):
+            raise ValueError("value must be a list if and only if op is 'in'")
+        return self
+
+
 class MapLayer(BaseModel):
     id: str
     title: str
@@ -160,6 +177,8 @@ class MapLayer(BaseModel):
     # AUD-051 : plage d'échelle (zoom MapLibre) de la couche.
     minZoom: float | None = Field(default=None, ge=0, le=24)
     maxZoom: float | None = Field(default=None, ge=0, le=24)
+    # AUD-051 : filtre par couche (appliqué côté rendu aux sous-couches hors clusters).
+    filter: list[LayerFilterClause] | None = None
 
     @model_validator(mode="after")
     def _zoom_range_is_ordered(self) -> "MapLayer":
@@ -171,7 +190,15 @@ class MapLayer(BaseModel):
 class MapTerrain(BaseModel):
     tilesUrl: str
     encoding: Literal["terrarium"] = "terrarium"
-    exaggeration: float | None = None
+    # AUD-150 : NaN/inf/négatif/1e9 rendaient la carte inutilisable.
+    exaggeration: float | None = Field(None, ge=0, le=20, allow_inf_nan=False)
+
+    @field_validator("tilesUrl")
+    @classmethod
+    def _http_or_relative(cls, v: str) -> str:
+        if not (v.startswith(("http://", "https://")) or v.startswith("/")):
+            raise ValueError("tilesUrl doit être une URL http(s) ou un chemin relatif")
+        return v
 
 
 class MapTimePlayer(BaseModel):

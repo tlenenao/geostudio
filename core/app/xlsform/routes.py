@@ -2,23 +2,27 @@
 """Collecte terrain (ARC-27) : import XLSForm -> collection + App formulaire mobile, et liste
 « mes saisies » (créations journalisées de l'appelant, ARC-15)."""
 
+import json
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
+from app.collect.kit import build_kit, if_none_match_hits
 from app.collections.domains import check_domain_config, check_rules_config, with_attribute_rules
 from app.collections.provisioning import create_empty_collection
+from app.collections.repository import get_access_facts
 from app.collections.routes import (
     get_collection_for_read,
     get_ddl_applier,
     get_introspector,
+    get_readable_collection,
 )
 from app.collections.schemas import AttributeRule, EmptyCollectionColumn, FieldDomain
-from app.collections.sensitive import masked_fields_for
+from app.collections.sensitive import masked_fields_for, may_read_sensitive
 from app.configs.geo_limits_dep import get_request_geo_limits
 from app.configs.service import create_config_service
 from app.db import get_session
@@ -27,9 +31,11 @@ from app.history.models import EntityHistory
 from app.mcp.form_app import build_collect_config
 from app.roles.guards import require_privilege
 from app.roles.privileges import Privilege
+from app.sharing.authorization import can
 from app.sharing.geo_limits import refuse_if_geo_limited
 from app.users.models import User
 from app.xlsform.parser import MAX_BYTES, XlsFormError, parse_xlsform
+from app.xlsform.reimport import apply_reimport
 
 router = APIRouter()
 
@@ -38,7 +44,9 @@ MAX_ENTRIES = 100
 
 @router.post("/xlsform/import", status_code=201)
 async def import_xlsform(
+    response: Response,
     file: UploadFile = File(...),
+    collectionId: str | None = Query(default=None),  # noqa: N803
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
     introspect: Callable = Depends(get_introspector),
@@ -52,6 +60,10 @@ async def import_xlsform(
         plan = parse_xlsform(content)
     except XlsFormError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if collectionId is not None:  # L8 : réimport sur une collection existante
+        response.status_code = 200
+        return _reimport(session, user, collectionId, plan, introspect)
 
     col = create_empty_collection(
         session,
@@ -73,6 +85,7 @@ async def import_xlsform(
     if problems:
         raise HTTPException(status_code=422, detail="; ".join(problems))
     col.attachment_fields = plan.attachment_fields
+    col.geometry_required = plan.geometry_required
     col.field_domains = domains
     col.attribute_rules = rules
     session.flush()
@@ -96,6 +109,39 @@ async def import_xlsform(
         "itemId": created.item.id,
         "title": plan.title,
         "report": [r.as_dict() for r in plan.report],
+    }
+
+
+def _reimport(session, user, collection_id, plan, introspect):
+    col = get_readable_collection(session, user, collection_id)
+    if not can(
+        session,
+        user_id=user.id,
+        action="write",
+        item=get_access_facts(col),
+        kind="collection",
+        actor_is_admin=user.acts_as_admin(),
+    ):
+        raise HTTPException(status_code=403, detail="write access required")
+    differences, problems = apply_reimport(session, col, plan, introspect)
+    if problems:
+        raise HTTPException(status_code=422, detail="; ".join(problems))
+    write_audit(
+        session,
+        tenant_id=user.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="xlsform.reimport",
+        object_type="collection",
+        object_id=col.id,
+        payload={k: len(v) for k, v in differences.items()},
+    )
+    return {
+        "collectionId": col.id,
+        "itemId": None,  # l'App existante n'est jamais écrasée
+        "title": col.title,
+        "report": [r.as_dict() for r in plan.report],
+        "differences": differences,
     }
 
 
@@ -137,3 +183,28 @@ def my_entries(
             for r in rows
         ]
     }
+
+
+@router.get("/collections/{collection_id}/collect-kit")
+def collect_kit(
+    collection_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+    introspect: Callable = Depends(get_introspector),
+):
+    """Kit de collecte hors-ligne (L8) : schéma, domaines, règles, champs média typés. Droit de
+    LECTURE requis ; champs sensibles masqués comme `GET .../schema` (GAP-22). L'autorisation
+    d'écriture reste vérifiée à l'envoi : le client ne s'y fie jamais. ETag fort + 304."""
+    col = get_collection_for_read(session, user, collection_id)
+    kit = build_kit(
+        session,
+        col,
+        introspect,
+        sees_sensitive=may_read_sensitive(session, user, col),
+        public=False,
+    )
+    headers = {"ETag": f'"{kit["etag"]}"', "Cache-Control": "private, no-cache"}
+    if if_none_match_hits(request.headers.get("if-none-match"), kit["etag"]):
+        return Response(status_code=304, headers=headers)
+    return Response(content=json.dumps(kit), media_type="application/json", headers=headers)

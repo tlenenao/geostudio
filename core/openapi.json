@@ -181,6 +181,17 @@
             ],
             "title": "Groupby"
           },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          },
           "measures": {
             "anyOf": [
               {
@@ -194,6 +205,26 @@
               }
             ],
             "title": "Measures"
+          },
+          "order": {
+            "default": "desc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "orderBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderby"
           },
           "p": {
             "anyOf": [
@@ -853,6 +884,23 @@
             "title": "Key",
             "type": "string"
           },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "image",
+                  "audio",
+                  "video",
+                  "file"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -1445,6 +1493,17 @@
       },
       "Body_submit_v1_public_submit__token__post": {
         "properties": {
+          "clientOpId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clientopid"
+          },
           "fieldKey": {
             "anyOf": [
               {
@@ -1455,6 +1514,20 @@
               }
             ],
             "title": "Fieldkey"
+          },
+          "fieldKeys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fieldkeys"
           },
           "file": {
             "anyOf": [
@@ -1468,10 +1541,41 @@
             ],
             "title": "File"
           },
+          "files": {
+            "default": [],
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
           "payload": {
             "description": "GeoJSON Feature (JSON)",
             "title": "Payload",
             "type": "string"
+          },
+          "powChallenge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Powchallenge"
+          },
+          "powNonce": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pownonce"
           },
           "website": {
             "default": "",
@@ -2074,6 +2178,17 @@
             ],
             "title": "Fielddomains"
           },
+          "geometryRequired": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometryrequired"
+          },
           "inspireTheme": {
             "anyOf": [
               {
@@ -2620,6 +2735,19 @@
             "additionalProperties": true,
             "title": "Query",
             "type": "object"
+          },
+          "refreshSeconds": {
+            "anyOf": [
+              {
+                "maximum": 3600.0,
+                "minimum": 5.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refreshseconds"
           },
           "service": {
             "title": "Service",
@@ -3280,6 +3408,16 @@
             ],
             "title": "Actions"
           },
+          "connectHosts": {
+            "items": {
+              "maxLength": 253,
+              "pattern": "^https://[a-z0-9.-]+(:[0-9]{1,5})?$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Connecthosts",
+            "type": "array"
+          },
           "defaultSize": {
             "$ref": "#/components/schemas/ExtensionSize"
           },
@@ -3302,6 +3440,29 @@
             "minLength": 1,
             "title": "Id",
             "type": "string"
+          },
+          "imgHosts": {
+            "items": {
+              "maxLength": 253,
+              "pattern": "^https://[a-z0-9.-]+(:[0-9]{1,5})?$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Imghosts",
+            "type": "array"
+          },
+          "integrity": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "pattern": "^sha(256|384|512)-[A-Za-z0-9+/]+={0,2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integrity"
           },
           "label": {
             "minLength": 1,
@@ -3327,6 +3488,12 @@
             },
             "title": "Props",
             "type": "array"
+          },
+          "sdkVersion": {
+            "const": 1,
+            "default": 1,
+            "title": "Sdkversion",
+            "type": "integer"
           },
           "tag": {
             "minLength": 1,
@@ -3360,6 +3527,23 @@
               }
             ],
             "title": "Actions"
+          },
+          "connectHosts": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 253,
+                  "pattern": "^https://[a-z0-9.-]+(:[0-9]{1,5})?$",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connecthosts"
           },
           "defaultSize": {
             "anyOf": [
@@ -3395,6 +3579,36 @@
               }
             ],
             "title": "Events"
+          },
+          "imgHosts": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 253,
+                  "pattern": "^https://[a-z0-9.-]+(:[0-9]{1,5})?$",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imghosts"
+          },
+          "integrity": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "pattern": "^sha(256|384|512)-[A-Za-z0-9+/]+={0,2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integrity"
           },
           "label": {
             "anyOf": [
@@ -3444,6 +3658,18 @@
               }
             ],
             "title": "Props"
+          },
+          "sdkVersion": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sdkversion"
           },
           "tag": {
             "anyOf": [
@@ -3540,6 +3766,20 @@
         "additionalProperties": false,
         "description": "ARC-13 : domaine `list` (valeurs admises) ou `range` (bornes incluses).",
         "properties": {
+          "labels": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
           "max": {
             "anyOf": [
               {
@@ -4937,6 +5177,66 @@
         "title": "LanguageCatalogEntry",
         "type": "object"
       },
+      "LayerFilterClause": {
+        "description": "AUD-051 : clause de filtre par couche (ET entre clauses), compil\u00e9e en filtre MapLibre.",
+        "properties": {
+          "field": {
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "op",
+          "value"
+        ],
+        "title": "LayerFilterClause",
+        "type": "object"
+      },
       "LayerInfoOut": {
         "properties": {
           "featureCount": {
@@ -5181,6 +5481,111 @@
         "title": "LineageRead",
         "type": "object"
       },
+      "LlmSettingsRead": {
+        "properties": {
+          "apiUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apiurl"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "dailyTokenLimit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dailytokenlimit"
+          },
+          "hasApiKey": {
+            "default": false,
+            "title": "Hasapikey",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "title": "LlmSettingsRead",
+        "type": "object"
+      },
+      "LlmSettingsWrite": {
+        "properties": {
+          "apiKey": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apikey"
+          },
+          "apiUrl": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apiurl"
+          },
+          "dailyTokenLimit": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dailytokenlimit"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "title": "LlmSettingsWrite",
+        "type": "object"
+      },
       "MapConfig": {
         "properties": {
           "basemap": {
@@ -5301,6 +5706,20 @@
               }
             ],
             "title": "Decktype"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LayerFilterClause"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter"
           },
           "geometryKind": {
             "anyOf": [
@@ -5516,6 +5935,8 @@
           "exaggeration": {
             "anyOf": [
               {
+                "maximum": 20.0,
+                "minimum": 0.0,
                 "type": "number"
               },
               {
@@ -6743,6 +7164,38 @@
         "title": "PostgresDsnPayload",
         "type": "object"
       },
+      "PreferencesBody": {
+        "properties": {
+          "locale": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fr",
+                  "en"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "PreferencesBody",
+        "type": "object"
+      },
       "PresignRequest": {
         "properties": {
           "contentType": {
@@ -7762,6 +8215,61 @@
         "title": "S3CredentialsPayload",
         "type": "object"
       },
+      "SavedQueryBody": {
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "sql": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Sql",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sql"
+        ],
+        "title": "SavedQueryBody",
+        "type": "object"
+      },
+      "SavedQueryRead": {
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sql": {
+            "title": "Sql",
+            "type": "string"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sql",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "SavedQueryRead",
+        "type": "object"
+      },
       "SearchBody": {
         "additionalProperties": false,
         "properties": {
@@ -8352,6 +8860,73 @@
         "title": "Subtypes",
         "type": "object"
       },
+      "TenantLimitsBody": {
+        "description": "SP-L4 : plafonds propres au tenant ; `null` retombe sur la limite d'instance.",
+        "properties": {
+          "maxActiveRuns": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxactiveruns"
+          },
+          "maxCollections": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxcollections"
+          },
+          "maxItems": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxitems"
+          },
+          "maxStorageBytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxstoragebytes"
+          },
+          "maxUsers": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxusers"
+          }
+        },
+        "title": "TenantLimitsBody",
+        "type": "object"
+      },
       "Terrain3DPayload": {
         "properties": {
           "originalFilename": {
@@ -8495,6 +9070,34 @@
         "title": "UsageActorStatRead",
         "type": "object"
       },
+      "UsageDay": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "completionTokens": {
+            "title": "Completiontokens",
+            "type": "integer"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "promptTokens": {
+            "title": "Prompttokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "calls",
+          "promptTokens",
+          "completionTokens"
+        ],
+        "title": "UsageDay",
+        "type": "object"
+      },
       "UsageResourceStatRead": {
         "properties": {
           "count": {
@@ -8539,6 +9142,17 @@
             "title": "Itemcount",
             "type": "integer"
           },
+          "maxActiveRuns": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxactiveruns"
+          },
           "maxCollections": {
             "anyOf": [
               {
@@ -8572,6 +9186,17 @@
             ],
             "title": "Maxstoragebytes"
           },
+          "maxUsers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxusers"
+          },
           "storageBytes": {
             "title": "Storagebytes",
             "type": "integer"
@@ -8588,9 +9213,44 @@
           "storageBytes",
           "maxItems",
           "maxCollections",
-          "maxStorageBytes"
+          "maxStorageBytes",
+          "maxUsers",
+          "maxActiveRuns"
         ],
         "title": "UsageSnapshotResponse",
+        "type": "object"
+      },
+      "UsageSummary": {
+        "properties": {
+          "dailyLimit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dailylimit"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/UsageDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "usedToday": {
+            "title": "Usedtoday",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dailyLimit",
+          "usedToday",
+          "days"
+        ],
+        "title": "UsageSummary",
         "type": "object"
       },
       "UsageSummaryRead": {
@@ -9189,6 +9849,60 @@
         ]
       }
     },
+    "/v1/admin/usage/limits": {
+      "put": {
+        "description": "Remplace les plafonds du tenant de l'appelant (PUT complet, audit\u00e9).",
+        "operationId": "put_tenant_limits_v1_admin_usage_limits_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantLimitsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantLimitsBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Tenant Limits",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/v1/alerts/{item_id}/evaluate": {
       "post": {
         "operationId": "evaluate_alert_now_v1_alerts__item_id__evaluate_post",
@@ -9426,6 +10140,209 @@
           }
         },
         "summary": "Analytics Sql",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/v1/analytics/sql/saved": {
+      "get": {
+        "operationId": "list_saved_queries_v1_analytics_sql_saved_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SavedQueryRead"
+                  },
+                  "title": "Response List Saved Queries V1 Analytics Sql Saved Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Saved Queries",
+        "tags": [
+          "analytics"
+        ]
+      },
+      "post": {
+        "operationId": "create_saved_query_v1_analytics_sql_saved_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedQueryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedQueryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Saved Query",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/v1/analytics/sql/saved/{query_id}": {
+      "delete": {
+        "operationId": "delete_saved_query_v1_analytics_sql_saved__query_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "query_id",
+            "required": true,
+            "schema": {
+              "title": "Query Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Saved Query",
+        "tags": [
+          "analytics"
+        ]
+      },
+      "put": {
+        "operationId": "update_saved_query_v1_analytics_sql_saved__query_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "query_id",
+            "required": true,
+            "schema": {
+              "title": "Query Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedQueryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedQueryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Saved Query",
         "tags": [
           "analytics"
         ]
@@ -10375,6 +11292,57 @@
         ]
       }
     },
+    "/v1/collections/{collection_id}/collect-kit": {
+      "get": {
+        "description": "Kit de collecte hors-ligne (L8) : sch\u00e9ma, domaines, r\u00e8gles, champs m\u00e9dia typ\u00e9s. Droit de\nLECTURE requis ; champs sensibles masqu\u00e9s comme `GET .../schema` (GAP-22). L'autorisation\nd'\u00e9criture reste v\u00e9rifi\u00e9e \u00e0 l'envoi : le client ne s'y fie jamais. ETag fort + 304.",
+        "operationId": "collect_kit_v1_collections__collection_id__collect_kit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Collect Kit",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
     "/v1/collections/{collection_id}/export": {
       "post": {
         "operationId": "export_collection_aggregate_v1_collections__collection_id__export_post",
@@ -11224,6 +12192,38 @@
           },
           {
             "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-gs-offline-created-at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Gs-Offline-Created-At"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -11669,6 +12669,22 @@
             "schema": {
               "title": "Fid",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -13399,6 +14415,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "fileId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fileid"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -14584,6 +15616,177 @@
         "summary": "Conformance",
         "tags": [
           "conformance"
+        ]
+      }
+    },
+    "/v1/copilot/llm-settings": {
+      "delete": {
+        "operationId": "delete_llm_settings_v1_copilot_llm_settings_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Llm Settings",
+        "tags": [
+          "copilot"
+        ]
+      },
+      "get": {
+        "operationId": "get_llm_settings_v1_copilot_llm_settings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmSettingsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Llm Settings",
+        "tags": [
+          "copilot"
+        ]
+      },
+      "put": {
+        "operationId": "put_llm_settings_v1_copilot_llm_settings_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmSettingsWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmSettingsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Llm Settings",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
+    "/v1/copilot/usage": {
+      "get": {
+        "operationId": "get_usage_v1_copilot_usage_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Usage",
+        "tags": [
+          "copilot"
         ]
       }
     },
@@ -18023,6 +19226,101 @@
         ]
       }
     },
+    "/v1/me/preferences": {
+      "get": {
+        "operationId": "get_preferences_v1_me_preferences_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Preferences",
+        "tags": [
+          "me"
+        ]
+      },
+      "put": {
+        "description": "AUD-115 : langue et fuseau de l'utilisateur courant (null = d\u00e9faut d'instance / UTC).",
+        "operationId": "put_preferences_v1_me_preferences_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Preferences",
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/v1/metadata-catalog": {
       "get": {
         "operationId": "get_metadata_catalog_v1_metadata_catalog_get",
@@ -18257,6 +19555,48 @@
           }
         },
         "summary": "Post Notifications Read All",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/v1/notifications/stream": {
+      "get": {
+        "description": "SSE : pousse le compte de non-lues \u00e0 chaque changement (repli : sondage).",
+        "operationId": "get_notifications_stream_v1_notifications_stream_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Notifications Stream",
         "tags": [
           "notifications"
         ]
@@ -18824,6 +20164,88 @@
           }
         },
         "summary": "Submit",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/v1/public/submit/{token}/challenge": {
+      "get": {
+        "description": "D\u00e9fi de preuve de travail (hashcash) \u00e0 joindre au POST ; jamais mis en cache.",
+        "operationId": "public_challenge_v1_public_submit__token__challenge_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Challenge",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/v1/public/submit/{token}/kit": {
+      "get": {
+        "description": "Kit de collecte public (L8) : sch\u00e9ma sans nom de table ni champ sensible, aucune donn\u00e9e.",
+        "operationId": "public_kit_v1_public_submit__token__kit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Kit",
         "tags": [
           "public"
         ]
@@ -21705,6 +23127,22 @@
       "post": {
         "operationId": "import_xlsform_v1_xlsform_import_post",
         "parameters": [
+          {
+            "in": "query",
+            "name": "collectionId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Collectionid"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",

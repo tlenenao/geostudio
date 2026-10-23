@@ -37,7 +37,7 @@ test("annuler un import en attente ferme le tiroir et confirme par un toast", as
   await page.getByRole("button", { name: "Importer", exact: true }).click();
 
   await page.getByRole("button", { name: "Annuler l'import" }).click();
-  await expect(page.getByText("Import annulé.")).toBeVisible();
+  await expect(page.getByText("Import annulé.", { exact: true })).toBeVisible();
   await expect(page.getByRole("dialog")).toBeHidden();
   expect(cancelCalls).toBe(1);
 });

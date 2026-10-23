@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import retry_on_sqlite_row_corruption
+from app.i18n_core import normalize_locale
 from app.quotas.service import check_quota_or_raise
 from app.roles.repository import ensure_built_in_roles
 from app.users.models import User
@@ -32,6 +33,7 @@ def get_or_create_user(
     last_name: str,
     bootstrap_admin: bool = False,
     bootstrap_analyst: bool = False,
+    locale: str | None = None,
 ) -> User:
     roles = ensure_built_in_roles(session, tenant_id=tenant_id)
     user = retry_on_sqlite_row_corruption(
@@ -65,6 +67,7 @@ def get_or_create_user(
             last_name=last_name,
             role_id=initial_role.id,
             is_admin=(initial_role.slug == "admin"),
+            locale=normalize_locale(locale),  # AUD-115 : claim OIDC, à la création seulement
         )
         try:
             # Même course TOCTOU que get_or_create_default_tenant/
@@ -176,3 +179,17 @@ def list_users(
         session.scalars(base.order_by(*order).offset((page - 1) * page_size).limit(page_size)).all()
     )
     return users, total
+
+
+def user_timezone(session: Session, user_id: str | None) -> str | None:
+    """Fuseau IANA enregistré d'un utilisateur (AUD-115) ; None = UTC."""
+    if user_id is None:
+        return None
+    return session.scalar(select(User.timezone).where(User.id == user_id))
+
+
+def user_locale(session: Session, user_id: str | None) -> str | None:
+    """Langue enregistrée d'un utilisateur (AUD-115) ; None = défaut d'instance."""
+    if user_id is None:
+        return None
+    return session.scalar(select(User.locale).where(User.id == user_id))

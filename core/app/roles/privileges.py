@@ -24,6 +24,7 @@ class Privilege(StrEnum):
     COMPLIANCE_MANAGE = "compliance.manage"
     DATA_VIEW_SENSITIVE = "data.view_sensitive"
     ITEMS_PUBLISH = "items.publish"
+    ADMIN_QUOTAS_MANAGE = "admin.quotas.manage"
 
 
 # (domaine shell/src/auth/capabilities.ts::DomainId, clé i18n shell/src/i18n/catalog.fr.ts)
@@ -59,6 +60,7 @@ PRIVILEGE_METADATA: dict[Privilege, tuple[str, str]] = {
     Privilege.COMPLIANCE_MANAGE: ("settings", "roles.privilege.complianceManage"),
     Privilege.DATA_VIEW_SENSITIVE: ("data", "roles.privilege.dataViewSensitive"),
     Privilege.ITEMS_PUBLISH: ("catalog", "roles.privilege.itemsPublish"),
+    Privilege.ADMIN_QUOTAS_MANAGE: ("admin", "roles.privilege.adminQuotasManage"),
 }
 
 # c01-010 : privilèges catalogués mais volontairement SANS garde serveur — ils
@@ -70,6 +72,10 @@ PRIVILEGE_METADATA: dict[Privilege, tuple[str, str]] = {
 NAVIGATION_ONLY_PRIVILEGES: frozenset[Privilege] = frozenset({Privilege.DATA_VIEW})
 
 ALL_PRIVILEGE_VALUES: list[str] = [p.value for p in Privilege]
+
+ADMIN_EXCLUDED_PRIVILEGES = frozenset(
+    {Privilege.COMPLIANCE_MANAGE.value, Privilege.ADMIN_QUOTAS_MANAGE.value}
+)
 
 BUILT_IN_ROLE_NAMES: dict[str, str] = {
     "admin": "Administrateur",
@@ -86,7 +92,9 @@ BUILT_IN_ROLE_PRIVILEGES: dict[str, list[str]] = {
     # est irréversible, un rôle sur mesure doit l'attribuer consciemment.
     # Sans cette exclusion, `list(ALL_PRIVILEGE_VALUES)` l'aurait glissé
     # silencieusement dans "admin" dès son ajout à l'enum ci-dessus.
-    "admin": [p for p in ALL_PRIVILEGE_VALUES if p != Privilege.COMPLIANCE_MANAGE.value],
+    # SP-L4 : admin.quotas.manage (plafonds du tenant) suit la même exclusion — un
+    # administrateur de tenant ne relève pas lui-même ses quotas.
+    "admin": [p for p in ALL_PRIVILEGE_VALUES if p not in ADMIN_EXCLUDED_PRIVILEGES],
     "creator": [
         Privilege.CATALOG_MANAGE.value,
         Privilege.ITEMS_PUBLISH.value,

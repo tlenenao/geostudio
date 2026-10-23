@@ -31,6 +31,7 @@ import { t } from "../../i18n";
 import { LayersPanel } from "../../map/LayersPanel";
 import type { MapLayer } from "../../api/types";
 import { trackExportTask } from "../../shell/exportReady";
+import { SampleBadge } from "./SampleBadge";
 import "../../i18n/domains/widgets";
 
 const MapView = lazy(() => import("../../map/MapView").then((m) => ({ default: m.MapView })));
@@ -382,6 +383,11 @@ export function registerMapWidget(): void {
               ref={handle}
               config={config}
               timeRange={analyticsCtx.timeRange}
+              popupContext={{
+                vars: ctx.variables ?? {},
+                user: ctx.user ?? { name: "" },
+                ctx: analyticsCtx,
+              }}
               themeColors={ctx.theme?.colors}
               interactiveTools={ctx.mode !== "edit"}
               getAuthToken={client.getAuthToken}
@@ -409,6 +415,11 @@ export function registerMapWidget(): void {
             />
           </Suspense>
           {legend && <MapSymbologyLegend legend={legend} />}
+          {ctx.data && url && (
+            <div className="pointer-events-none absolute bottom-2 left-2 z-10 rounded bg-surface/90 px-1">
+              <SampleBadge data={ctx.data} />
+            </div>
+          )}
         </div>
       );
     },

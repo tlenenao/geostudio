@@ -42,11 +42,13 @@ export const fr = {
   "docTitle.adminUsers": "Utilisateurs",
   "docTitle.adminCompliance": "Conformité",
   "docTitle.adminInfrastructure": "Infrastructure",
+  "docTitle.adminCopilot": "IA et consommation",
   "docTitle.kitGallery": "Galerie du kit",
   "docTitle.tasks": "Tâches",
   "docTitle.settings": "Paramètres",
   "docTitle.app": "Application",
   "docTitle.embed": "Contenu intégré",
+  "docTitle.collect": "Collecte",
   "docTitle.site": "Portail",
   "docTitle.publicItem": "Élément public",
   "docTitle.publicDataset": "Jeu de données public",
@@ -71,6 +73,7 @@ export const fr = {
   "commandPalette.newItemAction": "Nouvel élément",
   "commandPalette.triggerLabel": "Rechercher",
   "topbar.actions": "Actions",
+  "topbar.help": "Aide",
 
   // Motif partagé : bouton générique d'effacement d'un filtre/champ.
   "common.clear": "Effacer",

@@ -131,6 +131,38 @@ def collect_table_refs(ast: dict[str, Any]) -> set[str]:
     return found
 
 
+def collect_column_refs(ast: dict[str, Any]) -> set[str] | None:
+    """Noms (minuscules) de colonnes lus par la requête, ou None = « toutes ».
+
+    Projection de la matérialisation (AUD-062) : on ne copie que ces colonnes.
+    Surinclusif par construction (noms pris sans résoudre les alias ni les
+    tables) ; toute forme qui peut lire des colonnes sans les nommer (`*`,
+    `t.*`, `COLUMNS(...)`, référence à la table entière `SELECT t FROM t`)
+    renvoie None, donc le comportement d'avant."""
+    names: set[str] = set()
+    tables = {t.lower() for t in collect_table_refs(ast)}
+    whole = False
+
+    def walk(obj: object) -> None:
+        nonlocal whole
+        if isinstance(obj, dict):
+            if obj.get("class") == "STAR":
+                whole = True
+            if obj.get("class") == "COLUMN_REF" and obj.get("column_names"):
+                name = str(obj["column_names"][-1]).lower()
+                names.add(name)
+                if len(obj["column_names"]) == 1 and name in tables:
+                    whole = True
+            for value in obj.values():
+                walk(value)
+        elif isinstance(obj, list):
+            for value in obj:
+                walk(value)
+
+    walk(ast)
+    return None if whole else names
+
+
 def _apply_limits(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(f"SET memory_limit = '{MEMORY_LIMIT}'")
     conn.execute(f"SET threads = {THREADS}")
@@ -144,6 +176,7 @@ def _materialize(
     base_uri: str,
     tenant_id: str,
     masked_fields: frozenset[str] = frozenset(),
+    needed: set[str] | None = None,
 ) -> None:
     if not _has_any_file(conn, base_uri, tenant_id, name):
         raise SqlSandboxError(f"collection '{name}' has no data yet")
@@ -155,9 +188,13 @@ def _materialize(
     select_parts = [_qi(table_info.pk_column)] + [
         f"CAST({_qi(c.name)} AS {cast[c.type]}) AS {_qi(c.name)}" if c.type in cast else _qi(c.name)
         for c in table_info.columns
-        if c.name not in reserved
+        if c.name not in reserved and (needed is None or c.name.lower() in needed)
     ]
-    if table_info.geometry_column and table_info.geometry_column not in reserved:
+    if (
+        table_info.geometry_column
+        and table_info.geometry_column not in reserved
+        and (needed is None or table_info.geometry_column.lower() in needed)
+    ):
         select_parts.append(_qi(table_info.geometry_column))
     select_list = ", ".join(select_parts)
     conn.execute(f"CREATE TEMP TABLE {_qi(name)} AS {cte} SELECT {select_list} FROM live")
@@ -213,6 +250,7 @@ def run_analyst_sql(
     ast = parse_ast(conn, sql)
     validate_select_only(ast)
     refs = collect_table_refs(ast)
+    needed = collect_column_refs(ast)
     _apply_limits(conn)
     timer = threading.Timer(STATEMENT_TIMEOUT_S, conn.interrupt)
     timer.start()
@@ -226,6 +264,7 @@ def run_analyst_sql(
                 base_uri=base_uri,
                 tenant_id=tenant_id,
                 masked_fields=masked_by_collection.get(name, frozenset()),
+                needed=needed,
             )
         _lock_down(conn)
         return _execute(conn, sql)

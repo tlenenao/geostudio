@@ -13,6 +13,7 @@ avec des droits élevés."""
 
 import logging
 import os
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -28,6 +29,7 @@ from app.export.jobs import (
     render_export_task,
     s3_client_from_env,
 )
+from app.i18n_core import format_local, tr
 from app.ingestion.storage import generate_presigned_get_url
 from app.items import repository as items_repo
 from app.items.models import Item
@@ -39,6 +41,7 @@ from app.reports import repository as reports_repo
 from app.reports.ctx import encode_analytics_context
 from app.sharing.authorization import can
 from app.users.models import User
+from app.users.repository import user_locale, user_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -385,10 +388,18 @@ def _notify_pending_reports(session_factory) -> None:
                     status="success" if job.status == "done" else "failure",
                     error=job.error,
                 )
+                locale = user_locale(session, owner_actor_id)  # AUD-115
                 message = (
-                    f"Rapport « {title} » : {job.status}."
-                    + (f" Lien : {result_url}" if result_url else "")
-                    + (f" Erreur : {job.error}" if job.error else "")
+                    tr("report.body", locale, title=title, status=job.status)
+                    + (tr("report.link", locale, url=result_url) if result_url else "")
+                    + (tr("report.error", locale, error=job.error) if job.error else "")
+                    + tr(
+                        "mail.at",
+                        locale,
+                        at=format_local(
+                            datetime.now(UTC), user_timezone(session, owner_actor_id), locale
+                        ),
+                    )
                 )
 
                 for channel in payload.channels:
@@ -414,7 +425,7 @@ def _notify_pending_reports(session_factory) -> None:
                                 tenant_id=run.tenant_id,
                                 item_id=run.report_item_id,
                                 channel=channel,
-                                subject=f"[GeoStudio] Rapport : {title}",
+                                subject=tr("report.subject", locale, title=title),
                                 body=message,
                             )
                         success = True

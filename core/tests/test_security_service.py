@@ -194,9 +194,52 @@ def test_builtin_basemap_hosts_follow_the_external_basemaps_flag(monkeypatch):
     monkeypatch.delenv("CORE_EXTERNAL_BASEMAPS_ENABLED", raising=False)
     with Session() as s:
         allowlist = compute_csp_allowlist(s)
-    assert "https://data.geopf.fr" in allowlist.img_hosts
+    assert any(h == "https://data.geopf.fr" for h in allowlist.img_hosts)
     assert BUILTIN_BASEMAP_ORIGINS <= allowlist.connect_hosts
     assert not BUILTIN_BASEMAP_ORIGINS & allowlist.script_hosts
     monkeypatch.setenv("CORE_EXTERNAL_BASEMAPS_ENABLED", "false")
     with Session() as s:
         assert not BUILTIN_BASEMAP_ORIGINS & compute_csp_allowlist(s).img_hosts
+
+
+def test_compute_csp_allowlist_adds_declared_extension_connect_and_img_hosts(monkeypatch):
+    """AUD-109 : seules les origines déclarées au manifeste (activé) élargissent
+    connect-src/img-src ; l'origine du module reste cantonnée à script-src."""
+    monkeypatch.setenv("CORE_EXTERNAL_BASEMAPS_ENABLED", "false")
+    Session = _make_session()
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s,
+            tenant_id=tenant.id,
+            oidc_sub="c",
+            username="carol",
+            email=None,
+            first_name="",
+            last_name="",
+        )
+        for name, enabled in (("on", True), ("off", False)):
+            s.add(
+                Extension(
+                    id=f"acme.{name}",
+                    tenant_id=tenant.id,
+                    owner_id=user.id,
+                    tag="x-y",
+                    label="X",
+                    module_url=f"https://{name}.example.com/w.js",
+                    props=[],
+                    events=None,
+                    actions=None,
+                    default_size={"w": 1, "h": 1},
+                    permissions={},
+                    connect_hosts=[f"https://api-{name}.example.org"],
+                    img_hosts=[f"https://img-{name}.example.org"],
+                    enabled=enabled,
+                )
+            )
+        s.commit()
+        allowlist = compute_csp_allowlist(s)
+
+    assert allowlist.connect_hosts == {"https://api-on.example.org"}
+    assert allowlist.img_hosts == {"https://img-on.example.org"}
+    assert allowlist.script_hosts == {"https://on.example.com"}

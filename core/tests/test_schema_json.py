@@ -115,3 +115,12 @@ def test_list_field_exposes_item_type():
     assert schema["fields"] == [
         {"name": "tags", "type": "list", "required": False, "itemType": "string"},
     ]
+
+
+def test_geometry_required_is_exposed_only_when_set():
+    import dataclasses
+
+    info = _info([])
+    assert "required" not in table_info_to_schema(info)["geometry"]
+    required = dataclasses.replace(info, geometry_required=True)
+    assert table_info_to_schema(required)["geometry"]["required"] is True

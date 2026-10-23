@@ -39,6 +39,50 @@ def test_geojson_import_streams_instead_of_materializing_the_file():
     assert peak < 3 * len(content), f"pic {peak} o pour un fichier de {len(content)} o"
 
 
+def test_ogr_and_geoparquet_read_by_windows(tmp_path, monkeypatch):
+    """AUD-014 : OGR et GeoParquet lus par fenêtres ; l'ordre et les numéros d'entité tiennent
+    d'une fenêtre à l'autre (fenêtre = 2 lignes, 5 entités : 2+2+1)."""
+    import geopandas as gpd
+    import shapely
+
+    from app.ingestion import parsers
+
+    monkeypatch.setattr(parsers, "_BATCH_ROWS", 2)
+    gdf = gpd.GeoDataFrame(
+        {"n": [0, 1, 2, 3, 4]},
+        geometry=shapely.points([(i, 1.0) for i in range(5)]),
+        crs="EPSG:4326",
+    )
+    gpkg = tmp_path / "w.gpkg"
+    gdf.to_file(gpkg, layer="l", driver="GPKG")
+    gp = tmp_path / "w.parquet"
+    gdf.to_parquet(gp)
+    for rows in (
+        list(parsers.parse_gpkg(gpkg.read_bytes(), "l")),
+        list(parsers.parse_geoparquet(gp.read_bytes())),
+    ):
+        assert [p["n"] for _g, p in rows] == [0, 1, 2, 3, 4]
+        assert [g.x for g, _p in rows] == [0.0, 1.0, 2.0, 3.0, 4.0]
+
+
+def test_xml_generic_streams_the_same_records_as_the_dom(monkeypatch):
+    """AUD-014 : le XML est lu en flux ; le parent retenu reste le premier du document en
+    largeur d'abord, même quand un parent plus profond précède et que des frères sont ignorés."""
+    from app.ingestion.parsers import GeometryMode, parse_xml_generic
+
+    content = (
+        b"<r><meta><k>1</k></meta><deep><x><i><a>9</a></i><i><a>8</a></i></x></deep>"
+        b"<list><it id='1'><n>A</n><s><z>1</z></s></it><it id='2'><n>B</n></it>"
+        b"<it id='3'><n>C</n></it></list></r>"
+    )
+    rows = list(parse_xml_generic(content, GeometryMode(kind="none")))
+    # <deep> et <list> sont à la même profondeur ; <x> (profondeur 2) répète <i> mais <list>
+    # (profondeur 1) répète <it> : le plus superficiel gagne, comme l'ancien BFS.
+    assert [p["n"] for _g, p in rows] == ["A", "B", "C"]
+    assert rows[0][1]["xml_id"] == "1"
+    assert "z" not in rows[0][1]
+
+
 def test_csv_kinds_tracks_each_column_in_one_pass():
     kinds = _CsvKinds(decimal_comma=True)
     for props in (

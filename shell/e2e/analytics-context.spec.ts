@@ -31,6 +31,16 @@ function decodeCtx(rawUrl: string): {
 }
 
 // Crée une App vide et atterrit sur l'éditeur (/apps/9/edit).
+// AUD-137 : cliquer « Enregistrer » puis `page.goto` aussitôt annulait parfois le PUT en vol
+// (config non sauvegardée -> /apps/9 sans la carte, 30 s de timeout). On attend la réponse.
+async function saveApp(page: Page) {
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === "PUT" && r.url().includes("/configs"),
+  );
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saved;
+}
+
 async function createApp(page: Page, title: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Nouveau" }).click();
@@ -131,7 +141,7 @@ test("a chart click cross-filters a table on the same dataset, second click clea
 
   // Interactions automatiques ON (défaut des nouvelles apps, garanti idempotent).
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   // Runtime : la table montre les deux lignes.
   await page.goto("/apps/9");
@@ -276,7 +286,7 @@ test("map extent reactivity refetches a reactsToExtent dataset after the debounc
   await page.getByLabel(/Grouper par/).fill("nom");
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   // 3. Runtime : déplacer la carte → aggregate refetch avec body.bbox après debounce.
   await page.goto("/apps/9");
@@ -576,7 +586,7 @@ test("an existing app without interactions never auto-filters on click", async (
 
   // Interactions automatiques OFF (contrairement au défaut des nouvelles apps).
   await page.getByLabel("Interactions automatiques (cross-filter)").uncheck();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
@@ -627,7 +637,7 @@ async function setupTimeFieldDatasetAndApp(page: Page) {
   await page.getByLabel("Source de données").selectOption({ index: 1 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 }
 
 // -------------------------------------------------------------------------
@@ -703,7 +713,7 @@ test("a select filter multi-value cross-filters a table via field__in", async ({
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
@@ -790,7 +800,7 @@ test("a slider filter cross-filters a table by range, resetting to full bounds c
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "10" })).toBeVisible();
@@ -888,7 +898,7 @@ test("the context indicator shows chips for active period and cross-filter, clea
   await page.getByRole("button", { name: "Plage de dates" }).click();
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await page.getByLabel("Date de début").fill("2026-01-01");
@@ -986,7 +996,7 @@ test("interactions manual: no indicator, select/slider never cross-filter", asyn
   // Interactions automatiques OFF — le défaut des nouvelles apps est "auto"
   // (cf. scénario 5), donc il faut décocher explicitement pour tester "manual".
   await page.getByLabel("Interactions automatiques (cross-filter)").uncheck();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
@@ -1069,7 +1079,7 @@ test("voir les entités shows cross-filtered rows, even opened from the widget t
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   const chart = page.getByTestId("echart");
@@ -1162,7 +1172,7 @@ test("the explorer menu never appears when interactions is manual", async ({ pag
   await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Interactions automatiques (cross-filter)").uncheck();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
@@ -1281,7 +1291,7 @@ test("a KPI shows a delta badge against the reference period", async ({ page }) 
   await page.getByLabel("Comparer à").selectOption("previous");
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await page.getByLabel("Date de début").fill("2026-01-01");
@@ -1354,7 +1364,7 @@ test("a KPI shows a critical pastille when criticalWhen is exceeded, none otherw
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Seuil critique (CEL)").fill("record.value > 2");
 
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByText("3")).toBeVisible();
@@ -1482,7 +1492,7 @@ test("chart compare-periods mode renders two aligned series", async ({ page }) =
   await page.getByLabel("Comparer les périodes").check();
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await page.getByLabel("Date de début").fill("2026-01-01");
@@ -1599,7 +1609,7 @@ test("indicator and chart behave exactly as before without the new SP-14e props,
   await page.getByLabel("Type de graphique").selectOption("line");
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await page.getByLabel("Date de début").fill("2026-01-01");
@@ -1674,7 +1684,7 @@ test("a funnel click cross-filters a table on the same dataset (SP-14f)", async 
   await page.getByLabel("Source de données").selectOption({ index: 2 });
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   const chart = page.getByTestId("echart");
@@ -1772,7 +1782,7 @@ test("sankey, treemap and sunburst render from a multi-field groupBy dataset (SP
     }
     void label;
   }
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByTestId("echart").locator("canvas")).toHaveCount(3);
@@ -1888,7 +1898,7 @@ test("a histogram renders binned data and never cross-filters on click (SP-14f)"
   await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 2 });
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "Paris" })).toBeVisible();
@@ -2050,7 +2060,7 @@ test("a pivot renders row/column totals and a row-header click cross-filters a t
   await page.getByLabel("Colonnes").fill("label");
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
 
@@ -2186,7 +2196,7 @@ test("a pivot column-header click cross-filters a table on the columns field (SP
   await page.getByLabel("Colonnes").fill("label");
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
 
@@ -2238,7 +2248,7 @@ test("an unconfigured pivot (no rows/columns fields) shows a configuration messa
 
   await page.getByRole("button", { name: "Pivot" }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByText("Configurez les champs lignes et colonnes")).toBeVisible();
@@ -2349,7 +2359,7 @@ test("a map with a categorical color encoding shows a legend built from a groupB
   // que map-symbology.spec.ts pour l'éditeur de cartes, Task 12).
   await page.getByRole("button", { name: "Recalculer les classes" }).click();
   await expect(page.getByText(/Nord, Sud/)).toBeVisible();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
@@ -2448,7 +2458,7 @@ test("a map with numeric color and size encodings shows a legend with both domai
   await page.getByLabel("Champ taille").fill("montant");
   await page.getByRole("button", { name: "Recalculer la taille" }).click();
   await expect(page.getByText(/Taille calculée le .* : 2 – 18/)).toBeVisible();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
@@ -2571,7 +2581,7 @@ test("a click on a styled map feature still cross-filters a sibling table by pk 
   await page.getByLabel("Colonnes").fill("region");
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "Nord" })).toBeVisible();
@@ -2659,6 +2669,27 @@ test("a map with no encodings configured issues no domain query (SP-14h)", async
     aggregateCalls++;
     await route.fulfill({ json: { categoryKey: "region", rows: [] } });
   });
+  // AUD-137 : sans ce mock, le jeu de données promu répondait 404 ; sous charge les retries de
+  // React Query s'épuisaient avant l'assertion et la carte cédait la place à « Erreur de données ».
+  await page.route("**/configs/by-item/dataset-1", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "cfg-dataset",
+        itemId: "dataset-1",
+        kind: "dataset",
+        config: {
+          kind: "dataset",
+          dataset: {
+            source: "collection",
+            collectionId: "parcelles",
+            columns: {},
+            timeField: null,
+            reactsToExtent: false,
+          },
+        },
+      },
+    });
+  });
 
   await createApp(page, "Carte sans symbologie");
   await addFeaturesSource(page, "parcelles");
@@ -2666,7 +2697,7 @@ test("a map with no encodings configured issues no domain query (SP-14h)", async
 
   await page.getByRole("button", { name: "Carte" }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   const itemsReq = page.waitForRequest((r) => r.url().includes("/collections/parcelles/items"));
   await page.goto("/apps/9");
@@ -2849,7 +2880,7 @@ test("a spatial cross-filter link propagates a bbox from one dataset's Table cli
   await page.getByLabel(/^Champ agrégé \(pour la somme\)/).fill("value");
 
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   // 2. Déclarer, sur le dataset "Communes" (dataset-1, l'origine du clic
   //    Table), un lien spatial/bbox vers "Incidents" (dataset-2, la cible).
@@ -2983,7 +3014,7 @@ test("a time player steps a sliding window through a timeField-bound dataset", a
   await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByLabel("Source de données").selectOption({ index: 1 });
   await page.getByLabel("Interactions automatiques (cross-filter)").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await saveApp(page);
 
   await page.goto("/apps/9");
   await expect(page.getByRole("cell", { name: "Ancien" })).toBeVisible();

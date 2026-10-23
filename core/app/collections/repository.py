@@ -218,6 +218,7 @@ def get_collection_sharing(
             select(CollectionShare).where(
                 CollectionShare.tenant_id == tenant_id,
                 CollectionShare.collection_id == collection_id,
+                share_active(CollectionShare),
             )
         ).all()
     )

@@ -22,6 +22,7 @@ EXPECTED_KEYS = {
     "featureCount",
     "owner",
     "attachmentFields",
+    "geometryRequired",
     "sensitiveFields",
     "fieldDomains",
     "owsEnabled",
@@ -42,7 +43,7 @@ EXPECTED_KEYS = {
 }
 
 
-def test_collection_json_serializes_exactly_the_documented_30_keys() -> None:
+def test_collection_json_serializes_exactly_the_documented_31_keys() -> None:
     col = Collection(
         id="c1",
         title="T",
@@ -72,4 +73,4 @@ def test_collection_json_serializes_exactly_the_documented_30_keys() -> None:
     result = _collection_json(col, permissions, owner="mockuser")
 
     assert set(result.keys()) == EXPECTED_KEYS
-    assert len(EXPECTED_KEYS) == 30
+    assert len(EXPECTED_KEYS) == 31

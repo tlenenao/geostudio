@@ -11,6 +11,7 @@ Constraints)."""
 import hashlib
 import logging
 import os
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -33,6 +34,7 @@ from app.configs import repository as configs_repo
 from app.configs.alert_condition import evaluate_condition
 from app.configs.schemas import AlertChannelEmail, AlertChannelWebhook, AlertRulePayload
 from app.db import request_scoped_session
+from app.i18n_core import format_local, tr, with_default_tz
 from app.items import repository as items_repo
 from app.items.models import Item
 from app.job_errors import INTERNAL_ERROR_MESSAGE
@@ -43,6 +45,7 @@ from app.sharing.authorization import can
 from app.sharing.geo_limits import resolve_geo_limits
 from app.sharing.repository import share_recipient_ids
 from app.users.models import User
+from app.users.repository import user_locale, user_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +213,7 @@ def _measure_value(session, *, user: User, payload: AlertRulePayload) -> float:
                 tenant_id=col.tenant_id,
                 collection_id=col.id,
                 table_info=table_info,
-                request=query,
+                request=with_default_tz(query, user.timezone),
                 masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
@@ -324,8 +327,18 @@ def _notify(
                     tenant_id=tenant_id,
                     item_id=item_id,
                     channel=channel,
-                    subject=f"[GeoStudio] {rule_name}: {state}",
-                    body=message,
+                    subject=tr(
+                        "alert.subject",
+                        user_locale(session, actor_id),
+                        rule=rule_name,
+                        state=state,
+                    ),
+                    body=message
+                    + tr(
+                        "mail.at",
+                        user_locale(session, actor_id),
+                        at=format_local(datetime.now(UTC), user_timezone(session, actor_id), None),
+                    ),
                 )
             success = True
         except NotifyError as exc:
@@ -627,4 +640,9 @@ def sweep_alert_rules_task(timestamp: int) -> None:
             )
             # Commit avant de déférer — même raison que run_pipeline_sweep_task.
             session.commit()
-            evaluate_alert_task.defer(evaluation_id=evaluation.id, tenant_id=tenant_id)
+            try:
+                evaluate_alert_task.defer(evaluation_id=evaluation.id, tenant_id=tenant_id)
+            except Exception:
+                # Une règle dont le defer échoue (évaluation `pending` reprise après
+                # _PENDING_RECLAIM_MINUTES) ne doit pas priver les suivantes de leur tour.
+                logger.exception("alerte %s : defer échoué, règle suivante", item_id)

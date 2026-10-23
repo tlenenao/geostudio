@@ -59,6 +59,22 @@ export function bucketFor(current: { from: string; to: string }): BucketGranular
 // synthetic `statistics` DataSource for one time window and merges it with
 // the same ambient filters (extent, cross-filter) DataContext would apply
 // for the widget's own flat value — only `timeRange` is substituted.
+const STRUCTURAL_KEYS = new Set([
+  "groupBy",
+  "split",
+  "agg",
+  "field",
+  "measures",
+  "bucket",
+  "bins",
+  "sample",
+  "p",
+  "orderBy",
+  "order",
+  "limit",
+  "records",
+]);
+
 export function windowedStatisticsSource(
   originSourceId: string,
   datasetId: string,
@@ -66,6 +82,7 @@ export function windowedStatisticsSource(
   analyticsCtx: AnalyticsContextState,
   window: { from: string; to: string },
   query: { groupBy?: string; bucket?: BucketGranularity; agg: string; field?: string },
+  origin?: DataSource,
 ): DataSource {
   const synthetic: DataSource = {
     id: originSourceId,
@@ -80,5 +97,11 @@ export function windowedStatisticsSource(
     { ...analyticsCtx, timeRange: window },
     { [datasetId]: dataset },
   );
-  return { ...synthetic, query: { ...query, ...patch } };
+  // AUD-059 : les filtres propres de la source d'origine (clés non structurelles, bbox,
+  // geomIntersects) suivent la comparaison ; seuls agg/field/groupBy/bucket et la fenêtre
+  // de temps sont ceux de la comparaison (le patch, appliqué en dernier, porte la fenêtre).
+  const own = Object.fromEntries(
+    Object.entries(origin?.query ?? {}).filter(([k]) => !STRUCTURAL_KEYS.has(k)),
+  );
+  return { ...synthetic, query: { ...own, ...query, ...patch } };
 }

@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { useAddDataSource } from "./DataSourcesEditContext";
 import { useSourceLabel } from "./useSourceLabel";
 import "../i18n/domains/widgets";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 export function DataSourceSelect({
   value,
@@ -49,8 +50,8 @@ export function DataSourceSelect({
   return (
     <label className="flex flex-col gap-1 text-sm">
       {t("dataSourceSelect.label")}
-      <select
-        className="h-9 rounded-md border border-control bg-surface px-2 text-sm"
+      <NativeSelect
+        className="h-9 rounded-md border border-control bg-surface px-2 text-sm w-auto"
         value={value}
         onChange={(e) => handleChange(e.target.value)}
       >
@@ -69,7 +70,7 @@ export function DataSourceSelect({
             ))}
           </optgroup>
         )}
-      </select>
+      </NativeSelect>
     </label>
   );
 }

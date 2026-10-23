@@ -27,6 +27,9 @@ export default tseslint.config(
       "dist",
       "dist-export",
       "dist-desktop",
+      // Modèle du service worker (globals de SW + marqueurs d'injection) : testé par
+      // src/offline/sw.test.ts, qui l'évalue tel qu'émis.
+      "sw",
       "coverage",
       "src/api/generated",
       "test-results",

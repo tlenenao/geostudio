@@ -186,3 +186,16 @@ def test_gpkg_invalid_polygon_is_repaired(tmp_path):
     gpd.GeoDataFrame({"n": [1]}, geometry=[bowtie], crs="EPSG:4326").to_file(path, driver="GPKG")
     rows = list(parse_gpkg(path.read_bytes()))
     assert len(rows) == 1 and rows[0][0].is_valid
+
+
+def test_flatgeobuf_is_imported_and_signature_checked(tmp_path):
+    from app.ingestion.parsers import parse_flatgeobuf
+
+    p = tmp_path / "x.fgb"
+    gdf = gpd.GeoDataFrame({"nom": ["a", "b"]}, geometry=[Point(2, 48), Point(3, 49)], crs=4326)
+    gdf.to_file(p, driver="FlatGeobuf")
+    assert _pick_format("x.fgb") == "flatgeobuf"
+    rows = list(parse_flatgeobuf(p.read_bytes()))
+    assert sorted(r[1]["nom"] for r in rows) == ["a", "b"]  # l'index spatial réordonne
+    with pytest.raises(IngestionParseError):
+        list(parse_flatgeobuf(b"not a flatgeobuf"))

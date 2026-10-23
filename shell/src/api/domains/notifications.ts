@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ItemClient, NotificationPreferenceValue, NotificationSummary } from "../types";
-import type { ItemClientBase } from "../base";
+import { ensureOk, type ItemClientBase } from "../base";
 
 function _preferenceToCore(value: NotificationPreferenceValue): string {
   return value === "failuresOnly" ? "failures_only" : value;
@@ -14,6 +14,7 @@ type NotificationsMethods = Pick<
   ItemClient,
   | "listNotifications"
   | "getUnreadNotificationCount"
+  | "subscribeNotifications"
   | "markNotificationRead"
   | "markAllNotificationsRead"
   | "getNotificationPreference"
@@ -48,6 +49,36 @@ export function createNotificationsMethods(base: ItemClientBase): NotificationsM
 
     async markAllNotificationsRead(): Promise<void> {
       await request<void>("POST", "/notifications/read-all");
+    },
+
+    // L13/D7 : flux SSE (le cœur le ferme après ~55 s ; l'appelant se reconnecte).
+    // fetch + en-tête Authorization (EventSource ne peut pas en porter un).
+    async subscribeNotifications(
+      onUnread: (count: number) => void,
+      signal: AbortSignal,
+    ): Promise<void> {
+      const res = await base.authFetch(
+        `${base.coreUrl}/notifications/stream`,
+        { signal, headers: { Accept: "text/event-stream" } },
+        70_000,
+      );
+      await ensureOk(res);
+      if (!res.body) return;
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        buffer += value;
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          const data = /^data: (.*)$/m.exec(frame);
+          if (!data || !frame.includes("event: notifications")) continue;
+          const { unread } = JSON.parse(data[1]) as { unread: number };
+          onUnread(unread);
+        }
+      }
     },
 
     async getNotificationPreference(): Promise<NotificationPreferenceValue> {

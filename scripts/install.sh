@@ -533,6 +533,12 @@ prompt_admin() {
 prompt_admin
 
 launch_stack() {
+  # AUD-113 : INSTALL_VERIFY_SIGNATURES=1 refuse de démarrer si une image n'a pas de
+  # signature cosign valide (exige cosign ; voir docs/supply-chain.md).
+  if [ "${INSTALL_VERIFY_SIGNATURES:-0}" = "1" ]; then
+    bash scripts/verify-images.sh "$(grep '^GEOSTUDIO_VERSION=' .env | cut -d= -f2-)" \
+      || { echo "Signatures d'images invalides ou cosign absent : arrêt." >&2; exit 1; }
+  fi
   echo ""
   echo "Démarrage complet de la stack..."
   local profile_args=()

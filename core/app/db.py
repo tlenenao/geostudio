@@ -137,9 +137,11 @@ def core_table_names() -> frozenset[str]:
     from app.appexport import models as appexport_models  # noqa: F401
     from app.attachments import models as attachments_models  # noqa: F401
     from app.audit import models as audit_models  # noqa: F401
+    from app.collect import models as collect_models  # noqa: F401
     from app.collections import models as collections_models  # noqa: F401
     from app.compliance import models as compliance_models  # noqa: F401
     from app.configs import models  # noqa: F401
+    from app.copilot import models as copilot_models  # noqa: F401
     from app.dataexport import models as dataexport_models  # noqa: F401
     from app.export import models as export_models  # noqa: F401
     from app.extensions import models as extensions_models  # noqa: F401
@@ -160,6 +162,7 @@ def core_table_names() -> frozenset[str]:
     from app.relations import models as relations_models  # noqa: F401
     from app.reports import models as reports_models  # noqa: F401
     from app.roles import models as roles_models  # noqa: F401
+    from app.saved_queries import models as saved_queries_models  # noqa: F401
     from app.secrets import models as secrets_models  # noqa: F401
     from app.sharing import models as sharing_models  # noqa: F401
     from app.tenants import models as tenants_models  # noqa: F401

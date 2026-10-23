@@ -13,10 +13,15 @@ GeoParquet directement comme un type GEOMETRY natif — ST_GeomFromWKB(...)
 n'est ni nécessaire ni correct ici (le plan présumait par défaut un WKB
 brut nécessitant conversion, corrigé après coup par le spike)."""
 
+import contextlib
+import copy
+import hashlib
 import json
 import math
 import re
-from collections.abc import Mapping
+import threading
+from collections import OrderedDict
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -59,6 +64,11 @@ class AggregateRequestBody(BaseModel):
     timeZone: str | None = None
     bins: int | None = None
     sample: int | None = None
+    # AUD-063 : top-N. `orderBy` = libellé d'une mesure ou champ du groupBy ; `limit`
+    # tronque APRÈS tri (jamais sans orderBy : « les N premiers » serait arbitraire).
+    orderBy: str | None = None
+    order: Literal["asc", "desc"] = "desc"
+    limit: int | None = None
 
     @field_validator("timeZone")
     @classmethod
@@ -100,12 +110,14 @@ def _sql_lit(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-_RANGE_OPS = {"__gte": ">=", "__lte": "<="}
+_RANGE_OPS = {"__gte": ">=", "__lte": "<=", "__gt": ">", "__lt": "<"}
+_VALUE_SUFFIXES = ("__in", "__ne", "__contains")  # AUD-063 : __ne, __contains
 
 
 def _split_filter_key(raw_name: str) -> tuple[str, str | None]:
-    if raw_name.endswith("__in"):
-        return raw_name[: -len("__in")], "__in"
+    for suffix in _VALUE_SUFFIXES:
+        if raw_name.endswith(suffix):
+            return raw_name[: -len(suffix)], suffix
     for suffix in _RANGE_OPS:
         if raw_name.endswith(suffix):
             return raw_name[: -len(suffix)], suffix
@@ -188,6 +200,18 @@ def _validate_fields(
         raise UnknownAggregateField("bbox", "collection has no geometry")
     if request.geomIntersects is not None and not table_info.geometry_column:
         raise UnknownAggregateField("geomIntersects", "collection has no geometry")
+
+    if request.orderBy is not None or request.limit is not None:
+        if request.orderBy is None:
+            raise UnknownAggregateField("limit", "limit requires orderBy")
+        if not fields or request.split or request.bins is not None or request.sample is not None:
+            raise UnknownAggregateField(
+                "orderBy", "orderBy requires a groupBy without split, bins or sample"
+            )
+        if request.orderBy not in {_measure_label(m) for m in _measures_for(request)} | set(fields):
+            raise UnknownAggregateField("orderBy", f"unknown orderBy '{request.orderBy}'")
+    if request.limit is not None and not (1 <= request.limit <= MAX_GROUPS):
+        raise UnknownAggregateField("limit", f"limit must be between 1 and {MAX_GROUPS}")
 
     if request.bins is not None:
         if request.field is None:
@@ -326,6 +350,13 @@ def _build_where(request: AggregateRequestBody, table_info: TableInfo) -> tuple[
             values = split_in_values(value)
             clauses.append(f"{_qi(name)} IN ({', '.join('?' for _ in values)})")
             params.extend(values)
+        elif suffix == "__ne":
+            clauses.append(f"{_qi(name)} IS DISTINCT FROM ?")
+            params.append(value)
+        elif suffix == "__contains":
+            escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            clauses.append(f"CAST({_qi(name)} AS VARCHAR) ILIKE ? ESCAPE '\\'")
+            params.append(f"%{escaped}%")
         elif suffix in _RANGE_OPS and col_types.get(name) in ("date", "datetime"):
             # P25.12 : le lac stocke les dates en texte — comparaison TYPÉE
             # (TIMESTAMPTZ, TimeZone=UTC), et une borne haute « YYYY-MM-DD »
@@ -365,6 +396,23 @@ def _build_where(request: AggregateRequestBody, table_info: TableInfo) -> tuple[
         clauses.append(f"ST_Intersects({_qi(table_info.geometry_column)}, ST_GeomFromGeoJSON(?))")
         params.append(json.dumps(request.geomIntersects))
     return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
+
+
+def _top_n_sql(
+    request: AggregateRequestBody, measures: list[AggregateMeasure], keys: list[str], default: str
+) -> tuple[str, int | None]:
+    """AUD-063 : clause ORDER BY (+ LIMIT) du top-N ; `default` = tri historique par clé.
+    `keys` = expressions SQL des colonnes de groupe, dans l'ordre de `_groupby_fields`."""
+    if request.orderBy is None:
+        return f"ORDER BY {default}", None
+    fields = _groupby_fields(request)
+    labels = [_measure_label(m) for m in measures]
+    target = f"m{labels.index(request.orderBy)}" if request.orderBy in labels else None
+    if target is None:
+        target = keys[fields.index(request.orderBy)]
+    direction = request.order.upper()
+    # NULLS LAST : un groupe sans valeur ne doit jamais coiffer un top-N décroissant.
+    return f"ORDER BY {target} {direction} NULLS LAST, {default}", request.limit
 
 
 def _key(value: Any) -> str | None:
@@ -598,12 +646,79 @@ def _dedup_cte(
     )
 
 
+def _lake_files(
+    conn: duckdb.DuckDBPyConnection, base_uri: str, tenant_id: str, collection_id: str
+) -> list[str]:
+    glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
+    return sorted(r[0] for r in conn.execute(f"SELECT file FROM glob({_sql_lit(glob)})").fetchall())
+
+
 def _has_any_file(
     conn: duckdb.DuckDBPyConnection, base_uri: str, tenant_id: str, collection_id: str
 ) -> bool:
-    glob = f"{base_uri}/tenant_id={tenant_id}/collection_id={collection_id}/dt=*/*.parquet"
-    matched = conn.execute(f"SELECT file FROM glob({_sql_lit(glob)})").fetchall()
-    return len(matched) > 0
+    return len(_lake_files(conn, base_uri, tenant_id, collection_id)) > 0
+
+
+# AUD-063 : cache de résultat. La clé porte la LISTE des fichiers du lac : une écriture CDC,
+# une compaction ou une purge change la liste, donc l'entrée devient inatteignable (jamais
+# de donnée périmée, sans TTL). Les fichiers sont immuables sous un même nom. Le masquage
+# (`masked_fields`) et le schéma entrent dans la clé : deux lecteurs de droits différents
+# ne partagent jamais une entrée. ponytail: cache par processus (LRU 128 entrées, résultats
+# <= 2000 lignes) ; passer à un cache partagé si le coût de recalcul par réplica pèse.
+_CACHE_MAX_ENTRIES = 128
+
+# AUD-099 : au plus _TENANT_SLOTS agrégats DuckDB simultanés par tenant et par processus ; au-delà,
+# attente bornée puis AggregateBusy (429). Un tenant bavard ne prive plus les autres de threads.
+# ponytail: par processus (pas global aux réplicas), constantes sans variable d'env ; passer à un
+# verrou Postgres/une config si la borne doit varier par déploiement.
+_TENANT_SLOTS = 4
+_SLOT_WAIT_SECONDS = 10.0
+_slots: dict[str, threading.BoundedSemaphore] = {}
+_slots_lock = threading.Lock()
+
+
+class AggregateBusy(Exception):
+    """Trop d'agrégats simultanés pour ce tenant (le routeur répond 429 + Retry-After)."""
+
+
+@contextlib.contextmanager
+def _tenant_slot(tenant_id: str) -> Iterator[None]:
+    with _slots_lock:
+        sem = _slots.setdefault(tenant_id, threading.BoundedSemaphore(_TENANT_SLOTS))
+    if not sem.acquire(timeout=_SLOT_WAIT_SECONDS):
+        raise AggregateBusy(tenant_id)
+    try:
+        yield
+    finally:
+        sem.release()
+
+
+_CACHE_MAX_ROWS = 2000
+_result_cache: "OrderedDict[str, tuple[str | list[str], list[dict[str, Any]]]]" = OrderedDict()
+_cache_lock = threading.Lock()
+
+
+def _cache_key(
+    files: list[str],
+    *,
+    tenant_id: str,
+    collection_id: str,
+    table_info: TableInfo,
+    request: AggregateRequestBody,
+    masked_fields: frozenset[str],
+) -> str:
+    raw = json.dumps(
+        [
+            files,
+            tenant_id,
+            collection_id,
+            repr(table_info),
+            request.model_dump_json(),
+            sorted(masked_fields),
+        ],
+        default=str,
+    )
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _fetch_rows(
@@ -622,8 +737,10 @@ def _finite(value: Any) -> Any:
 
 
 def _fetch_groups(
-    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any]
+    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any], limit: int | None = None
 ) -> list[dict[str, Any]]:
+    if limit is not None:  # top-N explicite : tronqué par demande, pas par le plafond
+        return _fetch_rows(conn, f"{sql} LIMIT {limit}", params)
     rows = _fetch_rows(conn, f"{sql} LIMIT {MAX_GROUPS + 1}", params)
     if len(rows) > MAX_GROUPS:
         raise UnknownAggregateField("groupBy", f"too many groups (more than {MAX_GROUPS})")
@@ -645,15 +762,36 @@ def run_collection_aggregate(
     métier (400) au lieu d'un 500. Mémoire/threads : open_connection."""
     try:
         with statement_timeout(conn):
-            return _run_collection_aggregate(
-                conn,
-                base_uri=base_uri,
+            key = _cache_key(
+                _lake_files(conn, base_uri, tenant_id, collection_id),
                 tenant_id=tenant_id,
                 collection_id=collection_id,
                 table_info=table_info,
                 request=request,
                 masked_fields=masked_fields,
             )
+            with _cache_lock:
+                hit = _result_cache.get(key)
+                if hit is not None:
+                    _result_cache.move_to_end(key)
+            if hit is not None:
+                return hit[0], copy.deepcopy(hit[1])
+            with _tenant_slot(tenant_id):
+                result = _run_collection_aggregate(
+                    conn,
+                    base_uri=base_uri,
+                    tenant_id=tenant_id,
+                    collection_id=collection_id,
+                    table_info=table_info,
+                    request=request,
+                    masked_fields=masked_fields,
+                )
+            if len(result[1]) <= _CACHE_MAX_ROWS:
+                with _cache_lock:
+                    _result_cache[key] = (result[0], copy.deepcopy(result[1]))
+                    while len(_result_cache) > _CACHE_MAX_ENTRIES:
+                        _result_cache.popitem(last=False)
+            return result
     except StatementTimeout as exc:
         raise UnknownAggregateField("query", str(exc)) from exc
     except (duckdb.ConversionException, duckdb.InvalidInputException) as exc:
@@ -771,11 +909,12 @@ def _run_collection_aggregate(
             f"{_agg_expr(m.agg, m.field, m.p)} AS m{i}" for i, m in enumerate(measures)
         )
         group_cols = ", ".join(_qi(f) for f in fields)
+        order_sql, top = _top_n_sql(request, measures, [_qi(f) for f in fields], group_cols)
         sql = (
             f"{dedup_cte} SELECT {group_cols}, {measure_cols} "
-            f"FROM live {where_sql} GROUP BY {group_cols} ORDER BY {group_cols}"
+            f"FROM live {where_sql} GROUP BY {group_cols} {order_sql}"
         )
-        sql_rows = _fetch_groups(conn, sql, where_params)
+        sql_rows = _fetch_groups(conn, sql, where_params, top)
         return category_key, _pivot_multi_measures(sql_rows, fields=fields, measures=measures)
 
     single_field = fields[0] if fields else None
@@ -824,9 +963,13 @@ def _run_collection_aggregate(
     )
     # P25.05 : tri par clé (buckets temporels chronologiques). P25.07 : sans
     # groupBy, pas de GROUP BY — un filtre vide rend UNE ligne (count = 0).
-    grouping = "GROUP BY __cat ORDER BY __cat" if single_field else ""
+    top = None
+    grouping = ""
+    if single_field:
+        order_sql, top = _top_n_sql(request, measures, ["__cat"], "__cat")
+        grouping = f"GROUP BY __cat {order_sql}"
     sql = f"{dedup_cte} SELECT {cat_expr} AS __cat, {measure_cols} FROM live {where_sql} {grouping}"
-    sql_rows = _fetch_groups(conn, sql, where_params)
+    sql_rows = _fetch_groups(conn, sql, where_params, top)
     return category_key, _pivot_measures(
         sql_rows, category_key=str(category_key), measures=measures
     )

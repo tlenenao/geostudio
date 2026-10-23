@@ -10,6 +10,7 @@ import {
 import { createAlertsMethods } from "./domains/alerts";
 import { createAppsMethods } from "./domains/apps";
 import { createAttachmentsMethods } from "./domains/attachments";
+import { createCollectKitMethods } from "./domains/collectKit";
 import { createCollectionsAdminMethods } from "./domains/collectionsAdmin";
 import { createImpactMethods } from "./domains/impact";
 import { createDatasetsMethods } from "./domains/datasets";
@@ -20,7 +21,9 @@ import { createIdentityMethods } from "./domains/identity";
 import { createItemsMethods } from "./domains/items";
 import { createLayersMethods } from "./domains/layers";
 import { createApiKeysMethods } from "./domains/apiKeys";
+import { createLlmGovernanceMethods } from "./domains/llmGovernance";
 import { createNotificationsMethods } from "./domains/notifications";
+import { createSavedQueriesMethods } from "./domains/savedQueries";
 import { createPipelinesMethods } from "./domains/pipelines";
 import { createQuotaUsageMethods } from "./domains/quotaUsage";
 import { createReportsMethods } from "./domains/reports";
@@ -45,7 +48,9 @@ export function createItemClient(opts: {
   return {
     ...createIdentityMethods(base),
     ...createApiKeysMethods(base),
+    ...createLlmGovernanceMethods(base),
     ...createNotificationsMethods(base),
+    ...createSavedQueriesMethods(base),
     ...createItemsMethods(base),
     ...createCollectionsAdminMethods(base),
     ...createImpactMethods(base),
@@ -57,6 +62,7 @@ export function createItemClient(opts: {
     ...createReportsMethods(base),
     ...createAppsMethods(base),
     ...createAttachmentsMethods(base),
+    ...createCollectKitMethods(base),
     ...createFeaturesMethods(base),
     ...createExportsIngestionMethods(base),
     ...createTiles3dMethods(base),

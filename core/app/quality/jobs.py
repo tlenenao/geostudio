@@ -68,4 +68,7 @@ def sweep_quality_reports_task(timestamp: int) -> None:
         quality_repo.reclaim_stuck_running(session)
         session.commit()
         for report_id, tenant_id in quality_repo.stale_pending_ids(session):
-            run_quality_check_task.defer(report_id=report_id, tenant_id=tenant_id)
+            try:
+                run_quality_check_task.defer(report_id=report_id, tenant_id=tenant_id)
+            except Exception:
+                logger.exception("rapport de qualité %s : defer échoué, suivant", report_id)

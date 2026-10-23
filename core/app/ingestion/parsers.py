@@ -18,16 +18,16 @@ import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import defusedxml.ElementTree
-import geopandas as gpd
 import numpy as np
 import pyarrow.parquet
 import pyogrio
 import pyproj
 import shapely
 from defusedxml.common import DefusedXmlException
+from geopandas.io.arrow import _arrow_to_geopandas
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from pyogrio.errors import DataLayerError, DataSourceError
@@ -87,6 +87,9 @@ _XLSX_ERRORS = (zipfile.BadZipFile, InvalidFileException)
 # nécessaires pour couvrir aussi bien un fichier tronqué/illisible qu'un
 # fichier qui n'est structurellement pas un Parquet.
 _PARQUET_ERRORS = (pyarrow.lib.ArrowException, OSError)
+
+# AUD-014 : taille des fenêtres de lecture (OGR, Parquet) — borne la mémoire, pas le résultat.
+_BATCH_ROWS = 10_000
 
 
 def detect_lat_lon_fields(fieldnames: list[str]) -> tuple[str, str] | None:
@@ -435,9 +438,10 @@ def list_xlsx_sheets(content: bytes) -> list[LayerInfo]:
 # fichier sur disque (GDAL/pyogrio ne lisent pas depuis la mémoire) sont
 # connus, et une liste se relit sans avoir à raisonner sur une regex.
 _ALLOWED_TEMP_SUFFIXES = frozenset(
-    {".gpkg", ".zip", ".kml", ".kmz", ".parquet", ".gml", ".dxf", ".dgn"}
+    {".gpkg", ".zip", ".kml", ".kmz", ".parquet", ".gml", ".dxf", ".dgn", ".fgb"}
 )
 _SQLITE_MAGIC = b"SQLite format 3\x00"
+_FGB_MAGIC = b"fgb"  # AUD-143 : FlatGeobuf = « fgb » + version + « fgb » + 0
 _MAX_ZIP_UNCOMPRESSED = 2 * 1024**3  # garde anti zip-bomb (ARC-23)
 _GDB_DIR_RE = re.compile(r"^[\w. -]+\.gdb$")
 
@@ -449,6 +453,8 @@ def _reject_vrt_and_check_signature(content: bytes, suffix: str) -> None:
     if b"ogrvrtdatasource" in content[:4096].lower():
         raise IngestionParseError("fichier VRT refusé")
     if suffix == ".gpkg" and not content.startswith(_SQLITE_MAGIC):
+        raise IngestionParseError(_UNREADABLE)
+    if suffix == ".fgb" and not content.startswith(_FGB_MAGIC):
         raise IngestionParseError(_UNREADABLE)
     if suffix == ".zip":
         try:
@@ -575,49 +581,63 @@ def _read_features(
         raise IngestionParseError(
             f"couche '{layer_name}' introuvable — couches disponibles : {', '.join(available)}"
         )
-    try:
-        # pyogrio/numpy émet un DeprecationWarning interne ("generic unit for
-        # NumPy timedelta") sur des champs datetime NaT (rencontré en
-        # pratique sur les champs begin/end du schéma KML par défaut) —
-        # vérifié par exécution réelle (SP-56), quirk de la bibliothèque
-        # tierce, sans rapport avec la validité des données lues.
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=".*generic.*unit for NumPy timedelta.*",
-                category=DeprecationWarning,
-            )
-            meta, _index, geometry, field_data = pyogrio.raw.read(
-                path, layer=layer_name, force_2d=True
-            )
-    except _OGR_ERRORS as exc:
-        raise IngestionParseError(f"couche '{layer_name}' illisible") from exc
 
+    def _window(skip: int):
+        try:
+            # pyogrio/numpy émet un DeprecationWarning interne ("generic unit for
+            # NumPy timedelta") sur des champs datetime NaT (rencontré en
+            # pratique sur les champs begin/end du schéma KML par défaut) —
+            # vérifié par exécution réelle (SP-56), quirk de la bibliothèque
+            # tierce, sans rapport avec la validité des données lues.
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=".*generic.*unit for NumPy timedelta.*",
+                    category=DeprecationWarning,
+                )
+                return pyogrio.raw.read(
+                    path,
+                    layer=layer_name,
+                    force_2d=True,
+                    skip_features=skip,
+                    max_features=_BATCH_ROWS,
+                )
+        except _OGR_ERRORS as exc:
+            raise IngestionParseError(f"couche '{layer_name}' illisible") from exc
+
+    # AUD-014 : couche lue par fenêtres de `_BATCH_ROWS` entités (jamais entière en mémoire).
+    meta, _index, geometry, field_data = _window(0)
     crs = meta["crs"] or ("EPSG:4326" if cad else None)
     transform = _crs_transform(crs)
     fields = list(meta["fields"])
-
-    for i, wkb in enumerate(geometry):
-        if wkb is None and cad:
-            continue
-        if wkb is None:
-            raise IngestionParseError(f"entité {i} : géométrie manquante")
-        try:
-            geom = shapely.from_wkb(wkb)
-        except ShapelyError as exc:
-            raise IngestionParseError(f"entité {i} : géométrie invalide ({exc})") from exc
-        if cad and not meta["crs"]:
-            minx, miny, maxx, maxy = geom.bounds
-            if not (-180 <= minx <= maxx <= 180 and -90 <= miny <= maxy <= 90):
-                raise IngestionParseError(
-                    f"entité {i} : CRS absent et coordonnées hors étendue WGS84 "
-                    "(CAO en repère local non supporté)"
-                )
-        if transform is not None:
-            geom = shapely_transform(transform, geom)
-        geom = _repair_geometry(geom, f"entité {i}")
-        properties = {field: _native_value(field_data[j][i]) for j, field in enumerate(fields)}
-        yield geom, properties
+    offset = 0
+    while len(geometry):
+        for k, wkb in enumerate(geometry):
+            i = offset + k
+            if wkb is None and cad:
+                continue
+            if wkb is None:
+                raise IngestionParseError(f"entité {i} : géométrie manquante")
+            try:
+                geom = shapely.from_wkb(wkb)
+            except ShapelyError as exc:
+                raise IngestionParseError(f"entité {i} : géométrie invalide ({exc})") from exc
+            if cad and not meta["crs"]:
+                minx, miny, maxx, maxy = geom.bounds
+                if not (-180 <= minx <= maxx <= 180 and -90 <= miny <= maxy <= 90):
+                    raise IngestionParseError(
+                        f"entité {i} : CRS absent et coordonnées hors étendue WGS84 "
+                        "(CAO en repère local non supporté)"
+                    )
+            if transform is not None:
+                geom = shapely_transform(transform, geom)
+            geom = _repair_geometry(geom, f"entité {i}")
+            properties = {f: _native_value(field_data[j][k]) for j, f in enumerate(fields)}
+            yield geom, properties
+        offset += len(geometry)
+        if len(geometry) < _BATCH_ROWS:
+            break
+        _meta, _index, geometry, field_data = _window(offset)
 
 
 def parse_gpkg(
@@ -625,6 +645,15 @@ def parse_gpkg(
     layer_name: str | None = None,
 ) -> Iterator[tuple[BaseGeometry, dict]]:
     with _temp_file(content, ".gpkg") as path:
+        yield from _read_features(path, layer_name)
+
+
+def parse_flatgeobuf(
+    content: bytes,
+    layer_name: str | None = None,
+) -> Iterator[tuple[BaseGeometry, dict]]:
+    """AUD-143 : FlatGeobuf (une seule couche, lue par le driver GDAL/pyogrio)."""
+    with _temp_file(content, ".fgb") as path:
         yield from _read_features(path, layer_name)
 
 
@@ -814,25 +843,31 @@ def parse_geoparquet(content: bytes) -> Iterator[tuple[BaseGeometry, dict]]:
     # (SP-11). Un seul fichier, pas de concept de couches multiples ici :
     # ce format ne passe jamais par list_layers()/l'étape d'inspection.
     with _temp_file(content, ".parquet") as path:
-        gdf = gpd.read_parquet(path)
-        transform = None
-        if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
-            if _is_ntf(gdf.crs):  # AUD-127 : même exigence de grille que _crs_transform
-                transform = _ntf_transform(gdf.crs)
-            else:
-                gdf = gdf.to_crs(epsg=4326)
-        geom_col = gdf.geometry.name
-        for i, row in gdf.iterrows():
-            geom = row[geom_col]
-            # Une géométrie manquante revient de geopandas.read_parquet en
-            # NaN (float), pas None — vérifié par exécution réelle (écart
-            # avec le pseudo-code de la spec SP-56 §3.1, corrigé ici).
-            if geom is None or (isinstance(geom, float) and math.isnan(geom)):
-                raise IngestionParseError(f"entité {i} : géométrie manquante")
-            if transform is not None:
-                geom = shapely_transform(transform, geom)
-            props = {k: _native_value(v) for k, v in row.items() if k != geom_col}
-            yield geom, props
+        # AUD-014 : lot par lot (`iter_batches`) au lieu d'un `read_parquet` + `iterrows` sur
+        # toute la table ; les métadonnées `geo` du schéma suivent chaque lot (Table.from_batches).
+        pf = pyarrow.parquet.ParquetFile(path)
+        offset = 0
+        for batch in pf.iter_batches(batch_size=_BATCH_ROWS):
+            gdf = _arrow_to_geopandas(pyarrow.Table.from_batches([batch]))
+            transform = None
+            if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
+                if _is_ntf(gdf.crs):  # AUD-127 : même exigence de grille que _crs_transform
+                    transform = _ntf_transform(gdf.crs)
+                else:
+                    gdf = gdf.to_crs(epsg=4326)
+            geom_col = gdf.geometry.name
+            for i, row in enumerate(gdf.itertuples(index=False, name=None), start=offset):
+                row = dict(zip(gdf.columns, row, strict=True))
+                geom = row[geom_col]
+                # Une géométrie manquante revient de geopandas en NaN (float), pas None —
+                # vérifié par exécution réelle (écart avec la spec SP-56 §3.1).
+                if geom is None or (isinstance(geom, float) and math.isnan(geom)):
+                    raise IngestionParseError(f"entité {i} : géométrie manquante")
+                if transform is not None:
+                    geom = shapely_transform(transform, geom)
+                props = {k: _native_value(v) for k, v in row.items() if k != geom_col}
+                yield geom, props
+            offset += len(gdf)
 
 
 def _is_geoparquet(path: str) -> bool:
@@ -898,21 +933,31 @@ def _local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
-def _find_repeated_element(root):
-    """BFS (ordre du document) — le premier parent dont un même nom
-    d'enfant apparaît >= 2 fois gagne. Retourne (parent, tag_repete) ou
-    (None, None) si aucun ne qualifie."""
-    from collections import Counter, deque
-
-    queue = deque([root])
-    while queue:
-        parent = queue.popleft()
-        counts = Counter(_local_name(child.tag) for child in parent)
-        repeated = next((tag for tag, n in counts.items() if n >= 2), None)
-        if repeated is not None:
-            return parent, repeated
-        queue.extend(parent)
-    return None, None
+def _find_repeated_path(content: bytes):
+    """Premier passage en flux (AUD-014) : même règle que l'ancien BFS DOM — le premier parent
+    (profondeur croissante, puis ordre du document) dont un même nom d'enfant apparaît >= 2
+    fois. Retourne (chemin du parent, numéro d'ordre du parent, tag répété) ou None.
+    Mémoire bornée : aucune arborescence conservée, seulement un compteur par niveau ouvert."""
+    best = None  # (profondeur, ordre, chemin, tag)
+    stack: list[tuple[str, int, dict[str, int]]] = []
+    seq = 0
+    for event, elem in defusedxml.ElementTree.iterparse(io.BytesIO(content), ("start", "end")):
+        if event == "start":
+            tag = _local_name(elem.tag)
+            if stack:
+                counts = stack[-1][2]
+                counts[tag] = counts.get(tag, 0) + 1
+            stack.append((tag, seq, {}))
+            seq += 1
+        else:
+            tag, order, counts = stack.pop()
+            repeated = next((t for t, n in counts.items() if n >= 2), None)
+            if repeated is not None:
+                key = (len(stack), order)
+                if best is None or key < best[:2]:
+                    best = (len(stack), order, tuple(t for t, _o, _c in stack) + (tag,), repeated)
+            elem.clear()
+    return None if best is None else (best[2], best[1], best[3])
 
 
 def parse_xml_generic(
@@ -921,7 +966,7 @@ def parse_xml_generic(
 ) -> Iterator[tuple[BaseGeometry | None, dict]]:
     """Aucun schéma n'est supposé : le premier élément dont un même nom
     d'enfant se répète (>= 2 fois) est considéré comme « un enregistrement »
-    (_find_repeated_element, BFS). Seuls les enfants feuilles (sans propre
+    (_find_repeated_path, parcours en flux). Seuls les enfants feuilles (sans propre
     enfant) deviennent des propriétés scalaires — un enfant structuré
     (imbriqué) est ignoré, pas aplati. `defusedxml.ElementTree` est
     obligatoire ici (jamais `xml.etree.ElementTree` bare) : c'est le seul
@@ -935,30 +980,49 @@ def parse_xml_generic(
     PAS de `ParseError`), sans quoi une charge XXE traverserait cette
     fonction sans jamais devenir un IngestionParseError propre."""
     try:
-        root = defusedxml.ElementTree.fromstring(content)
+        found = _find_repeated_path(content)
+        if found is None:
+            raise IngestionParseError("aucun élément répété détecté — format non reconnu")
+        parent_path, parent_order, tag = found
+        target = (*parent_path, tag)
+        effective_mode: GeometryMode | None = None
+        # Les éléments hors du sous-arbre d'un enregistrement sont retirés de leur parent dès
+        # leur fermeture : seul le fil courant reste en mémoire.
+        stack: list[tuple[str, int, Any]] = []
+        seq = 0
+        i = 0
+        for event, elem in defusedxml.ElementTree.iterparse(io.BytesIO(content), ("start", "end")):
+            if event == "start":
+                stack.append((_local_name(elem.tag), seq, elem))
+                seq += 1
+                continue
+            path = tuple(t for t, _o, _e in stack)
+            _t, _o, _e = stack.pop()
+            parent_elem = stack[-1][2] if stack else None
+            is_record = path == target and len(stack) >= 1 and stack[-1][1] == parent_order
+            inside = len(path) > len(target) and path[: len(target)] == target
+            if is_record:
+                i += 1
+                row: dict = dict(elem.attrib)
+                for child in elem:
+                    if len(child) == 0:  # feuille texte, pas un sous-élément structuré
+                        row[_local_name(child.tag)] = (child.text or "").strip()
+                row = _rename_reserved_property_keys(row, "xml")
+                # Auto-détection lat/lon résolue contre les clés (déjà renommées) du
+                # premier élément répété — même correctif que parse_jsonlines
+                # (revue finale GAP-29, C1).
+                if effective_mode is None:
+                    effective_mode = _resolve_latlon_mode_from_fields(mode, list(row.keys()))
+                try:
+                    result = extract_geometry(row, effective_mode)
+                except IngestionParseError as exc:
+                    raise IngestionParseError(f"ligne {i} : {exc}") from exc
+                yield result
+            if not inside and parent_elem is not None:
+                elem.clear()
+                parent_elem.remove(elem)
     except (defusedxml.ElementTree.ParseError, DefusedXmlException) as exc:
         raise IngestionParseError(f"XML invalide : {exc}") from exc
-    parent, tag = _find_repeated_element(root)
-    if parent is None:
-        raise IngestionParseError("aucun élément répété détecté — format non reconnu")
-    matching = [e for e in parent if _local_name(e.tag) == tag]
-    effective_mode: GeometryMode | None = None
-    for i, elem in enumerate(matching, start=1):
-        row: dict = dict(elem.attrib)
-        for child in elem:
-            if len(child) == 0:  # feuille texte, pas un sous-élément structuré
-                row[_local_name(child.tag)] = (child.text or "").strip()
-        row = _rename_reserved_property_keys(row, "xml")
-        # Auto-détection lat/lon résolue contre les clés (déjà renommées) du
-        # premier élément répété — même correctif que parse_jsonlines
-        # (revue finale GAP-29, C1) : mode.kind="latlon" sans lat_field/
-        # lon_field échouait sur toute ligne avant cette résolution.
-        if effective_mode is None:
-            effective_mode = _resolve_latlon_mode_from_fields(mode, list(row.keys()))
-        try:
-            yield extract_geometry(row, effective_mode)
-        except IngestionParseError as exc:
-            raise IngestionParseError(f"ligne {i} : {exc}") from exc
 
 
 def read_xml_header_fields(content: bytes) -> list[str]:
@@ -973,6 +1037,8 @@ def list_layers(content: bytes, filename: str) -> list[LayerInfo]:
     lower = filename.lower()
     if lower.endswith(".gpkg"):
         suffix, wrap = ".gpkg", (lambda p: p)
+    elif lower.endswith(".fgb"):
+        suffix, wrap = ".fgb", (lambda p: p)
     elif lower.endswith(".zip"):
         suffix, wrap = ".zip", None
     elif lower.endswith((".dxf", ".dgn")):

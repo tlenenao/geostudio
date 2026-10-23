@@ -61,6 +61,40 @@ def _as(app, user):
     app.dependency_overrides[get_current_user] = lambda: user
 
 
+def _grant_quotas_privilege(app, user) -> None:
+    from app.roles.models import Role
+    from app.roles.privileges import Privilege
+    from app.roles.repository import update_role
+
+    session = next(app.dependency_overrides[db.get_session]())
+    role = session.get(Role, user.role_id)
+    update_role(
+        session,
+        tenant_id=user.tenant_id,
+        role_id=role.id,
+        name=None,
+        privileges=[*role.privileges, Privilege.ADMIN_QUOTAS_MANAGE.value],
+    )
+    session.commit()
+    session.close()
+
+
+def test_put_tenant_limits_requires_dedicated_privilege_then_overrides_instance_limits(env):
+    app, client, admin, _regular = env
+    _as(app, admin)
+    body = {"maxItems": 5, "maxUsers": 9}
+    assert client.put("/v1/admin/usage/limits", json=body).status_code == 403
+    _grant_quotas_privilege(app, admin)
+    resp = client.put("/v1/admin/usage/limits", json=body)
+    assert resp.status_code == 200
+    usage = client.get("/v1/admin/usage").json()
+    assert (usage["maxItems"], usage["maxUsers"], usage["maxCollections"]) == (5, 9, None)
+    # PUT complet : remettre à null retombe sur la limite d'instance.
+    assert client.put("/v1/admin/usage/limits", json={}).status_code == 200
+    assert client.get("/v1/admin/usage").json()["maxItems"] is None
+    assert client.put("/v1/admin/usage/limits", json={"maxItems": -1}).status_code == 422
+
+
 def test_get_usage_requires_settings_instance_manage_privilege(env):
     app, client, admin, regular = env
     _as(app, regular)
@@ -82,6 +116,8 @@ def test_get_usage_returns_snapshot_shape_for_privileged_admin(env):
         "maxItems",
         "maxCollections",
         "maxStorageBytes",
+        "maxUsers",
+        "maxActiveRuns",
     }
     # 2 utilisateurs déjà créés par le fixture (admin + regular).
     assert body["userCount"] == 2
@@ -95,12 +131,16 @@ def test_get_usage_includes_configured_limits(env, monkeypatch):
     _as(app, admin)
     monkeypatch.setenv("CORE_QUOTA_MAX_ITEMS_PER_TENANT", "500")
     monkeypatch.setenv("CORE_QUOTA_MAX_STORAGE_BYTES_PER_TENANT", "1000000")
+    monkeypatch.setenv("CORE_QUOTA_MAX_USERS_PER_TENANT", "7")
+    monkeypatch.setenv("CORE_QUOTA_MAX_ACTIVE_RUNS_PER_TENANT", "3")
     resp = client.get("/v1/admin/usage")
     assert resp.status_code == 200
     body = resp.json()
     assert body["maxItems"] == 500
     assert body["maxCollections"] is None
     assert body["maxStorageBytes"] == 1000000
+    assert body["maxUsers"] == 7
+    assert body["maxActiveRuns"] == 3
 
 
 def test_get_usage_limits_are_null_when_unconfigured(env):

@@ -125,7 +125,16 @@ describe("CopilotChat", () => {
       .fn()
       .mockResolvedValueOnce({
         reply: "Je crée l'app.",
-        clientOps: [{ op: "confirmWrite", args: { name: "create_item", arguments: { a: 1 } } }],
+        clientOps: [
+          {
+            op: "confirmWrite",
+            args: {
+              name: "create_item",
+              arguments: { kind: "app", title: "Mon app", config: { kind: "app" } },
+              confirmToken: "tok",
+            },
+          },
+        ],
       })
       .mockResolvedValueOnce({ reply: "create_item effectué : ok", clientOps: [] });
     const queryClient = new QueryClient();
@@ -146,7 +155,10 @@ describe("CopilotChat", () => {
     await userEvent.type(screen.getByLabelText("Message au copilote"), "Crée une app");
     await userEvent.click(screen.getByRole("button", { name: "Envoyer" }));
     expect(invalidate).not.toHaveBeenCalled();
+    // AUD-102 : le bandeau montre ce qui sera créé, pas seulement le nom de l'outil.
+    expect(await screen.findByText("Mon app")).toBeVisible();
     await userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
+    expect(copilotTurn.mock.calls[1][1].confirmWrite.confirmToken).toBe("tok");
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["items"] }));
   });
 });

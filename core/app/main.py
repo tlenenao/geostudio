@@ -24,6 +24,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from app import db, observability
 from app.admin_tools import routes as admin_tools_routes
 from app.alerts import routes as alerts_routes
+from app.analytics.aggregate import AggregateBusy
 from app.apikeys import routes as apikeys_routes
 from app.appexport import routes as appexport_routes
 from app.attachments import routes as attachments_routes
@@ -48,6 +49,7 @@ from app.collections import routes as collections_routes
 from app.collections.introspection import TableNotFound, UnsupportedTable
 from app.compliance import routes as compliance_routes
 from app.configs import routes as configs_routes
+from app.copilot import admin_routes as copilot_admin_routes
 from app.copilot import routes as copilot_routes
 from app.dataexport import routes as dataexport_routes
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
@@ -61,6 +63,7 @@ from app.geocoding import routes as geocoding_routes
 from app.harvest import dataset_validation as harvest_dataset_validation  # noqa: F401
 from app.harvest import routes as harvest_routes
 from app.history import routes as history_routes
+from app.i18n_core import error_code, negotiate_locale, translate_detail, translate_title
 from app.ingestion import routes as ingestion_routes
 from app.ingestion.storage import require_public_s3_endpoint
 from app.instance import routes as instance_routes
@@ -89,6 +92,7 @@ from app.relations.service import RelationHooks
 from app.reports import routes as reports_routes
 from app.roles import routes as roles_routes
 from app.routing import routes as routing_routes
+from app.saved_queries import routes as saved_queries_routes
 from app.schemas_routes import router as schemas_router
 from app.secrets import crypto as secrets_crypto
 from app.secrets import routes as secrets_routes
@@ -359,17 +363,39 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+        # AUD-115 : `code` stable ; title/detail traduits seulement si Accept-Language le demande.
+        source = exc.detail if isinstance(exc.detail, str) else "request failed"
+        locale = negotiate_locale(request.headers.get("accept-language"))
         return JSONResponse(
             status_code=exc.status_code,
             media_type="application/problem+json",
             content={
                 "type": "about:blank",
-                "title": HTTPStatus(exc.status_code).phrase,
+                "title": translate_title(
+                    exc.status_code, HTTPStatus(exc.status_code).phrase, locale
+                ),
                 "status": exc.status_code,
-                "detail": exc.detail if isinstance(exc.detail, str) else "request failed",
+                "detail": translate_detail(source, locale),
+                "code": error_code(source),
             },
             # AUD-084 : les en-têtes de l'exception (Retry-After, WWW-Authenticate…) survivent.
             headers=getattr(exc, "headers", None),
+        )
+
+    @app.exception_handler(AggregateBusy)
+    async def _aggregate_busy_handler(request: Request, exc: AggregateBusy):
+        # AUD-099 : file d'agrégats du tenant saturée -> 429 réessayable, jamais 500.
+        return JSONResponse(
+            status_code=429,
+            media_type="application/problem+json",
+            content={
+                "type": "about:blank",
+                "title": "Too Many Requests",
+                "status": 429,
+                "detail": "too many concurrent aggregates, retry shortly",
+                "code": "too_many_concurrent_aggregates",
+            },
+            headers={"Retry-After": "5"},
         )
 
     @app.exception_handler(QuotaExceededError)
@@ -593,6 +619,7 @@ def create_app() -> FastAPI:
     v1_router.include_router(xlsform_routes.router)
     v1_router.include_router(apikeys_routes.router)
     v1_router.include_router(usage_routes.router)
+    v1_router.include_router(saved_queries_routes.router)  # AUD-062
     v1_router.include_router(quotas_routes.router)
     v1_router.include_router(compliance_routes.router)
     v1_router.include_router(geocoding_routes.router)
@@ -615,6 +642,7 @@ def create_app() -> FastAPI:
         v1_router.include_router(terrain3d_routes.router)
     if is_raster_enabled():  # ARC-33 : COG + proxy TiTiler authentifié (ADR 0024)
         v1_router.include_router(raster_routes.router)
+    v1_router.include_router(copilot_admin_routes.router)  # AUD-106/149 : sans flag
     if is_copilot_enabled():
         v1_router.include_router(copilot_routes.router)
     if is_admin_tools_enabled():
@@ -636,6 +664,11 @@ def create_app() -> FastAPI:
         )
 
     app.dependency_overrides[features_routes.get_relation_hooks] = lambda: RelationHooks()  # ARC-21
+    # L8 (M1) : pièces jointes seulement sur un fid existant, relu par la porte de lecture
+    # de features (app.attachments est en dessous dans le contrat : injection).
+    app.dependency_overrides[attachments_routes.get_entity_checker] = (
+        features_routes.get_feature_exists
+    )
     app.dependency_overrides[features_routes.get_export_job_starter] = lambda: (
         dataexport_routes.default_starter
     )

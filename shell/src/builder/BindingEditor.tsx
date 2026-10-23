@@ -9,6 +9,7 @@ import { t } from "../i18n";
 import { formatCelError } from "./celError";
 import { validateExpression } from "./expr";
 import "../i18n/domains/widgets";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 const CelGenerator = lazy(() =>
   import("./copilot/VisibleWhenGenerator").then((m) => ({ default: m.CelGenerator })),
@@ -46,9 +47,9 @@ export function BindingEditor({
     <details className="text-sm">
       <summary className="cursor-pointer text-xs text-ink-2">{t("bindingEditor.summary")}</summary>
       <div className="mt-2 flex flex-col gap-2">
-        <select
+        <NativeSelect
           aria-label={t("bindingEditor.propAria")}
-          className="h-9 rounded border border-rule bg-surface text-xs"
+          className="h-9 rounded border border-rule bg-surface text-xs w-auto"
           value={selected}
           onChange={(e) => {
             setKey(e.target.value);
@@ -60,7 +61,7 @@ export function BindingEditor({
               {k}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         <textarea
           aria-label={t("bindingEditor.exprAria")}
           className="rounded-md border border-rule p-2 font-mono text-xs"

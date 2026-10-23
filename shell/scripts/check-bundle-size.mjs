@@ -29,16 +29,46 @@ function main(manifestPath, thresholdPath) {
     console.error("Aucune entrée trouvée dans le manifeste Vite.");
     process.exit(1);
   }
+  // L8 : le service worker est émis hors du graphe de l'entrée (jamais compté ci-dessous) ; on
+  // garantit seulement qu'il existe et que l'injection du plugin a bien eu lieu.
+  let sw = "";
+  try {
+    sw = readFileSync(join(distDir, "sw.js"), "utf-8");
+  } catch {
+    console.error(
+      "ÉCHEC : dist/sw.js absent (vite.serviceWorker.ts n'a pas émis le service worker).",
+    );
+    process.exit(1);
+  }
+  if (sw.includes("__BUILD_ID__") || sw.includes("__PRECACHE_")) {
+    console.error("ÉCHEC : dist/sw.js contient des marqueurs d'injection non remplacés.");
+    process.exit(1);
+  }
   const files = initialChunkFiles(manifest, entryKey);
   let totalBytes = 0;
+  const sizes = [];
   for (const file of files) {
-    totalBytes += readFileSync(join(distDir, file)).length;
+    const bytes = readFileSync(join(distDir, file)).length;
+    totalBytes += bytes;
+    sizes.push([file, bytes]);
   }
   const totalKb = totalBytes / 1024;
   const thresholdKb = Number(readFileSync(thresholdPath, "utf-8").trim());
   console.log(
     `Charge JS/CSS initiale mesurée : ${totalKb.toFixed(1)} Ko (seuil : ${thresholdKb} Ko)`,
   );
+  // AUD-138 : sans contributeurs nommés, un dépassement est un nombre sans piste ; la marge
+  // restante signale un seuil devenu fragile avant qu'il ne casse.
+  const top = sizes
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([f, b]) => `${(b / 1024).toFixed(1)} Ko ${f}`);
+  console.log(`Plus gros contributeurs :\n  ${top.join("\n  ")}`);
+  if (totalKb <= thresholdKb && thresholdKb - totalKb < thresholdKb * 0.03) {
+    console.warn(
+      `AVERTISSEMENT : marge de ${(thresholdKb - totalKb).toFixed(1)} Ko (< 3 %) — déplacer du code vers un import dynamique plutôt que relever le seuil.`,
+    );
+  }
   if (totalKb > thresholdKb) {
     console.error(`ÉCHEC : charge initiale ${totalKb.toFixed(1)} Ko > seuil ${thresholdKb} Ko`);
     process.exit(1);

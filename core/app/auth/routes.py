@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -122,6 +123,36 @@ def get_me(
             experimentalOpsEnabled=is_pipeline_experimental_ops_enabled(),
         ),
     )
+
+
+class PreferencesBody(BaseModel):
+    locale: Literal["fr", "en"] | None = None
+    timezone: str | None = None
+
+
+@router.get("/me/preferences", response_model=PreferencesBody)
+def get_preferences(user: User = Depends(get_current_user)) -> PreferencesBody:
+    return PreferencesBody(locale=user.locale, timezone=user.timezone)  # type: ignore[arg-type]
+
+
+@router.put(
+    "/me/preferences", response_model=PreferencesBody, dependencies=[Depends(forbid_api_key)]
+)
+def put_preferences(
+    body: PreferencesBody,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
+) -> PreferencesBody:
+    """AUD-115 : langue et fuseau de l'utilisateur courant (null = défaut d'instance / UTC)."""
+    if body.timezone is not None:
+        try:
+            ZoneInfo(body.timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="unknown timezone") from exc
+    user.locale = body.locale
+    user.timezone = body.timezone
+    session.flush()
+    return body
 
 
 class UserRolePatch(BaseModel):

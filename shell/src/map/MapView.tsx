@@ -12,13 +12,19 @@ import {
 } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { FilterSpecification } from "maplibre-gl";
-import { resolveBasemapStyle } from "./basemaps";
+import {
+  BLANK_BACKGROUND_ID,
+  BLANK_BASEMAP,
+  blankBackgroundColor,
+  resolveBasemapStyle,
+} from "./basemaps";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import type { DataRecord, MapConfig, ThemeColors } from "../api/types";
 import { MapLegend } from "./MapLegend";
 import { MapMeasureSketchToolbar } from "./MapMeasureSketchToolbar";
 import { MapPopup } from "./MapPopup";
 import { useMapPopup } from "./useMapPopup";
+import type { ExprContext } from "../builder/expr";
 import { resolvePopupContent } from "./popupContent";
 import { clearViewport, publishViewport } from "./viewportTiles";
 import { t } from "../i18n";
@@ -119,6 +125,8 @@ export const MapView = forwardRef<
     // REV-304 : fenêtre du contexte temps global, appliquée par setFilter aux
     // couches `vector` qui déclarent un `timeField` (sans les reconstruire).
     timeRange?: { from: string; to: string } | null;
+    // AUD-052 : variables d'app / utilisateur / contexte analytique exposés aux gabarits de popup.
+    popupContext?: Omit<ExprContext, "record">;
     // ARC-16 : échelle graphique MapLibre (mode export, `printLayout.scaleBar`).
     // Monté une fois ; la largeur affichée est calculée par MapLibre depuis la
     // résolution réelle au centre de la carte (mesurée en E2E à ±1 %).
@@ -145,6 +153,7 @@ export const MapView = forwardRef<
     getShareLinkToken,
     loadCustomIcon,
     timeRange,
+    popupContext,
     showScaleBar,
   },
   ref,
@@ -219,6 +228,8 @@ export const MapView = forwardRef<
   const onViewChangeRef = useRef(onViewChange);
   const onFeatureClickRef = useRef(onFeatureClick);
   const onReadyRef = useRef(onReady);
+  const basemapStyleRef = useRef(config.basemap.style);
+  basemapStyleRef.current = config.basemap.style;
   const getAuthTokenRef = useRef(getAuthToken);
   const getCoreUrlRef = useRef(getCoreUrl);
   const getShareLinkTokenRef = useRef(getShareLinkToken);
@@ -553,6 +564,10 @@ export const MapView = forwardRef<
       onThemeChange(() => {
         const map = mapRef.current;
         if (!map || !styleLoadedRef.current) return;
+        // AUD-126 : le fond vierge souverain suit le thème (jeton --gs-map-land).
+        if (map.getLayer(BLANK_BACKGROUND_ID) && basemapStyleRef.current === BLANK_BASEMAP.style) {
+          map.setPaintProperty(BLANK_BACKGROUND_ID, "background-color", blankBackgroundColor());
+        }
         if (map.getLayer(HIGHLIGHT_ID)) {
           map.setPaintProperty(HIGHLIGHT_ID, "line-color", highlightColor());
         }
@@ -640,7 +655,7 @@ export const MapView = forwardRef<
       {!hideLegend && <MapLegend layers={config.layers} />}
       {popup && popupPoint && !toolsActive && (
         <MapPopup
-          content={resolvePopupContent(popupConfig, popup.properties, popupSchema)}
+          content={resolvePopupContent(popupConfig, popup.properties, popupSchema, popupContext)}
           x={popupPoint.x}
           y={popupPoint.y}
           onClose={() => setPopup(null)}

@@ -193,6 +193,18 @@ export function createDesktopItemClient(connection: {
     async runAnalyticsSql(..._args: unknown[]) {
       return unsupported();
     },
+    async listSavedSqlQueries(..._args: unknown[]) {
+      return unsupported();
+    },
+    async createSavedSqlQuery(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateSavedSqlQuery(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteSavedSqlQuery(..._args: unknown[]) {
+      return unsupported();
+    },
 
     // --- Reste de l'interface : aucun backend, rejet explicite ---
     async listItems(..._args: unknown[]) {
@@ -617,6 +629,9 @@ export function createDesktopItemClient(connection: {
     async getUnreadNotificationCount(..._args: unknown[]) {
       return unsupported();
     },
+    async subscribeNotifications(..._args: unknown[]) {
+      return unsupported();
+    },
     async markNotificationRead(..._args: unknown[]) {
       return unsupported();
     },
@@ -636,6 +651,21 @@ export function createDesktopItemClient(connection: {
       return unsupported();
     },
     async revokeApiKey(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getLlmUsage(..._args: unknown[]) {
+      return unsupported();
+    },
+    async getLlmSettings(..._args: unknown[]) {
+      return unsupported();
+    },
+    async putLlmSettings(..._args: unknown[]) {
+      return unsupported();
+    },
+    async deleteLlmSettings(..._args: unknown[]) {
+      return unsupported();
+    },
+    async updateExtension(..._args: unknown[]) {
       return unsupported();
     },
     async geocode(..._args: unknown[]) {

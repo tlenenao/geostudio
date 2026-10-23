@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { CollectionSchemaField, PopupConfig } from "../api/types";
+import type { ExprContext } from "../builder/expr";
 import { renderPopupTemplate, stringifyObject } from "./popupTemplate";
 import { formatFieldValue } from "../builder/fieldFormat";
 
@@ -12,11 +13,9 @@ const EMPTY = "—";
 // Deux modes exclusifs : gabarit (s'il est non vide) ou liste de champs.
 // Sans configuration du tout : tous les champs présents, dans leur ordre.
 //
-// Pas de paramètre de contexte CEL (`vars`/`user`) : I4 de la revue finale
-// SP-24 — la prop `exprContext` de MapView existait mais aucun site de
-// montage réel n'avait de quoi la remplir (ni variables ni contexte d'app
-// dans MapEditorPage, ni ExprContext de l'ActionBus exposé par mapWidget ou
-// ExplorerDrawer). Le seul vocabulaire d'un gabarit de popup est `record.*`.
+// Contexte CEL (`vars`/`user`/`ctx`) : optionnel, fourni par le widget carte
+// d'app (AUD-052, prop `popupContext` de MapView) ; l'éditeur autonome et
+// l'explorateur n'en ont pas, leur seul vocabulaire reste `record.*`.
 //
 // D35 (Vague C, SP-C6) : le formatage fr-FR (`formatFieldValue`) ne
 // s'applique qu'au mode `fields` ci-dessous — jamais au gabarit libre
@@ -26,6 +25,9 @@ export function resolvePopupContent(
   config: PopupConfig | undefined,
   properties: Record<string, unknown>,
   schema?: CollectionSchemaField[],
+  // AUD-052 : contexte d'expression de l'hôte (variables d'app, utilisateur, contexte
+  // analytique) ; `record` reste toujours l'entité cliquée.
+  exprContext?: Omit<ExprContext, "record">,
 ): PopupContent {
   const fieldTypes = new Map((schema ?? []).map((f) => [f.name, f.type] as const));
   // Durcissement identique à `stringify()` de popupTemplate.ts (cf. son
@@ -43,7 +45,12 @@ export function resolvePopupContent(
     return {
       title: null,
       rows: [],
-      html: renderPopupTemplate(template, { vars: {}, user: { name: "" }, record: properties }),
+      html: renderPopupTemplate(template, {
+        vars: {},
+        user: { name: "" },
+        ...exprContext,
+        record: properties,
+      }),
     };
   }
   // Présence de `fields`, pas sa longueur : `fields: []` est un choix

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from "react";
+import { ApiError } from "../../api/ApiError";
 import { useItemClient } from "../../api/hooks";
 import type { ExportFormat, ExportJob } from "../../api/types";
 import { t } from "../../i18n";
@@ -102,12 +103,20 @@ export function ExportPanel({
           : await client.createExport(itemId, format);
       jobIdRef.current = jobId;
       await poll(jobId);
-    } catch {
+    } catch (err) {
       // Message générique volontaire : ne pas répéter le texte brut d'une
       // erreur réseau/HTTP (potentiellement peu lisible) que ce soit
       // `createExport` ou une itération de `poll` qui a échoué — les deux
-      // remontent ici via le même try/catch.
-      if (mountedRef.current) setError(t("exportPanel.exportFailed"));
+      // remontent ici via le même try/catch. Seule exception : un contexte de filtres
+      // refusé (422, ctx plafonné à 16000 caractères côté cœur) a un remède que
+      // l'utilisateur peut appliquer.
+      if (mountedRef.current) {
+        setError(
+          ctx && err instanceof ApiError && err.status === 422
+            ? t("exportPanel.contextTooLarge")
+            : t("exportPanel.exportFailed"),
+        );
+      }
     } finally {
       if (mountedRef.current) setRunning(false);
     }

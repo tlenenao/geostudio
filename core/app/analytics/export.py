@@ -10,12 +10,13 @@ import re
 import tempfile
 import unicodedata
 from csv import DictWriter
-from datetime import UTC, date, datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any, TextIO
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import duckdb
 from openpyxl import Workbook
@@ -60,14 +61,15 @@ def _json_default(value: object) -> str | None:
     raise TypeError(f"unserializable value of type {type(value).__name__}")
 
 
-def _xlsx_cell_value(value: object) -> object:
+def _xlsx_cell_value(value: object, tz: str | None = None) -> object:
     """Coercition avant écriture d'une cellule (rows_to_xlsx) : openpyxl gère
     nativement str/int/float/bool/None/date/Decimal/datetime naïf, mais
     rejette les datetime tz-aware, les dict/list/tuple, et — comme colonnes
     Postgres uuid/bytea remontées brutes par psycopg — UUID et bytes/
     memoryview (mêmes choix de coercition que _json_default ci-dessus)."""
     if isinstance(value, datetime) and value.tzinfo is not None:
-        return value.astimezone(UTC).replace(tzinfo=None)
+        # AUD-115 : heure murale du fuseau de l'utilisateur (UTC par défaut), sans tzinfo.
+        return value.astimezone(ZoneInfo(tz or "UTC")).replace(tzinfo=None)
     if isinstance(value, (dict, list, tuple)):
         return json.dumps(value, default=str)
     if isinstance(value, UUID):
@@ -77,10 +79,10 @@ def _xlsx_cell_value(value: object) -> object:
     return sanitize_cell(value)
 
 
-def export_filename(title: str, *, format: str) -> str:
+def export_filename(title: str, *, format: str, tz: str | None = None) -> str:
     normalized = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower() or "export"
-    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(ZoneInfo(tz or "UTC")).strftime("%Y%m%d-%H%M%S")
     return f"{slug}-{stamp}.{format}"
 
 
@@ -96,7 +98,9 @@ def rows_to_csv(rows: list[dict[str, Any]], columns: list[str] | None = None) ->
     return buf.getvalue().encode("utf-8")
 
 
-def rows_to_xlsx(rows: list[dict[str, Any]], columns: list[str] | None = None) -> bytes:
+def rows_to_xlsx(
+    rows: list[dict[str, Any]], columns: list[str] | None = None, tz: str | None = None
+) -> bytes:
     # write_only : flux de lignes, pas tout le classeur en mémoire (export 10^5 lignes).
     wb = Workbook(write_only=True)
     ws = wb.create_sheet()
@@ -104,19 +108,23 @@ def rows_to_xlsx(rows: list[dict[str, Any]], columns: list[str] | None = None) -
     if headers:
         ws.append([sanitize_cell(h) for h in headers])
         for row in rows:
-            ws.append([_xlsx_cell_value(row.get(h)) for h in headers])
+            ws.append([_xlsx_cell_value(row.get(h), tz) for h in headers])
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
 
 
 def rows_to_format(
-    rows: list[dict[str, Any]], *, format: str, columns: list[str] | None = None
+    rows: list[dict[str, Any]],
+    *,
+    format: str,
+    columns: list[str] | None = None,
+    tz: str | None = None,
 ) -> bytes:
     if format == "csv":
         return rows_to_csv(rows, columns)
     if format == "xlsx":
-        return rows_to_xlsx(rows, columns)
+        return rows_to_xlsx(rows, columns, tz)
     raise ValueError(f"unsupported row format '{format}'")
 
 

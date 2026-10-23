@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user
 from app.db import get_session
+from app.notifications import stream
 from app.notifications.models import Notification
 from app.notifications.repository import (
     count_unread_notifications,
@@ -63,6 +65,28 @@ def get_notifications(
         total=total,
         page=page,
         pageSize=pageSize,
+    )
+
+
+@router.get("/notifications/stream")
+def get_notifications_stream(request: Request, user: User = Depends(get_current_user)) -> Response:
+    """SSE : pousse le compte de non-lues à chaque changement (repli : sondage)."""
+    if not stream.try_acquire(user.tenant_id, user.id):
+        return JSONResponse(
+            status_code=429,
+            media_type="application/problem+json",
+            headers={"Retry-After": "10"},
+            content={
+                "type": "about:blank",
+                "title": "Too Many Requests",
+                "status": 429,
+                "detail": "Trop de flux de notifications ouverts.",
+            },
+        )
+    return StreamingResponse(
+        stream.event_stream(request, user.tenant_id, user.id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

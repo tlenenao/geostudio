@@ -141,7 +141,7 @@ def test_rendered_conf_is_valid_yaml_with_two_middlewares_and_directives():
         assert directive in main and directive in embed
     assert "frame-ancestors 'self'" in main
     assert "frame-ancestors" not in embed
-    assert "https://t.example" in embed
+    assert any(tok == "https://t.example" for tok in embed.replace(";", " ").split())
 
 
 def test_refresh_writes_atomically(tmp_path, monkeypatch):

@@ -21,6 +21,7 @@ entrée utilisateur, seulement de cette constante Python, donc son
 interpolation directe dans SET LOCAL ROLE (qui n'accepte pas de paramètre
 lié) ne présente aucun risque d'injection."""
 
+import os
 from contextlib import contextmanager
 
 from sqlalchemy import text
@@ -47,6 +48,11 @@ def rls_scope(
     session.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": tenant_id})
     set_geo_limits_guc(session, geo_limits)
     session.execute(text(f"SET LOCAL ROLE {role}"))
+    # AUD-099 : plafond par requête SQL sous RLS (lectures de GET /items, tuiles, agrégats...).
+    # CORE_DB_STATEMENT_TIMEOUT_MS=0 le désactive ; remis à la valeur du serveur en sortie de scope.
+    timeout_ms = int(os.environ.get("CORE_DB_STATEMENT_TIMEOUT_MS", "60000"))
+    if timeout_ms > 0:
+        session.execute(text(f"SET LOCAL statement_timeout = {timeout_ms}"))
     try:
         yield
     finally:
@@ -55,6 +61,8 @@ def rls_scope(
         session.info.pop("geo_limits", None)
         try:
             session.execute(text("RESET ROLE"))
+            if timeout_ms > 0:
+                session.execute(text("SET LOCAL statement_timeout = DEFAULT"))
         except DBAPIError as exc:
             # Seul cas légitime : transaction déjà avortée par une erreur SQL
             # dans le scope (25P02 in_failed_sql_transaction) — le RESET

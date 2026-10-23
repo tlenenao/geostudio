@@ -5,6 +5,7 @@ import { useItemClient } from "../api/ItemClientProvider";
 import type { CrossFilterLink } from "../api/types";
 import { t } from "../i18n";
 import "../i18n/domains/widgets";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 export function CrossFilterLinkEditor({
   link,
@@ -55,8 +56,8 @@ export function CrossFilterLinkEditor({
     <div className="flex flex-col gap-2 rounded border border-rule p-2 text-xs">
       <label className="flex flex-col gap-1">
         {t("crossFilterLink.targetDatasetLabel")}
-        <select
-          className="h-9 rounded border border-control bg-surface px-2 text-ink"
+        <NativeSelect
+          className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
           value={link.targetDatasetId}
           onChange={(e) => onChange({ ...link, targetDatasetId: e.target.value })}
         >
@@ -66,25 +67,25 @@ export function CrossFilterLinkEditor({
               {d.title}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <label className="flex flex-col gap-1">
         {t("crossFilterLink.modeLabel")}
-        <select
-          className="h-9 rounded border border-control bg-surface px-2 text-ink"
+        <NativeSelect
+          className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
           value={link.mode}
           onChange={(e) => changeMode(e.target.value as "attribute" | "spatial")}
         >
           <option value="attribute">{t("crossFilterLink.modeAttributeOption")}</option>
           <option value="spatial">{t("crossFilterLink.modeSpatialOption")}</option>
-        </select>
+        </NativeSelect>
       </label>
       {link.mode === "attribute" ? (
         <>
           <label className="flex flex-col gap-1">
             {t("crossFilterLink.sourceFieldLabel")}
-            <select
-              className="h-9 rounded border border-control bg-surface px-2 text-ink"
+            <NativeSelect
+              className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
               value={link.sourceField}
               onChange={(e) => onChange({ ...link, sourceField: e.target.value })}
             >
@@ -94,12 +95,12 @@ export function CrossFilterLinkEditor({
                   {f}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <label className="flex flex-col gap-1">
             {t("crossFilterLink.targetFieldLabel")}
-            <select
-              className="h-9 rounded border border-control bg-surface px-2 text-ink"
+            <NativeSelect
+              className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
               value={link.targetField}
               onChange={(e) => onChange({ ...link, targetField: e.target.value })}
             >
@@ -109,21 +110,21 @@ export function CrossFilterLinkEditor({
                   {f}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         </>
       ) : (
         targetHasGeometry && (
           <label className="flex flex-col gap-1">
             {t("crossFilterLink.precisionLabel")}
-            <select
-              className="h-9 rounded border border-control bg-surface px-2 text-ink"
+            <NativeSelect
+              className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
               value={link.precision}
               onChange={(e) => onChange({ ...link, precision: e.target.value as "bbox" | "exact" })}
             >
               <option value="bbox">{t("crossFilterLink.precisionBboxOption")}</option>
               <option value="exact">{t("crossFilterLink.precisionExactOption")}</option>
-            </select>
+            </NativeSelect>
           </label>
         )
       )}

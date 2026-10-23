@@ -21,7 +21,7 @@ class _FakeS3Client:
         self.objects: dict[str, bytes] = {}
         self.deleted: list[str] = []
 
-    def get_object(self, *, Bucket, Key):
+    def get_object(self, *, Bucket, Key, Range=None):
         if Key not in self.objects:
             from botocore.exceptions import ClientError
 
@@ -138,6 +138,7 @@ def env():
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[attachments_routes.get_s3_client] = lambda: s3
+    app.dependency_overrides[attachments_routes.get_entity_checker] = lambda: lambda *_a: True
     api = TestClient(app)
     return api, Session, tenant, owner, reader, attachment_id, s3
 

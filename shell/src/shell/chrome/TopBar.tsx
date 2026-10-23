@@ -15,8 +15,11 @@ const Tileset3DUploadButton = lazy(() =>
 );
 import { AccountMenu } from "./AccountMenu";
 import { NotificationBell } from "./NotificationBell";
+import { SyncStatusPill } from "../../offline/SyncStatusPill";
 import { Kbd } from "../../ui/kit/Kbd";
 import { t } from "../../i18n";
+
+const HELP_URL = "https://github.com/tlenenao/geostudio/tree/main/docs/guides";
 
 export function TopBar({
   tileset3dEnabled,
@@ -68,6 +71,16 @@ export function TopBar({
         >
           <Menu aria-hidden className="size-4" />
         </button>
+        {/* AUD-118 : les guides utilisateur vivent dans le dépôt (docs/guides). */}
+        <a
+          href={HELP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-6 items-center rounded-md px-2 py-1 text-ink-2 hover:bg-sunken pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center"
+        >
+          {t("topbar.help")}
+        </a>
+        <SyncStatusPill />
         <NotificationBell />
         <AccountMenu />
       </div>

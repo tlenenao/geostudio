@@ -176,6 +176,14 @@ export type PurgeReceipt = {
   error?: string | null;
 };
 
+export type SavedSqlQuery = {
+  id: string;
+  name: string;
+  sql: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type NotificationSummary = {
   id: string;
   kind:
@@ -218,6 +226,33 @@ export type ApiKeySummary = {
 /** Seule réponse qui porte le secret (`token`), affiché une seule fois. */
 export type ApiKeyCreated = ApiKeySummary & { token: string };
 
+export type LlmUsageDay = {
+  day: string;
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+};
+export type LlmUsageSummary = {
+  dailyLimit: number | null;
+  usedToday: number;
+  days: LlmUsageDay[];
+};
+/** AUD-149 : la clé d'API n'est jamais renvoyée (`hasApiKey`). */
+export type LlmSettings = {
+  configured: boolean;
+  model?: string | null;
+  apiUrl?: string | null;
+  hasApiKey: boolean;
+  dailyTokenLimit?: number | null;
+};
+/** `apiKey` absent = conserver la clé existante. */
+export type LlmSettingsWrite = {
+  model?: string | null;
+  apiUrl?: string | null;
+  apiKey?: string | null;
+  dailyTokenLimit?: number | null;
+};
+
 export type UsageTask = {
   id: number;
   actorId: string | null;
@@ -258,6 +293,8 @@ export type QuotaUsage = {
   maxItems: number | null;
   maxCollections: number | null;
   maxStorageBytes: number | null;
+  maxUsers: number | null;
+  maxActiveRuns: number | null;
 };
 
 export type PrivilegeCatalogEntry = {
@@ -481,6 +518,12 @@ export type PopupConfig = {
 // ARC-01 : regroupement de points d'une couche `feature` (MapLibre `cluster: true`).
 // Défauts côté rendu : radius 50, maxZoom 14, label vrai.
 export type ClusterConfig = { radius?: number; maxZoom?: number; label?: boolean };
+// AUD-051 : clause de filtre par couche (ET entre clauses) compilée en filtre MapLibre.
+export type LayerFilterClause = {
+  field: string;
+  op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "in";
+  value: string | number | boolean | Array<string | number | boolean>;
+};
 export type MapLayer =
   | {
       id: string;
@@ -492,6 +535,7 @@ export type MapLayer =
       // AUD-051 : plage d'échelle (zoom MapLibre) hors de laquelle la couche est masquée.
       minZoom?: number;
       maxZoom?: number;
+      filter?: LayerFilterClause[];
       // REV-304 : champ temporel filtré par le contexte temps global (widget carte).
       timeField?: string;
       paint?: Record<string, unknown>;
@@ -518,6 +562,7 @@ export type MapLayer =
       // AUD-051 : plage d'échelle (zoom MapLibre) hors de laquelle la couche est masquée.
       minZoom?: number;
       maxZoom?: number;
+      filter?: LayerFilterClause[];
       paint?: Record<string, unknown>;
       renderAs?: "fill" | "circle" | "line";
       cluster?: ClusterConfig;
@@ -617,7 +662,8 @@ export type CollectionFieldType =
 
 // ARC-13 : domaine d'attribut (liste de valeurs admises ou plage bornée incluse).
 export type FieldDomain =
-  { type: "list"; values: (string | number)[] } | { type: "range"; min?: number; max?: number };
+  | { type: "list"; values: (string | number)[]; labels?: Record<string, string> }
+  | { type: "range"; min?: number; max?: number };
 
 export type CollectionSubtypes = {
   field: string;
@@ -629,6 +675,8 @@ export type CollectionSubtypes = {
   }[];
 };
 
+export type AttachmentKind = "image" | "audio" | "video" | "file";
+
 export type CollectionSchemaField = {
   name: string;
   type: CollectionFieldType;
@@ -638,14 +686,37 @@ export type CollectionSchemaField = {
   itemType?: CollectionFieldType;
   label?: string;
   domain?: FieldDomain;
+  // L8 : nature d'un champ média (`type: "attachment"`), pilote accept/capture du formulaire.
+  kind?: AttachmentKind;
 };
 
 export type CollectionSchema = {
   collection: string;
   pk: string;
-  geometry: { column: string; type: string | null; srid: number } | null;
+  geometry: { column: string; type: string | null; srid: number; required?: boolean } | null;
   fields: CollectionSchemaField[];
   subtypes?: CollectionSubtypes;
+};
+
+// L8 : kit de collecte (GET /collections/{id}/collect-kit, GET /public/submit/{token}/kit) : tout
+// ce qu'il faut pour saisir et valider hors-ligne. Le kit public n'a ni `collection` ni `pk`.
+export type CollectRule = {
+  id: string;
+  kind: "constraint" | "calculation";
+  field?: string;
+  expression: string;
+  message?: string;
+};
+
+export type CollectKit = {
+  version: number;
+  title: string;
+  schema: Omit<CollectionSchema, "collection" | "pk"> & Partial<CollectionSchema>;
+  rules: CollectRule[];
+  geometryRequired: boolean;
+  updatedAt: string | null;
+  etag: string;
+  collectionId?: string;
 };
 
 // REV-117 : profil exploratoire d'une collection (GET /collections/{id}/profile).
@@ -833,6 +904,8 @@ export interface ItemClient {
     pageSize: number;
   }): Promise<{ notifications: NotificationSummary[]; total: number }>;
   getUnreadNotificationCount(): Promise<number>;
+  /** Flux SSE du compte de non-lues ; se résout à la fermeture du flux (reconnexion à l'appelant). */
+  subscribeNotifications(onUnread: (count: number) => void, signal: AbortSignal): Promise<void>;
   markNotificationRead(id: string): Promise<NotificationSummary>;
   markAllNotificationsRead(): Promise<void>;
   getNotificationPreference(): Promise<NotificationPreferenceValue>;
@@ -846,6 +919,10 @@ export interface ItemClient {
     readOnly?: boolean;
   }): Promise<ApiKeyCreated>;
   revokeApiKey(id: string): Promise<ApiKeySummary>;
+  getLlmUsage(): Promise<LlmUsageSummary>;
+  getLlmSettings(): Promise<LlmSettings>;
+  putLlmSettings(body: LlmSettingsWrite): Promise<LlmSettings>;
+  deleteLlmSettings(): Promise<void>;
   listUsageTasks(params: {
     page: number;
     pageSize: number;
@@ -875,7 +952,8 @@ export interface ItemClient {
       clientTools: CopilotToolSchema[];
       surface?: CopilotSurface;
       // j11-012 : exécution d'un outil d'écriture après clic humain.
-      confirmWrite?: { name: string; arguments: Record<string, unknown> };
+      // confirmToken : émis par le cœur avec la proposition, lié aux arguments (AUD-102).
+      confirmWrite?: { name: string; arguments: Record<string, unknown>; confirmToken: string };
     },
   ): Promise<CopilotTurnResult>;
   createConfigItem(input: {
@@ -935,6 +1013,7 @@ export interface ItemClient {
   listAllExtensions(): Promise<AdminExtension[]>;
   setExtensionEnabled(id: string, enabled: boolean): Promise<void>;
   createExtension(input: ExtensionCreateInput): Promise<void>;
+  updateExtension(id: string, patch: ExtensionPatchInput): Promise<void>;
   deleteExtension(id: string): Promise<void>;
   getMetadataCatalog(): Promise<MetadataCatalog>;
   listCollections(params?: { q?: string } & PageParams): Promise<CollectionAdmin[]>;
@@ -1084,6 +1163,8 @@ export interface ItemClient {
     collectionId: string,
     fid: string,
     input: { key: string; fieldKey: string; filename: string; contentType: string },
+    // L8 : `idempotencyKey` (UUID) rend le rejeu d'une confirmation inoffensif (reprise hors-ligne).
+    opts?: { idempotencyKey?: string },
   ): Promise<AttachmentSummary>;
   listAttachments(
     collectionId: string,
@@ -1102,6 +1183,9 @@ export interface ItemClient {
   createFeature(
     collectionId: string,
     feature: GeoJSONFeatureInput,
+    // L8 : `idempotencyKey` (UUID) = opId d'une saisie hors-ligne ; un rejeu renvoie le même id.
+    // `offlineCreatedAt` : horodatage client (informatif, tracé dans l'audit).
+    opts?: { idempotencyKey?: string; offlineCreatedAt?: string },
   ): Promise<{ id: string | number }>;
   /** `opts.ifMatch` (ARC-04) : ETag lu via `getFeature` ; périmé = ApiError 412. */
   updateFeature(
@@ -1113,6 +1197,8 @@ export interface ItemClient {
   deleteFeature(collectionId: string, fid: string, opts?: { ifMatch?: string }): Promise<void>;
   /** Saisies créées par l'appelant (ARC-27), plus récentes d'abord. Optionnel : sans cœur. */
   listMyEntries?(collectionId: string, limit?: number): Promise<MyEntry[]>;
+  /** L8 : kit de collecte (schéma, règles) ; `null` = 304, le `etag` fourni est à jour. */
+  getCollectKit?(collectionId: string, etag?: string): Promise<CollectKit | null>;
   /** Import XLSForm -> collection + App de collecte mobile (ARC-27). Optionnel : sans cœur. */
   importXlsForm?(file: File): Promise<XlsFormImportResult>;
   /** Soumission publique modérée (ARC-10). Optionnels : absents d'un client sans cœur. */
@@ -1180,6 +1266,11 @@ export interface ItemClient {
   runAnalyticsSql(
     sql: string,
   ): Promise<{ columns: string[]; rows: unknown[][]; truncated: boolean }>;
+  // AUD-062 : requêtes SQL Lab enregistrées, privées à leur auteur.
+  listSavedSqlQueries(): Promise<SavedSqlQuery[]>;
+  createSavedSqlQuery(body: { name: string; sql: string }): Promise<SavedSqlQuery>;
+  updateSavedSqlQuery(id: string, body: { name: string; sql: string }): Promise<SavedSqlQuery>;
+  deleteSavedSqlQuery(id: string): Promise<void>;
   // ARC-26/30 : `entityId` = fiche d'une entité, `atlas` = une page par entité.
   createExport(
     itemId: string,
@@ -1381,6 +1472,8 @@ export type DataSource = {
   layer: string; // résolu automatiquement si datasetId est présent
   datasetId?: string;
   query: Record<string, unknown>;
+  // AUD-131 : rafraîchissement planifié en secondes (5 à 3600), absent = jamais.
+  refreshSeconds?: number;
 };
 
 export type DatasetColumnMeta = {
@@ -1477,15 +1570,34 @@ export type ExtensionManifest = {
   defaultSize: { w: number; h: number };
   permissions?: { collections: string[] | "all" };
   moduleUrl: string;
+  /** L10 (AUD-110) : version du contrat DOM du SDK (v1 = préversion, D5). */
+  sdkVersion?: number;
+  /** L10 (AUD-109) : SRI du module (sha384-…), vérifié par le navigateur avant exécution. */
+  integrity?: string | null;
+  /** Origines https déclarées ajoutées à la CSP (connect-src / img-src). */
+  connectHosts?: string[];
+  imgHosts?: string[];
 };
 
+/** Manifeste complet accepté par `POST /extensions` (validé côté cœur, `ExtensionCreate`). */
 export type ExtensionCreateInput = {
   id: string;
   tag: string;
   label: string;
   moduleUrl: string;
   defaultSize: { w: number; h: number };
+  props?: ExtensionManifest["props"];
+  events?: string[] | null;
+  actions?: string[] | null;
+  permissions?: { collections: string[] | "all" };
+  sdkVersion?: number;
+  integrity?: string | null;
+  connectHosts?: string[];
+  imgHosts?: string[];
 };
+
+/** `PATCH /extensions/{id}` : tout champ du manifeste sauf l'identifiant. */
+export type ExtensionPatchInput = Partial<Omit<ExtensionCreateInput, "id">>;
 
 export type AdminExtension = ExtensionManifest & { enabled: boolean };
 

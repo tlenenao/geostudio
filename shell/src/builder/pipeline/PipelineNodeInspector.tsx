@@ -6,6 +6,7 @@ import { fieldErrorsFor } from "./validation";
 import { CollectionParamSelect } from "./CollectionParamSelect";
 import { SecretParamSelect } from "./SecretParamSelect";
 import "../../i18n/domains/automation";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 // Édite un dict[str, str] (transform.aggregate.metrics) ou dict[str, str|null]
 // (transform.select.columns) sous forme de lignes clé/valeur. Convention
@@ -260,8 +261,8 @@ export function PipelineNodeInspector({
       return (
         <label key={name} className="flex flex-col gap-1 text-xs">
           {name}
-          <select
-            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink"
+          <NativeSelect
+            className="h-9 rounded-md border border-control bg-surface px-2 text-sm text-ink w-auto"
             value={String(params[name] ?? prop.default ?? "")}
             onChange={(e) => setField(name, e.target.value)}
             disabled={readOnly}
@@ -274,7 +275,7 @@ export function PipelineNodeInspector({
                 {v}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       );
     }

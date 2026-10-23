@@ -289,6 +289,8 @@ services:
       CORE_LLM_API_URL: ${CORE_LLM_API_URL:-}
       CORE_LLM_API_KEY: ${CORE_LLM_API_KEY:-}
       CORE_LLM_MODEL: ${CORE_LLM_MODEL:-gpt-4o-mini}
+      # Plafond quotidien de jetons LLM par tenant (AUD-106) ; vide = illimité.
+      CORE_LLM_DAILY_TOKENS: ${CORE_LLM_DAILY_TOKENS:-}
       # Garde d'egress SSRF sur l'appel LLM sortant (GAP-02, SP-45) — même
       # patron que CORE_PIPELINES_/HARVEST_/ALERTS_EGRESS_ALLOWLIST
       # ci-dessous, mais propre au copilote (app/copilot/egress.py) : ce

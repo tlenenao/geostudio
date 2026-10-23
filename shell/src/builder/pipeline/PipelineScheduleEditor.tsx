@@ -5,6 +5,7 @@ import type { PipelineRefreshPolicy } from "../../api/types";
 import { t } from "../../i18n";
 import { formatDateTime } from "../../lib/format";
 import "../../i18n/domains/automation";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 export type ScheduleForm =
   | { mode: "interval"; minutes: string }
@@ -144,8 +145,8 @@ export function PipelineScheduleEditor({
         <div className="flex flex-col gap-2 text-xs">
           <label className="flex flex-col gap-1">
             {t("pipelineSchedule.modeAria")}
-            <select
-              className="h-9 rounded border border-control bg-surface px-2 text-ink"
+            <NativeSelect
+              className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
               value={form.mode}
               onChange={(e) => {
                 const mode = e.target.value as ScheduleForm["mode"];
@@ -161,12 +162,12 @@ export function PipelineScheduleEditor({
               <option value="daily">{t("pipelineSchedule.modeDaily")}</option>
               <option value="weekly">{t("pipelineSchedule.modeWeekly")}</option>
               <option value="advanced">{t("pipelineSchedule.modeAdvanced")}</option>
-            </select>
+            </NativeSelect>
           </label>
           <label className="flex flex-col gap-1">
             {t("pipelineSchedule.timezone")}
-            <select
-              className="h-9 rounded border border-control bg-surface px-2 text-ink"
+            <NativeSelect
+              className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
               disabled={readOnly}
@@ -176,7 +177,7 @@ export function PipelineScheduleEditor({
                   {tz}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           {nextRunQuery.data?.scheduleSuspended && (
             <p role="status" className="text-xs text-warn">
@@ -219,8 +220,8 @@ export function PipelineScheduleEditor({
             <>
               <label className="flex flex-col gap-1">
                 {t("pipelineSchedule.dayAria")}
-                <select
-                  className="h-9 rounded border border-control bg-surface px-2 text-ink"
+                <NativeSelect
+                  className="h-9 rounded border border-control bg-surface px-2 text-ink w-auto"
                   value={form.day}
                   onChange={(e) =>
                     handleSetForm({ mode: "weekly", day: e.target.value, time: form.time })
@@ -232,7 +233,7 @@ export function PipelineScheduleEditor({
                       {label}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="flex flex-col gap-1">
                 {t("pipelineSchedule.executionTimeLabel")}

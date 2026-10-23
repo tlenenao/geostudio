@@ -43,6 +43,7 @@ from app.attachments.routes import get_attachments_bucket, get_s3_client
 from app.audit.writer import write_audit
 from app.auth.dependency import get_current_user, get_current_user_optional, read_post
 from app.bbox import parse_bbox_floats
+from app.collect import repository as collect_ops
 from app.collections.domains import with_attribute_rules
 from app.collections.introspection import TableNotFound, hide_sensitive_columns
 from app.collections.repository import get_access_facts, list_visible_collections
@@ -65,6 +66,7 @@ from app.features.repository import CursorError, FilterError, _property_columns
 from app.features.validation import validate_for_write
 from app.filter_values import fold_query_filters
 from app.history import service as history
+from app.i18n_core import with_default_tz
 from app.ogc_crs import SUPPORTED_EPSG, crs_uri
 from app.roles.guards import has_privilege, require_privilege
 from app.roles.privileges import Privilege
@@ -215,6 +217,22 @@ def get_rls_scope(geo_limits=Depends(get_request_geo_limits)):  # overridé en t
     from app.features.rls import rls_scope
 
     return functools.partial(rls_scope, geo_limits=geo_limits)
+
+
+def get_feature_exists(
+    introspect=Depends(get_introspector),
+    repo=Depends(get_features_repo),
+    rls=Depends(get_rls_scope),
+):
+    """Contrôle d'existence d'une ligne pour app.attachments (M1) : même porte que la lecture
+    (RLS + limites géographiques) ; ne rend jamais la ligne."""
+
+    def exists(session, col, fid) -> bool:
+        info = introspect(session, col.table_name)
+        with rls(session, col.tenant_id):
+            return repo.get_feature(session, info, fid=str(fid)) is not None
+
+    return exists
 
 
 def get_masked_for_user(
@@ -569,7 +587,7 @@ def aggregate_features(
                 tenant_id=col.tenant_id,
                 collection_id=col.id,
                 table_info=info,
-                request=body,
+                request=with_default_tz(body, getattr(user, "timezone", None)),
                 masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
@@ -674,7 +692,7 @@ def export_collection_aggregate(
                 tenant_id=col.tenant_id,
                 collection_id=col.id,
                 table_info=info,
-                request=body,
+                request=with_default_tz(body, getattr(user, "timezone", None)),
                 masked_fields=masked_fields,
             )
         except UnknownAggregateField as exc:
@@ -683,8 +701,10 @@ def export_collection_aggregate(
             ) from exc
     finally:
         conn.close()
-    content = rows_to_format(rows, format=format, columns=aggregate_columns(body, category_key))
-    filename = export_filename(col.title, format=format)
+    content = rows_to_format(
+        rows, format=format, columns=aggregate_columns(body, category_key), tz=user.timezone
+    )
+    filename = export_filename(col.title, format=format, tz=user.timezone)
     write_audit(
         session,
         tenant_id=col.tenant_id,
@@ -1019,6 +1039,8 @@ def create_feature(
     payload: dict,
     request: Request,
     response: Response,
+    idempotency_key: str | None = Header(default=None),
+    x_gs_offline_created_at: str | None = Header(default=None),
     user=Depends(get_current_user),
     session: Session = Depends(get_session, scope="function"),
     introspect=Depends(get_introspector),
@@ -1027,6 +1049,30 @@ def create_feature(
     relations=Depends(get_relation_hooks),
 ):
     col = _get_writable(session, user, collection_id)
+    # L8 : rejeu d'une saisie hors-ligne. Réservé AVANT la validation (un rejeu ne doit pas
+    # être refusé par un schéma qui a évolué depuis) et dans la même transaction que
+    # l'écriture : tout échec ultérieur annule aussi la réservation.
+    op_key = collect_ops.parse_key(idempotency_key)
+    claimed = None
+    if op_key:
+        claimed, replay = collect_ops.claim(
+            session,
+            tenant_id=col.tenant_id,
+            collection_id=col.id,
+            actor_id=user.id,
+            kind="feature",
+            client_op_id=op_key,
+        )
+        if replay:
+            fid = (claimed.result or {}).get("fid")
+            if fid is None:  # réservation sans résultat : ne peut pas être committée
+                raise HTTPException(status_code=409, detail="idempotent operation in progress")
+            response.status_code = 200
+            response.headers["Idempotent-Replay"] = "true"
+            response.headers["Location"] = str(
+                request.url_for("get_single_feature", collection_id=col.id, fid=str(fid))
+            )
+            return {"id": fid}
     info = _validated(introspect, session, col, payload)
     relations.check_write(session, user, col, payload.get("properties") or {}, None, rls)
     try:
@@ -1056,10 +1102,17 @@ def create_feature(
         after=after,
         actor_id=user.id,
     )
+    if claimed is not None:
+        collect_ops.record_result(session, claimed, {"fid": fid})
     session.execute(
         text("UPDATE collections SET feature_count = feature_count + 1 WHERE id = :id"),
         {"id": col.id},
     )
+    audit_payload: dict = {"collection": col.id, "fid": str(fid)}
+    if op_key:
+        audit_payload["clientOpId"] = op_key
+    if x_gs_offline_created_at:  # informatif, jamais fiable (horodatage client)
+        audit_payload["offline"] = {"createdAt": x_gs_offline_created_at[:40]}
     # REV-016 : aligné sur col.tenant_id — même patron que les write_audit
     # voisins de ce fichier (export.run, analytics.sql exceptés, ceux-là
     # n'ont pas de collection résolue en amont).
@@ -1071,7 +1124,7 @@ def create_feature(
         action="feature.create",
         object_type="feature",
         object_id=str(fid),
-        payload={"collection": col.id, "fid": str(fid)},
+        payload=audit_payload,
     )
     response.headers["Location"] = str(
         request.url_for("get_single_feature", collection_id=col.id, fid=str(fid))

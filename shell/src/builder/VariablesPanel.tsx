@@ -4,6 +4,7 @@ import type { Variable, VariableType } from "../api/types";
 import { t } from "../i18n";
 import { Button } from "../ui/kit/Button";
 import "../i18n/domains/widgets";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 const TYPE_LABELS: Record<VariableType, string> = {
   string: t("variablesPanel.typeString"),
@@ -121,9 +122,9 @@ export function VariablesPanel({
               others={variables.filter((x) => x.id !== v.id).map((x) => x.name)}
               onCommit={(name) => rename(v.id, name)}
             />
-            <select
+            <NativeSelect
               aria-label={t("variablesPanel.typeAria", { id: v.id })}
-              className="rounded border border-rule px-1"
+              className="rounded border border-rule px-1 w-auto"
               value={type}
               onChange={(e) => setType(v.id, e.target.value as VariableType)}
             >
@@ -132,7 +133,7 @@ export function VariablesPanel({
                   {TYPE_LABELS[t]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             {type === "string" && (
               <input
                 aria-label={t("variablesPanel.initialValueAria", { id: v.id })}

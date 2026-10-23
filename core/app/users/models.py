@@ -42,6 +42,9 @@ class User(Base):
     # sur ce user_id est un échec explicite, pas une double écriture
     # silencieuse) et à l'affichage admin ("compte effacé le …").
     erased_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # AUD-115 (migration 0180) : langue (`fr`|`en`) et fuseau IANA ; NULL = défaut d'instance / UTC.
+    locale: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # AUD-091 : plafond posé par une clé d'API pour la requête en cours ; non
     # persisté (attributs de classe non annotés, ignorés par le mapping), porté

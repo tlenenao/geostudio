@@ -176,6 +176,16 @@ export function AdminInfrastructurePage() {
                         usage.maxCollections,
                       ],
                       [
+                        usage.maxUsers === null
+                          ? t("infrastructure.usageUsers", { count: usage.userCount })
+                          : t("infrastructure.usageUsersWithLimit", {
+                              count: usage.userCount,
+                              limit: usage.maxUsers,
+                            }),
+                        usage.userCount,
+                        usage.maxUsers,
+                      ],
+                      [
                         usage.maxStorageBytes === null
                           ? `${t("infrastructure.usageStorage", { size: formatBytes(usage.storageBytes) })} (${t("infrastructure.usageNoLimit")})`
                           : t("infrastructure.usageStorageWithLimit", {
@@ -206,6 +216,11 @@ export function AdminInfrastructurePage() {
                       )}
                     </div>
                   ))}
+                  {usage.maxActiveRuns !== null && (
+                    <p>
+                      {t("infrastructure.usageActiveRunsLimit", { limit: usage.maxActiveRuns })}
+                    </p>
+                  )}
                 </div>
               )}
               {launch.isError && (

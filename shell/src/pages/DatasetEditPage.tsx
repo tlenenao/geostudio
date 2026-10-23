@@ -34,6 +34,7 @@ import "../i18n/domains/admin";
 import { useUrlTab } from "../lib/useUrlTab";
 import "../i18n/domains/misc";
 import { formatDateTime } from "../lib/format";
+import { NativeSelect } from "../ui/kit/NativeSelect";
 
 export function DatasetEditPage({ pk }: { pk: string }) {
   const tabProps = useUrlTab("dataset");
@@ -286,7 +287,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                 )}
                 <label className="mt-2 flex flex-col gap-1 text-xs">
                   {t("datasetEdit.timeFieldLabel")}
-                  <select
+                  <NativeSelect
                     className="h-9 w-full rounded border border-control bg-surface px-2 text-xs text-ink"
                     value={draft.timeField ?? ""}
                     onChange={(e) =>
@@ -299,7 +300,7 @@ export function DatasetEditPage({ pk }: { pk: string }) {
                         {f.name}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="flex items-center gap-2 text-xs">
                   <input

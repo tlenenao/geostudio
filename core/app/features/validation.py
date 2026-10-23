@@ -73,6 +73,8 @@ def _effective_domain(info: TableInfo, props: dict, name: str) -> dict | None:
 
 
 def _outside_domain(domain: dict, value) -> bool:
+    if isinstance(value, list):  # colonne tableau : chaque élément doit être dans le domaine
+        return any(_outside_domain(domain, v) for v in value)
     if domain["type"] == "list":
         return value not in domain["values"]
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -132,6 +134,8 @@ def validate_feature(info: TableInfo, feature: dict) -> list[dict]:
             errors.append(_err(col.name, "missing_required", f"'{col.name}' is required"))
 
     geometry = feature.get("geometry")
+    if geometry is None and info.geometry_required and info.geometry_column:
+        errors.append(_err("geometry", "missing_required", "geometry is required"))
     if geometry is not None:
         if not isinstance(geometry, dict):
             errors.append(

@@ -149,6 +149,19 @@ export const map = {
   "layersPanel.clusterRadius": "Rayon de regroupement (pixels)",
   "layersPanel.minZoom": "Zoom min",
   "layersPanel.maxZoom": "Zoom max",
+  "layersPanel.filter": "Filtre de la couche",
+  "layersPanel.filterField": "Champ du filtre",
+  "layersPanel.filterOp": "Opérateur du filtre",
+  "layersPanel.filterValue": "Valeur du filtre",
+  "layersPanel.filterAdd": "Ajouter une condition",
+  "layersPanel.filterRemove": "Retirer la condition",
+  "layersPanel.filterOpEq": "=",
+  "layersPanel.filterOpNe": "≠",
+  "layersPanel.filterOpGt": ">",
+  "layersPanel.filterOpGte": "≥",
+  "layersPanel.filterOpLt": "<",
+  "layersPanel.filterOpLte": "≤",
+  "layersPanel.filterOpIn": "dans la liste",
   "layersPanel.clusterMaxZoom": "Zoom max du regroupement",
   "layersPanel.clusterLabel": "Afficher le nombre de points",
   "layersPanel.clusterHeatmapWarning":
@@ -310,6 +323,9 @@ export const map = {
   "popupEditor.fieldsListButton": "Liste de champs",
   "popupEditor.advancedButton": "Avancé (gabarit)",
   "popupEditor.templateLabel": "Gabarit",
+  "popupEditor.templateHelpAria": "Aide sur le gabarit de popup",
+  "popupEditor.templateHelpBody":
+    "Texte en markdown ; chaque ${expression} est évaluée en CEL. Exemple : **${record.nom}** : ${record.population} habitants. Les variables d'une app sont accessibles via vars.nom.",
   "popupEditor.exprHint":
     "Markdown ; chaque ${expression} est évaluée sur l'entité cliquée, par exemple ${record.nom}.",
 

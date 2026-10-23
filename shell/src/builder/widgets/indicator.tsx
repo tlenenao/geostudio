@@ -21,6 +21,7 @@ import { formatNumber } from "../../lib/format";
 import { SampleBadge } from "./SampleBadge";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import "../../i18n/domains/widgets";
+import { NativeSelect } from "../../ui/kit/NativeSelect";
 
 const EChart = lazy(() => import("../EChart").then((m) => ({ default: m.EChart })));
 
@@ -56,6 +57,7 @@ function useKpiComparison(
   sparklineEnabled: boolean,
   agg: string,
   field: string,
+  origin?: DataSource,
 ): KpiComparison {
   const client = useItemClient();
   const analyticsCtx = useAnalyticsContext();
@@ -79,6 +81,7 @@ function useKpiComparison(
           analyticsCtx,
           timeRange as { from: string; to: string },
           { agg, field: field || undefined },
+          origin,
         )
       : null;
   const valueQuery = useQuery({
@@ -99,6 +102,7 @@ function useKpiComparison(
         analyticsCtx,
         referenceRange,
         { agg, field: field || undefined },
+        origin,
       )
     : null;
   const referenceQuery = useQuery({
@@ -122,6 +126,7 @@ function useKpiComparison(
             agg,
             field: field || undefined,
           },
+          origin,
         )
       : null;
   const sparklineQuery = useQuery({
@@ -277,14 +282,14 @@ export function registerIndicatorWidget(): void {
         </label>
         <label className="flex flex-col gap-1">
           {t("widgetIndicator.aggConfig")}
-          <select
-            className="h-9 rounded-md border border-rule px-2"
+          <NativeSelect
+            className="h-9 rounded-md border border-rule px-2 w-auto"
             value={String(props.agg ?? "count")}
             onChange={(e) => onChange({ ...props, agg: e.target.value })}
           >
             <option value="count">{t("widgetIndicator.aggCount")}</option>
             <option value="sum">{t("widgetIndicator.aggSum")}</option>
-          </select>
+          </NativeSelect>
         </label>
         <label className="flex flex-col gap-1">
           {t("widgetIndicator.fieldLabel")}
@@ -296,15 +301,15 @@ export function registerIndicatorWidget(): void {
         </label>
         <label className="flex flex-col gap-1">
           {t("widgetIndicator.compareToLabel")}
-          <select
-            className="h-9 rounded-md border border-rule px-2"
+          <NativeSelect
+            className="h-9 rounded-md border border-rule px-2 w-auto"
             value={String(props.referencePeriod ?? "")}
             onChange={(e) => onChange({ ...props, referencePeriod: e.target.value || undefined })}
           >
             <option value="">{t("widgetIndicator.compareNone")}</option>
             <option value="previous">{t("widgetIndicator.periodPrevious")}</option>
             <option value="sameLastYear">{t("widgetIndicator.periodSameLastYear")}</option>
-          </select>
+          </NativeSelect>
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -348,6 +353,7 @@ export function registerIndicatorWidget(): void {
         sparklineEnabled,
         agg,
         field,
+        data?.resolvedSource,
       );
 
       if (!data && props.dataSourceId) return <SourceMissing />;

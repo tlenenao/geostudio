@@ -8,17 +8,32 @@ import { useInstanceInfo } from "../../api/hooks";
 import { useBusAction } from "../ActionBusContext";
 import { FeatureValidationError } from "../../api/itemClient";
 import { ApiError } from "../../api/ApiError";
-import type { CollectionSchema, DataRecord, DataSource, FieldDomain } from "../../api/types";
+import type {
+  AttachmentKind,
+  CollectionSchema,
+  DataRecord,
+  DataSource,
+  FieldDomain,
+} from "../../api/types";
 import type { WidgetContext } from "../registry";
-import { plural, t } from "../../i18n";
+import { getLocale, plural, t } from "../../i18n";
 import { Button } from "../../ui/kit/Button";
 import { ConfirmDialog } from "../../ui/kit/ConfirmDialog";
+import { compressImage } from "../../offline/compressImage";
 import { FeatureHistoryPanel } from "./FeatureHistoryPanel";
+import { ACCURACY_WARN_M, GeometryInput, lineKind, type GeometryIssue } from "./GeometryInput";
 import { RelatedRecordsPanel } from "./RelatedRecordsPanel";
 import { LoadingState } from "../../ui/kit/LoadingState";
 import { evaluateExpression, type ExprContext } from "../expr";
 import { formatDateTime } from "../../lib/format";
 import "../../i18n/domains/widgets";
+import "../../i18n/domains/misc";
+import { CoreUnreachableError } from "../../api/CoreUnreachableError";
+import { OutboxLimitError, listBlobs } from "../../offline/outbox";
+import { blobToFile } from "../../offline/sync";
+import type { OutboxEntry } from "../../offline/db";
+import { OutboxList } from "../../offline/OutboxList";
+import { useOutbox } from "../../offline/useOutbox";
 
 export type FormField = {
   name: string;
@@ -35,11 +50,49 @@ export type FormField = {
   // ARC-27 (XLSForm) : aide sous le libellé et condition CEL de pertinence (`relevant`),
   // évaluée sur les valeurs saisies ; un champ non pertinent est masqué, non validé, non envoyé.
   hint?: string;
+  // AUD-115 c : traductions du libellé/de l'aide (XLSForm `label::en`), par langue de l'interface.
+  labels?: Record<string, string>;
+  hints?: Record<string, string>;
   visibleWhen?: string;
   // ARC-13 : choix imposés par un domaine `list` ou par les sous-types (calculé à l'affichage
   // depuis le schéma courant, jamais persisté dans la config du widget).
   options?: { value: string | number; label: string }[];
+  // L8 (XLSForm `select_multiple`) : plusieurs valeurs parmi `options`, stockées en tableau.
+  multiple?: boolean;
+  // L8 : nature d'un champ média (reprise du schéma courant si absente de la config).
+  kind?: AttachmentKind;
 };
+
+// L8 : `accept`/`capture` du sélecteur de fichier selon la nature du média. `capture` ouvre
+// directement la caméra/le micro sur mobile ; un fichier générique n'en impose aucun.
+export function mediaAttrs(kind: AttachmentKind | undefined): {
+  accept?: string;
+  capture?: "environment" | "user";
+} {
+  switch (kind) {
+    case "image":
+      return { accept: "image/*", capture: "environment" };
+    case "video":
+      return { accept: "video/*", capture: "environment" };
+    case "audio":
+      return { accept: "audio/*", capture: "user" };
+    default:
+      return {};
+  }
+}
+
+/** Libellé/aide dans la langue active de l'interface (repli : texte source). */
+export function localizeField(f: FormField): FormField {
+  const locale = getLocale();
+  const label = f.labels?.[locale];
+  const hint = f.hints?.[locale];
+  if (label === undefined && hint === undefined) return f;
+  return {
+    ...f,
+    ...(label !== undefined ? { label } : {}),
+    ...(hint !== undefined ? { hint } : {}),
+  };
+}
 
 // ARC-13 : champs enrichis des domaines/sous-types du schéma courant ; le domaine du sous-type
 // sélectionné l'emporte sur celui du champ. Une plage devient min/max (validés par validateField).
@@ -60,7 +113,10 @@ export function applyDomains(
     const dom = current?.domains?.[f.name] ?? domains.get(f.name);
     if (!dom) return f;
     if (dom.type === "list") {
-      return { ...f, options: dom.values.map((v) => ({ value: v, label: String(v) })) };
+      return {
+        ...f,
+        options: dom.values.map((v) => ({ value: v, label: dom.labels?.[String(v)] ?? String(v) })),
+      };
     }
     return {
       ...f,
@@ -68,6 +124,13 @@ export function applyDomains(
       ...(dom.max !== undefined ? { max: dom.max } : {}),
     };
   });
+}
+
+function schemaKind(
+  schema: CollectionSchema | undefined,
+  name: string,
+): AttachmentKind | undefined {
+  return schema?.fields.find((x) => x.name === name)?.kind;
 }
 
 function fieldsFromSchema(schema: CollectionSchema): FormField[] {
@@ -80,6 +143,7 @@ function fieldsFromSchema(schema: CollectionSchema): FormField[] {
     required: f.required,
     ...(f.maxLength !== undefined ? { maxLength: f.maxLength } : {}),
     ...(f.values !== undefined ? { values: f.values } : {}),
+    ...(f.kind ? { kind: f.kind } : {}),
   }));
 }
 
@@ -318,8 +382,12 @@ async function uploadAttachment(
   });
 }
 
-function validateField(field: FormField, value: unknown): string | null {
-  const empty = value === undefined || value === null || value === "";
+export function validateField(field: FormField, value: unknown): string | null {
+  const empty =
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    (Array.isArray(value) && !value.length);
   // Un champ attachment ne passe jamais par values/onChange
   // (AttachmentFieldInput gère son propre état via useQuery, cf. Task 11) —
   // required ne peut donc jamais être satisfait pour ce type, y compris pour
@@ -348,7 +416,7 @@ function validateField(field: FormField, value: unknown): string | null {
   return null;
 }
 
-const fieldInputCls = "h-9 rounded-md border border-rule px-2 text-sm";
+export const fieldInputCls = "h-9 rounded-md border border-rule px-2 text-sm";
 
 function AttachmentFieldInput({
   collectionId,
@@ -358,7 +426,9 @@ function AttachmentFieldInput({
   labelledBy,
   queued,
   onQueue,
+  kind,
 }: {
+  kind?: AttachmentKind;
   collectionId: string;
   fid: string | null;
   fieldKey: string;
@@ -380,7 +450,8 @@ function AttachmentFieldInput({
 
   async function handleFiles(files: FileList | null) {
     if (!files || fid === null) return;
-    for (const file of Array.from(files)) {
+    for (const original of Array.from(files)) {
+      const file = kind === "image" ? await compressImage(original) : original;
       setFileStatus((s) => ({ ...s, [file.name]: "uploading" }));
       try {
         await uploadAttachment(client, collectionId, fid, fieldKey, file);
@@ -418,10 +489,14 @@ function AttachmentFieldInput({
       <div className="flex flex-col gap-1">
         <input
           type="file"
-          accept="image/*"
-          capture="environment"
+          {...mediaAttrs(kind ?? "image")}
           aria-labelledby={labelledBy}
-          onChange={(e) => onQueue(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            const picked = e.target.files?.[0] ?? null;
+            // L8 : une photo est réduite dès le choix (file d'attente, quota, zone à faible débit).
+            if (picked && (kind ?? "image") === "image") void compressImage(picked).then(onQueue);
+            else onQueue(picked);
+          }}
         />
         {queued && (
           <p className="text-xs text-ink-2">
@@ -476,6 +551,7 @@ function AttachmentFieldInput({
       <input
         type="file"
         multiple
+        {...(kind ? { accept: mediaAttrs(kind).accept } : {})}
         aria-label={t("widgetForm.addFilesAria")}
         disabled={Object.values(fileStatus).some((s) => s === "uploading")}
         onChange={(e) => void handleFiles(e.target.files)}
@@ -493,7 +569,53 @@ function AttachmentFieldInput({
   );
 }
 
-function FieldInput({
+// L8 : `select_multiple` — cases à cocher dans un groupe nommé par le libellé du champ.
+export function MultiChoiceInput({
+  field,
+  value,
+  onChange,
+  onBlur,
+  error,
+}: {
+  field: FormField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  onBlur: () => void;
+  error: string | null;
+}) {
+  const picked = Array.isArray(value) ? (value as (string | number)[]) : [];
+  return (
+    <div
+      id={`field-${field.name}`}
+      role="group"
+      aria-labelledby={`field-${field.name}-label`}
+      {...(error ? { "aria-invalid": "true" as const } : {})}
+      {...(field.required ? { "aria-required": "true" as const } : {})}
+      tabIndex={-1}
+      className="flex flex-col gap-1"
+    >
+      {(field.options ?? []).map((o) => (
+        <label key={String(o.value)} className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={picked.some((p) => String(p) === String(o.value))}
+            onChange={(e) =>
+              onChange(
+                e.target.checked
+                  ? [...picked, o.value]
+                  : picked.filter((p) => String(p) !== String(o.value)),
+              )
+            }
+            onBlur={onBlur}
+          />
+          {o.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+export function FieldInput({
   field,
   value,
   onChange,
@@ -677,7 +799,8 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const queryClient = useQueryClient();
   const baseFields = ((props.fields as FormField[] | undefined) ?? [])
     .filter((f) => !f.hidden && f.type !== "unsupported" && f.type !== "list")
-    .sort((a, b) => a.order - b.order);
+    .sort((a, b) => a.order - b.order)
+    .map(localizeField);
   // Les colonnes `list` (non éditables ici) sont renvoyées telles que chargées :
   // le PUT remplace tout, les omettre les mettrait à NULL (c01-004).
   const allFields = ((props.fields as FormField[] | undefined) ?? []).filter(
@@ -688,6 +811,13 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
   const mobile = props.mobile === true;
   const showMyEntries = props.showMyEntries === true;
   const [pendingFiles, setPendingFiles] = useState<Record<string, File | null>>({});
+  // L8 : identité d'opération créée à l'ouverture du brouillon (= Idempotency-Key de la création,
+  // en ligne comme en file) ; renouvelée à chaque nouvelle saisie.
+  const opIdRef = useRef<string>(crypto.randomUUID());
+  // Saisie rouverte depuis la file : supprimée de la file quand l'envoi direct réussit.
+  const queuedRef = useRef<{ opId: string; createdAt: number } | null>(null);
+  const outbox = useOutbox();
+  const [queueNotice, setQueueNotice] = useState<string | null>(null);
   const [geoError, setGeoError] = useState(false);
   function locate() {
     setGeoError(false);
@@ -696,11 +826,18 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       (pos) => {
         setLon(String(pos.coords.longitude));
         setLat(String(pos.coords.latitude));
+        setAccuracy(typeof pos.coords.accuracy === "number" ? pos.coords.accuracy : null);
       },
       () => setGeoError(true),
       { enableHighAccuracy: true, timeout: 15000 },
     );
   }
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  // L8 : géométrie ligne/polygone (GeometryInput) ; `geomKey` remonte le composant quand la
+  // géométrie est remplacée de l'extérieur (reset, chargement d'un enregistrement).
+  const [geomIssue, setGeomIssue] = useState<GeometryIssue>(null);
+  const [geomKey, setGeomKey] = useState(0);
+  const [geometryError, setGeometryError] = useState<string | null>(null);
   const [lon, setLon] = useState<string>("");
   const [lat, setLat] = useState<string>("");
   const [loadedGeometry, setLoadedGeometry] = useState<unknown>(null);
@@ -772,7 +909,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         else await client.updateFeature(...args);
         fid = editingId;
       } else {
-        fid = (await client.createFeature(collectionId, feature)).id;
+        fid = (
+          await client.createFeature(collectionId, feature, { idempotencyKey: opIdRef.current })
+        ).id;
       }
       // Photos mises en file : envoyées une fois la saisie identifiée (création ou reprise après
       // échec). Un échec ne fait pas échouer la saisie déjà enregistrée ; il est remonté
@@ -830,6 +969,7 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         });
         if (!edited.has("__geom")) {
           setLoadedGeometry(f.geometry ?? null);
+          setGeomKey((k) => k + 1);
           const g = f.geometry as { type?: string; coordinates?: number[] } | null;
           if (geometryType === "Point" && g?.type === "Point" && Array.isArray(g.coordinates)) {
             setLon(String(g.coordinates[0]));
@@ -856,10 +996,17 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setLon("");
     setLat("");
     setLoadedGeometry(null);
+    setGeomKey((k) => k + 1);
+    setGeomIssue(null);
+    setGeometryError(null);
+    setAccuracy(null);
     setEditingId(null);
     setSummaryNames(null);
     setPendingFiles({});
     setGeoError(false);
+    opIdRef.current = crypto.randomUUID();
+    queuedRef.current = null;
+    setQueueNotice(null);
     write.reset();
   }
   useBusAction(ctx.bus, ctx.widgetId, "reset", resetTo);
@@ -878,6 +1025,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     setGenericError(false);
     setSummaryNames(null);
     setLoadedGeometry(record.geometry ?? null);
+    setGeomKey((k) => k + 1);
+    setGeomIssue(null);
+    setGeometryError(null);
     const geom = record.geometry as { type?: string; coordinates?: number[] } | undefined;
     if (geometryType === "Point" && geom?.type === "Point" && Array.isArray(geom.coordinates)) {
       setLon(String(geom.coordinates[0]));
@@ -897,6 +1047,62 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     return serverErrors[field.name] ?? null;
   }
 
+  async function queueEntry(properties: Record<string, unknown>, geometry: unknown) {
+    if (!outbox) return;
+    const blobs = Object.entries(pendingFiles)
+      .filter((kv): kv is [string, File] => kv[1] != null)
+      .map(([fieldKey, file]) => {
+        const f = allFields.find((x) => x.name === fieldKey);
+        return {
+          fieldKey,
+          kind: f?.kind ?? schemaKind(schemaQuery.data, fieldKey) ?? "image",
+          file,
+        };
+      });
+    try {
+      await outbox.enqueue(
+        { opId: opIdRef.current, collectionId, payload: { properties, geometry }, blobs },
+        queuedRef.current?.createdAt,
+      );
+    } catch (err) {
+      setGenericError(false);
+      setQueueNotice(
+        err instanceof OutboxLimitError
+          ? err.code === "entries"
+            ? t("outbox.limitEntries")
+            : err.code === "bytes"
+              ? t("outbox.limitBytes")
+              : t("outbox.limitPhotos")
+          : t("outbox.storageError"),
+      );
+      return; // le formulaire reste ouvert : rien n'est perdu
+    }
+    resetTo();
+    setQueueNotice(t("outbox.queuedNotice"));
+    ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
+    // Demande de stockage persistant (best-effort) : évite l'éviction de la file par le navigateur.
+    void navigator.storage?.persist?.();
+  }
+
+  // Rouvre une saisie de la file (sans fiche serveur) : même opId, même horodatage d'origine.
+  async function handleEditQueued(entry: OutboxEntry) {
+    const stored = await listBlobs(entry.ownerKey, entry.opId);
+    resetTo();
+    opIdRef.current = entry.opId;
+    queuedRef.current = { opId: entry.opId, createdAt: entry.createdAt };
+    setValues({ ...entry.payload.properties });
+    const files: Record<string, File | null> = {};
+    for (const b of stored) files[b.fieldKey] = blobToFile(b);
+    setPendingFiles(files);
+    const g = entry.payload.geometry as { type?: string; coordinates?: number[] } | null;
+    setLoadedGeometry(g ?? null);
+    setGeomKey((k) => k + 1);
+    if (geometryType === "Point" && g?.type === "Point" && Array.isArray(g.coordinates)) {
+      setLon(String(g.coordinates[0]));
+      setLat(String(g.coordinates[1]));
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     // REV-367 d : jamais d'écriture sans If-Match tant que l'ETag est en cours de lecture.
@@ -909,11 +1115,21 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
     const invalidNow = fields.filter((f) => validateField(f, values[f.name]) !== null);
     setSummaryNames(invalidNow.map((f) => f.name));
     const firstInvalid = invalidNow[0];
+    // L8 : géométrie requise (schéma courant) ou incomplète (ligne < 2 points, polygone < 3).
+    const pointGeometry =
+      geometryType === "Point" && lon !== "" && lat !== ""
+        ? { type: "Point", coordinates: [Number(lon), Number(lat)] }
+        : null;
+    const geometryNow = geometryType === "Point" ? pointGeometry : loadedGeometry;
+    const geometryMissing =
+      !!geometryType && schemaQuery.data?.geometry?.required === true && geometryNow === null;
+    setGeometryError(geometryMissing ? t("widgetForm.geometryRequired") : null);
     if (firstInvalid) {
       // REV-223 : focus sur le premier champ invalide (les contrôles portent id=field-<name>).
       document.getElementById(`field-${firstInvalid.name}`)?.focus();
       return;
     }
+    if (geomIssue !== null || geometryMissing) return;
     setServerErrors({});
     setGenericError(false);
     setAttachmentFailed(false);
@@ -922,14 +1138,20 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
       if (values[f.name] !== undefined && !irrelevant.has(f.name))
         properties[f.name] = values[f.name];
     });
-    const geometry =
-      geometryType === "Point"
-        ? lon !== "" && lat !== ""
-          ? { type: "Point", coordinates: [Number(lon), Number(lat)] }
-          : null
-        : loadedGeometry;
+    // L8 : précision du fix GPS, seulement si la collection déclare la colonne `gps_accuracy`.
+    if (accuracy !== null && allFields.some((f) => f.name === "gps_accuracy"))
+      properties.gps_accuracy = Math.round(accuracy);
+    const geometry = geometryNow;
+    // L8 : hors réseau, une CRÉATION part dans la file locale (jamais une modification : elle
+    // exige l'ETag courant). Le formulaire n'est vidé qu'une fois l'écriture locale réussie.
+    const queueable = editingId === null && outbox !== null;
+    if (queueable && navigator.onLine === false) {
+      await queueEntry(properties, geometry);
+      return;
+    }
     try {
       const { fid, failed } = await write.mutateAsync({ properties, geometry });
+      if (queuedRef.current && outbox) await outbox.remove(queuedRef.current.opId);
       void queryClient.invalidateQueries({ queryKey: ["datasource"] });
       void queryClient.invalidateQueries({ queryKey: ["my-entries", collectionId] });
       ctx.bus?.emit(ctx.widgetId ?? "", "submitted", { properties });
@@ -948,6 +1170,10 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
         void syncFromServer(editingId, false);
       }
     } catch (err) {
+      if (queueable && err instanceof CoreUnreachableError) {
+        await queueEntry(properties, geometry);
+        return;
+      }
       if (err instanceof ApiError && err.status === 412 && editingId !== null) {
         // ARC-04 : modifié ailleurs depuis la lecture — message + rechargement des valeurs.
         setConflict(true);
@@ -1022,7 +1248,34 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           );
         })()}
       {fields.map((f) =>
-        f.type === "attachment" ? (
+        f.multiple && f.options ? (
+          <div key={f.name} className="flex flex-col gap-1">
+            <span id={`field-${f.name}-label`}>
+              {f.label}
+              {f.required ? " *" : ""}
+            </span>
+            {f.hint && <span className="text-xs text-ink-2">{f.hint}</span>}
+            <MultiChoiceInput
+              field={f}
+              value={values[f.name]}
+              onChange={(v) => {
+                editedRef.current.add(f.name);
+                setValues((old) => ({ ...old, [f.name]: v }));
+              }}
+              onBlur={() => setTouched((t) => ({ ...t, [f.name]: true }))}
+              error={errorFor(f)}
+            />
+            {errorFor(f) && (
+              <span
+                id={`field-${f.name}-error`}
+                role={summaryNames?.length ? undefined : "alert"}
+                className="text-xs text-danger"
+              >
+                {errorFor(f)}
+              </span>
+            )}
+          </div>
+        ) : f.type === "attachment" ? (
           <div key={f.name} className="flex flex-col gap-1">
             <span id={`field-${f.name}-label`}>
               {f.label}
@@ -1035,6 +1288,9 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
               fieldKey={f.name}
               client={client}
               labelledBy={`field-${f.name}-label`}
+              {...((f.kind ?? schemaKind(schemaQuery.data, f.name))
+                ? { kind: (f.kind ?? schemaKind(schemaQuery.data, f.name))! }
+                : {})}
               {...(mobile
                 ? {
                     queued: pendingFiles[f.name] ?? null,
@@ -1083,6 +1339,24 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           </label>
         ),
       )}
+      {lineKind(geometryType) && (
+        <GeometryInput
+          key={geomKey}
+          geometryType={geometryType!}
+          value={loadedGeometry}
+          onChange={(g, issue) => {
+            editedRef.current.add("__geom");
+            setLoadedGeometry(g);
+            setGeomIssue(issue);
+            setGeometryError(null);
+          }}
+        />
+      )}
+      {geometryError && (
+        <p role="alert" className="text-xs text-danger">
+          {geometryError}
+        </p>
+      )}
       {mobile && geometryType === "Point" && (
         <div className="flex flex-col gap-1">
           {/* eslint-disable-next-line geostudio/panel-trigger-aria -- message d'erreur transitoire, pas un panneau */}
@@ -1092,6 +1366,17 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           {geoError && (
             <p role="alert" className="text-xs text-danger">
               {t("widgetForm.positionError")}
+            </p>
+          )}
+          {accuracy !== null && (
+            <p
+              className={accuracy > ACCURACY_WARN_M ? "text-xs text-danger" : "text-xs text-ink-2"}
+              role={accuracy > ACCURACY_WARN_M ? "alert" : undefined}
+            >
+              {t(
+                accuracy > ACCURACY_WARN_M ? "widgetForm.accuracyWarning" : "widgetForm.accuracyOk",
+                { meters: Math.round(accuracy) },
+              )}
             </p>
           )}
         </div>
@@ -1192,6 +1477,18 @@ function FormComponent({ props, ctx }: { props: Record<string, unknown>; ctx: Wi
           {t("widgetForm.reset")}
         </button>
       </div>
+      {queueNotice && (
+        <p role="status" className="text-xs text-ink-2">
+          {queueNotice}
+        </p>
+      )}
+      {outbox && collectionId !== "" && (
+        <OutboxList
+          api={outbox}
+          collectionId={collectionId}
+          onEdit={(entry) => void handleEditQueued(entry)}
+        />
+      )}
       {showMyEntries && collectionId !== "" && (
         <MyEntries client={client} collectionId={collectionId} />
       )}

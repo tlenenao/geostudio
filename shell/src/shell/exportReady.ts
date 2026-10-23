@@ -16,7 +16,9 @@ export function markExportReady(): void {
 
 // AUD-001 : fenêtre de stabilité avant de lever le signal (laisse les widgets
 // montés par le rendu suivant démarrer leurs requêtes) et garde-fou de
-// durée, inférieur au budget de rendu du worker (RENDER_TIMEOUT_MS = 120 s).
+// durée, inférieur au budget de rendu du worker (RENDER_TIMEOUT_MS = 120 s). Ce budget court
+// depuis la navigation (le worker compte goto + prêt + capture) : la minuterie est donc
+// décomptée de `performance.now()` (temps écoulé depuis le début de la navigation).
 export const EXPORT_SETTLE_MS = 300;
 export const EXPORT_TIMEOUT_MS = 90_000;
 
@@ -61,10 +63,13 @@ export function useExportReadiness(baseReady: boolean): void {
 
   useEffect(() => {
     if (!baseReady) return;
-    const id = setTimeout(() => {
-      document.body.dataset.exportIncomplete = "true";
-      markExportReady();
-    }, EXPORT_TIMEOUT_MS);
+    const id = setTimeout(
+      () => {
+        document.body.dataset.exportIncomplete = "true";
+        markExportReady();
+      },
+      Math.max(0, EXPORT_TIMEOUT_MS - performance.now()),
+    );
     return () => clearTimeout(id);
   }, [baseReady]);
 }

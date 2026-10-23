@@ -73,6 +73,9 @@ class AttachmentFieldSpec(BaseModel):
     # AUD-093 : champ sensible = pièces jointes masquées comme une colonne sensible
     # (collections/sensitive.py::masked_attachment_keys).
     sensitive: bool = False
+    # L8 (AUD-071) : nature du média attendu (accept/capture côté shell, familles de types
+    # acceptées côté serveur). Absent = champ historique : toute la liste blanche.
+    kind: Literal["image", "audio", "video", "file"] | None = None
 
 
 class FieldDomain(BaseModel):
@@ -81,6 +84,9 @@ class FieldDomain(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: Literal["list", "range"]
     values: list[str | int | float] | None = None
+    # L8 : libellé affiché par valeur (XLSForm `choices.label`), clé = str(valeur) ; la valeur
+    # stockée reste la clé. Réservé au type `list`.
+    labels: dict[str, str] | None = None
     min: float | None = None
     max: float | None = None
 
@@ -89,7 +95,11 @@ class FieldDomain(BaseModel):
         if self.type == "list":
             if not self.values or self.min is not None or self.max is not None:
                 raise ValueError("a list domain needs non-empty values (and no min/max)")
+            if self.labels is not None and not set(self.labels) <= {str(v) for v in self.values}:
+                raise ValueError("domain labels must be keyed by the listed values")
         else:
+            if self.labels is not None:
+                raise ValueError("labels are only allowed on a list domain")
             if self.values is not None or (self.min is None and self.max is None):
                 raise ValueError("a range domain needs min and/or max (and no values)")
             if self.min is not None and self.max is not None and self.min > self.max:
@@ -146,6 +156,7 @@ class CollectionPatch(BaseModel):
     description: str | None = None
     isPublic: bool | None = None
     editable: bool | None = None
+    geometryRequired: bool | None = None
     owsEnabled: bool | None = None
     attachmentFields: list[AttachmentFieldSpec] | None = None
     sensitiveFields: list[str] | None = None

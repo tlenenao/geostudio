@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { CommandPalette } from "./CommandPalette";
 import type { Profile } from "../../auth/capabilities";
+import type { HasPermissions } from "../../auth/permissions";
 
 const navigateMock = vi.fn();
 vi.mock("react-router-dom", async () => {
@@ -12,8 +13,25 @@ vi.mock("react-router-dom", async () => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
+// useOpenItem exige un ItemClientProvider ; sa logique de destination a ses propres tests.
+vi.mock("../../shell/useOpenItem", async () => {
+  const { editorPath } = await import("../../shell/editorPath");
+  return {
+    useOpenItem: () => ({
+      onOpenItem: (pk: string, type: string, item?: HasPermissions) =>
+        navigateMock(editorPath(pk, type, item)),
+    }),
+  };
+});
+
 vi.mock("../../api/hooks", () => ({
   useMe: () => ({ data: { privileges: ["apps.manage", "admin.users.manage"] } }),
+  useItems: (params: { q: string }) => ({
+    data:
+      params.q === "zonage"
+        ? { items: [{ pk: "42", resourceType: "map", title: "Zonage PLU" }] }
+        : undefined,
+  }),
 }));
 
 const profile: Profile = {
@@ -117,5 +135,32 @@ describe("CommandPalette", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByText("Automatisation")).toBeInTheDocument();
+  });
+
+  it("AUD-119 : propose les items récents à saisie vide et les ouvre", async () => {
+    localStorage.setItem(
+      "geostudio.recentItems",
+      JSON.stringify([{ pk: "7", type: "map", title: "Carte récente" }]),
+    );
+    render(
+      <MemoryRouter>
+        <CommandPalette open onOpenChange={vi.fn()} profile={profile} />
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole("option", { name: "Carte récente" }));
+    expect(navigateMock).toHaveBeenCalledWith("/maps/7");
+    localStorage.clear();
+  });
+
+  it("AUD-119 : trouve un item du catalogue et l'ouvre", async () => {
+    render(
+      <MemoryRouter>
+        <CommandPalette open onOpenChange={vi.fn()} profile={profile} />
+      </MemoryRouter>,
+    );
+    await userEvent.type(screen.getByRole("combobox"), "zonage");
+    const option = await screen.findByRole("option", { name: "Zonage PLU" });
+    await userEvent.click(option);
+    expect(navigateMock).toHaveBeenCalledWith("/maps/42");
   });
 });

@@ -83,6 +83,10 @@ TITILER_DOCKERFILE = REPO / "deploy" / "titiler" / "Dockerfile"
 MINIO_DOCKERFILE = REPO / "deploy" / "minio" / "Dockerfile"
 
 # Préfixe des images que nous publions nous-mêmes.
+# AUD-112 : plus de repli `:-latest` — la version est exigée (install.sh la pose toujours).
+GEOSTUDIO_VERSION_REQUIRED = (
+    "${GEOSTUDIO_VERSION:?GEOSTUDIO_VERSION requis (tag de release, cf. .env.example)}"
+)
 OWN_IMAGE_RE = re.compile(r"ghcr\.io/[^/]+/(geostudio-[a-z0-9-]+)")
 
 
@@ -425,11 +429,18 @@ ENV_WIRING_EXEMPTIONS = {
     # Couture de test : permet de lire des partitions CDC depuis le disque
     # local au lieu de S3 (tests analytiques). Jamais réglée en production.
     "S3_CDC_BUCKET_BASE_URI",
+    # L8 : éteint la preuve de travail de la soumission publique — réservé aux tests
+    # (tests/conftest.py), jamais câblé en production où la preuve est toujours exigée.
+    "CORE_PUBLIC_SUBMIT_POW_DISABLED",
     # Lues par l'image mini-serveur de l'export autoporté (SP-18c), dont le
     # docker-compose est **généré** par build_standalone_bundle_zip et livré
     # dans le zip — pas celui de ce dépôt.
     "APPEXPORT_STANDALONE_DATA_DIR",
     "APPEXPORT_STANDALONE_RUNTIME_DIR",
+    # AUD-115/099 : réglages optionnels à défaut sûr (langue fr, plafond SQL 60 s) ;
+    # non câblés par défaut, un opérateur les ajoute à `core` s'il veut les changer.
+    "CORE_DEFAULT_LOCALE",
+    "CORE_DB_STATEMENT_TIMEOUT_MS",
 }
 
 
@@ -866,7 +877,7 @@ def test_every_otel_process_exports_telemetry():
         # ferait annoncer v0.1.0 et épinglerait les bundles autoportés dessus.
         assert "GEOSTUDIO_VERSION" not in env, name
         prod_env = services(PROD)[name].get("environment") or {}
-        assert prod_env.get("GEOSTUDIO_VERSION") == "${GEOSTUDIO_VERSION:-latest}", name
+        assert prod_env.get("GEOSTUDIO_VERSION") == GEOSTUDIO_VERSION_REQUIRED, name
         checked.append(name)
     assert {"core", "worker", "export-worker", "cdc-worker"} <= set(checked), checked
 
@@ -1142,6 +1153,13 @@ def unpinned_reason(image: str) -> str | None:
     return None
 
 
+def test_prod_compose_has_no_latest_fallback():
+    """AUD-112 : sans GEOSTUDIO_VERSION, `compose up` doit échouer au lieu de tirer `latest`."""
+    text = PROD.read_text()
+    assert ":-latest" not in text
+    assert text.count(GEOSTUDIO_VERSION_REQUIRED) >= 10
+
+
 def test_images_are_pinned():
     """Une image sans tag, en `latest`, en tag mouvant (`stable`/`edge`/…),
     ou pinnée au majeur/mineur, change sous les pieds de l'opérateur : deux
@@ -1248,7 +1266,7 @@ def test_unpinned_reason_rejects_third_party_image_behind_substitution():
 def test_unpinned_reason_accepts_own_image_behind_substitution():
     """Miroir du cas précédent : une de nos propres images GHCR derrière une
     substitution reste exemptée, comme avant ce fix."""
-    assert unpinned_reason("ghcr.io/tlenenao/geostudio-core:${GEOSTUDIO_VERSION:-latest}") is None
+    assert unpinned_reason("ghcr.io/tlenenao/geostudio-core:" + GEOSTUDIO_VERSION_REQUIRED) is None
 
 
 # Revue finale SP-26 (C1) : core/Dockerfile (service `worker`, même image que
@@ -1938,6 +1956,32 @@ def test_shell_nginx_serves_mjs_cache_and_404_for_assets():
     # (X-Frame-Options DENY en Helm) : /index.html doit rester non terminal.
     assert "try_files $uri /index.html =404;" in embed_block
     assert "rm -rf dist/.vite dist/fixtures" in (REPO / "shell/Dockerfile").read_text()
+
+
+def test_shell_service_worker_is_never_cached_and_allowed_by_the_csp():
+    """L8 (PWA de collecte) : un `sw.js` servi avec le Cache-Control du reste du shell (ou
+    pire, `immutable`) figerait les clients sur un ancien shell — c'est le seul fichier dont la
+    revalidation fait la mise à jour. Et la CSP (Traefik, puis Helm) doit autoriser le worker
+    même origine : sans `worker-src 'self'`, le navigateur refuse l'enregistrement en silence."""
+    conf = (REPO / "shell/nginx.conf").read_text()
+    block = conf.split("location = /sw.js {")[1].split("}")[0]
+    assert 'add_header Cache-Control "no-cache" always;' in block
+    assert "immutable" not in block
+    assert 'add_header Service-Worker-Allowed "/" always;' in block
+    assert "include /etc/nginx/snippets/security-headers.conf;" in block, (
+        "un add_header de location masque ceux du server : réinclure les en-têtes de sécurité"
+    )
+    assert "try_files $uri =404;" in block, "jamais de repli SPA (index.html) à la place du SW"
+    # Le SW est émis dans dist/ (donc dans l'image) ; son manifeste aussi.
+    assert (REPO / "shell/sw/sw.template.js").exists()
+    assert (REPO / "shell/public/manifest.webmanifest").exists()
+    from app.security.traefik_render import CspAllowlist, _build_csp_value
+
+    csp = _build_csp_value(CspAllowlist(), frame_ancestors=True)
+    assert "worker-src 'self'" in csp
+    assert "default-src 'self'" in csp  # couvre manifest-src
+    values = (REPO / "deploy/helm/geostudio/values.yaml").read_text()
+    assert "worker-src 'self'" in values
 
 
 def test_core_env_vars_extractor_has_not_silently_regressed_to_empty():

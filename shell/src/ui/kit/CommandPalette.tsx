@@ -7,7 +7,9 @@ import { navigableDomains, type Profile } from "../../auth/capabilities";
 import { DOMAIN_PATHS } from "../../shell/chrome/domainRoutes";
 import { SETTINGS_LINKS } from "../../shell/chrome/SettingsNav";
 import { holdsAnyPrivilege } from "../../auth/holdsAnyPrivilege";
-import { useMe } from "../../api/hooks";
+import { useItems, useMe } from "../../api/hooks";
+import { useOpenItem } from "../../shell/useOpenItem";
+import { readRecentItems } from "../../shell/recentItems";
 import { t } from "../../i18n";
 
 type CommandItem = { id: string; label: string; run: () => void };
@@ -34,6 +36,7 @@ export function CommandPalette({
   profile: Profile;
 }) {
   const navigate = useNavigate();
+  const { onOpenItem } = useOpenItem();
   const meQuery = useMe();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -83,10 +86,40 @@ export function CommandPalette({
     return out;
   }, [profile, meQuery.data, navigate]);
 
-  const filtered = useMemo(
-    () => items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase())),
-    [items, query],
+  // AUD-119 : recherche d'items du catalogue (serveur, `can()` appliqué), débattue.
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(id);
+  }, [query]);
+  const itemsQuery = useItems(
+    { q: debounced, pageSize: 5 },
+    { enabled: open && debounced.length >= 2 },
   );
+  // AUD-119 : à saisie vide, les derniers items ouverts (relus à chaque ouverture).
+  const recents = useMemo<CommandItem[]>(
+    () =>
+      open
+        ? readRecentItems().map((r) => ({
+            id: `recent:${r.pk}`,
+            label: r.title,
+            run: () => onOpenItem(r.pk, r.type),
+          }))
+        : [],
+    [open, onOpenItem],
+  );
+  const filtered = useMemo(() => {
+    const local = items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase()));
+    const found: CommandItem[] =
+      debounced.length >= 2 && debounced === query.trim()
+        ? (itemsQuery.data?.items ?? []).map((it) => ({
+            id: `item:${it.pk}`,
+            label: it.title,
+            run: () => onOpenItem(it.pk, it.resourceType, it),
+          }))
+        : [];
+    return query.trim() === "" ? [...recents, ...local] : [...local, ...found];
+  }, [items, recents, query, debounced, itemsQuery.data, onOpenItem]);
 
   function commit(item: CommandItem) {
     item.run();

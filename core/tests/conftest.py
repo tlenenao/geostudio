@@ -11,6 +11,14 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from app.db import make_session_factory
+from app.tile_proxy import clear_cache as _clear_tile_proxy_cache
+
+
+@pytest.fixture(autouse=True)
+def _fresh_tile_proxy_cache():
+    """AUD-056 : le cache de tuiles TiTiler est un état de processus, isolé par test."""
+    _clear_tile_proxy_cache()
+
 
 # Valeur fixe, committée, dev/test uniquement — create_app() (SP-15e)
 # valide CORE_SECRETS_MASTER_KEY de façon eager ; sans ce défaut, TOUT test
@@ -28,6 +36,9 @@ os.environ.setdefault("CORE_ENV", "development")
 # Lot 9 : la suite exerce les op expérimentales ; les tests du flag éteint le
 # monkeypatchent explicitement (tests/test_pipeline_experimental_ops.py).
 os.environ.setdefault("CORE_PIPELINE_EXPERIMENTAL_OPS_ENABLED", "true")
+# L8 : preuve de travail de la soumission publique éteinte par défaut dans la suite (le flag est
+# réservé aux tests) ; tests/test_pow.py et test_collect_kit.py la rallument explicitement.
+os.environ.setdefault("CORE_PUBLIC_SUBMIT_POW_DISABLED", "1")
 
 
 def shard_of(nodeid: str, total: int) -> int:

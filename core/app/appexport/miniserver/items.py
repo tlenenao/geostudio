@@ -50,12 +50,22 @@ def _property_columns(info: TableInfo) -> list:
     ]
 
 
+def _geo4326(info: TableInfo) -> str:
+    """Géométrie du lac en lon/lat 4326 (RFC 7946) : le Parquet est en SRID natif de la
+    collection (cdc/parquet_writer, pas de reprojection), les filtres bbox/geomIntersects et
+    la sortie GeoJSON sont en 4326."""
+    g = _qi(LAKE_GEOMETRY_COLUMN)
+    if info.srid in (None, 0, 4326):
+        return g
+    return f"ST_Transform({g}, 'EPSG:{int(info.srid)}', 'EPSG:4326', true)"
+
+
 def _select_list(info: TableInfo) -> str:
     cols = [_qi(info.pk_column)]
     cols += [_qi(c.name) for c in _property_columns(info)]
     if info.geometry_column:
         # Le Parquet du snapshot porte `geometry`, quel que soit geometry_column (RC-5).
-        cols.append(f"ST_AsGeoJSON({_qi(LAKE_GEOMETRY_COLUMN)}) AS __geo")
+        cols.append(f"ST_AsGeoJSON({_geo4326(info)}) AS __geo")
     return ", ".join(cols)
 
 
@@ -80,10 +90,10 @@ def _build_where(table_info: TableInfo, bbox, geom_intersects) -> tuple[str, lis
         raise MissingGeometryColumn("collection has no geometry column")
     if bbox is not None:
         minx, miny, maxx, maxy = bbox
-        clauses.append(f"ST_Intersects({_qi(LAKE_GEOMETRY_COLUMN)}, ST_MakeEnvelope(?, ?, ?, ?))")
+        clauses.append(f"ST_Intersects({_geo4326(table_info)}, ST_MakeEnvelope(?, ?, ?, ?))")
         params.extend([minx, miny, maxx, maxy])
     if geom_intersects is not None:
-        clauses.append(f"ST_Intersects({_qi(LAKE_GEOMETRY_COLUMN)}, ST_GeomFromGeoJSON(?))")
+        clauses.append(f"ST_Intersects({_geo4326(table_info)}, ST_GeomFromGeoJSON(?))")
         params.append(json.dumps(geom_intersects))
     return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
 

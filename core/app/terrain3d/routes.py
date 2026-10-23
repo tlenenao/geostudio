@@ -36,6 +36,7 @@ from app.terrain3d.schemas import (
     Terrain3DUploadCreate,
     Terrain3DUploadCreated,
 )
+from app.tile_proxy import TileProxyBusyError, fetch_tile
 from app.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -193,11 +194,14 @@ def read_terrain3d_tile(
     session.commit()
 
     try:
-        resp = httpx.get(
+        status, content = fetch_tile(
             f"{titiler_url.rstrip('/')}/cog/tiles/{z}/{x}/{y}.png",
-            params={"url": f"s3://{bucket}/{source_key}", "algorithm": "terrarium"},
-            timeout=10.0,
+            {"url": f"s3://{bucket}/{source_key}", "algorithm": "terrarium"},
         )
+    except TileProxyBusyError as exc:
+        raise HTTPException(
+            status_code=503, detail="terrain tile service busy", headers={"Retry-After": "2"}
+        ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="terrain tile service unavailable") from exc
 
@@ -208,7 +212,7 @@ def read_terrain3d_tile(
     # fonctionnement nominal pour une panne serveur. 502 reste réservé à
     # l'indisponibilité réelle (except httpx.HTTPError ci-dessus) et aux
     # statuts vraiment inattendus.
-    if resp.status_code == 404:
+    if status == 404:
         # TiTiler renvoie aussi 404 pour un endpoint /vsis3/ mal résolu (GDAL
         # ne distingue pas "hors emprise" de "objet S3 introuvable/injoignable")
         # — loggé pour permettre de distinguer les deux cas en observabilité,
@@ -218,11 +222,11 @@ def read_terrain3d_tile(
             "terrain3d tile proxy: TiTiler a répondu 404 pour %s (item %s)", source_key, item_id
         )
         raise HTTPException(status_code=404, detail="tile not found")
-    if resp.status_code != 200:
+    if status != 200:
         raise HTTPException(status_code=502, detail="terrain tile service error")
 
     return Response(
-        content=resp.content,
+        content=content,
         media_type="image/png",
         headers={"Cache-Control": "private, max-age=3600"},
     )
