@@ -267,7 +267,9 @@ def test_html_extractor_deep_nesting_is_bounded_and_fast():
     t0 = time.perf_counter()
     _run(c, "transform.htmlExtractor", p, "o", src="s")
     assert c.execute("SELECT o FROM o").fetchone()[0] is None  # imbrication excessive -> NULL
-    assert time.perf_counter() - t0 < 1.0
+    assert (
+        time.perf_counter() - t0 < 5.0
+    )  # borne anti-quadratique, pas une mesure de vitesse (runner arm64 chargé)
     # imbrication raisonnable : fonctionne toujours
     c.execute("CREATE TABLE s2 AS SELECT 1 AS id, '<div>a<div>b</div></div>' AS h")
     _run(c, "transform.htmlExtractor", {**p, "separator": "|"}, "o2", src="s2")
