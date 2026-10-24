@@ -30,7 +30,7 @@ test("solvePow : difficulté de production (18 bits) résolue en temps raisonnab
   const nonce = await solvePow(challenge, 18);
   expect(createHash("sha256").update(`${challenge}:${nonce}`).digest()[0]).toBe(0);
   expect(performance.now() - t0).toBeLessThan(20_000);
-});
+}, 30_000); // le délai vitest par défaut (5 s) coupait avant la borne de 20 s sur un runner chargé
 
 test("solvePow : s'interrompt sur un signal d'annulation", async () => {
   const ctl = new AbortController();
