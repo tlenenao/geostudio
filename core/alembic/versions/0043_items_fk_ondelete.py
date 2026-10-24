@@ -36,9 +36,17 @@ def _recreate(*, cascade: bool) -> None:
     for table, column, ondelete in _FKS:
         name = f"{table}_{column}_fkey"
         op.drop_constraint(name, table, type_="foreignkey")
+        # AUD-189 : NOT VALID (verrou bref) puis VALIDATE (n'empêche pas les écritures).
         op.create_foreign_key(
-            name, table, "items", [column], ["id"], ondelete=ondelete if cascade else None
+            name,
+            table,
+            "items",
+            [column],
+            ["id"],
+            ondelete=ondelete if cascade else None,
+            postgresql_not_valid=True,
         )
+        op.execute(f'ALTER TABLE "{table}" VALIDATE CONSTRAINT "{name}"')
 
 
 def upgrade() -> None:

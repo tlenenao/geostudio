@@ -13,6 +13,7 @@ from app import db
 from app.copilot.llm_provider import FakeLLMProvider, LLMTurn, ToolCall
 from app.db import init_db, make_engine, make_session_factory, request_scoped_session
 from app.main import create_app
+from app.tenants.repository import get_or_create_default_tenant
 
 # NOTE (deviation from the brief's Step 1, documented in task-5-report.md):
 # routes.py's `copilot_turn` constructs `McpLoopbackSession(body.mcpToken)`
@@ -42,6 +43,12 @@ def _make_copilot_app(monkeypatch):
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     Session = make_session_factory(engine)
+    # Tenant par défaut persisté une fois pour toutes : une requête en lecture rollback sa session
+    # et ne le conserve jamais, donc deux requêtes concurrentes se disputaient son insert (course
+    # observée en CI sur test_synchronous_provider_call_does_not_block_the_event_loop).
+    with Session() as seed_session:
+        get_or_create_default_tenant(seed_session)
+        seed_session.commit()
     app = create_app()
 
     def override_session():

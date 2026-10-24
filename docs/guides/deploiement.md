@@ -24,7 +24,18 @@ L'installeur : génère les secrets forts (dont la clé du coffre), configure
 Keycloak (realm, URI de redirection à l'hôte public), peut activer les profils
 optionnels (`export`, `appexport`, `observability`), le tunnel Tailscale Funnel et
 les **sauvegardes chiffrées** planifiées. Variables non interactives :
-`INSTALL_YES=1`, `INSTALL_PROFILES`, `INSTALL_SEED_DEMO`, `GEOSTUDIO_PUBLIC_HOST`.
+`INSTALL_YES=1`, `INSTALL_PROFILES`, `INSTALL_SEED_DEMO`, `INSTALL_CORE_ETL_ENABLED`,
+`INSTALL_ADMIN_EMAIL`, `GEOSTUDIO_PUBLIC_HOST`, `GEOSTUDIO_S3_PUBLIC_HOST`, `GEOSTUDIO_VERSION`,
+`TS_AUTHKEY` (Tailscale) et `BACKUP_S3_ENDPOINT`/`_ACCESS_KEY`/`_SECRET_KEY`/`_BUCKET`
+(sauvegarde hors-site, optionnelle) — c'est ce que le playbook Ansible de Proxmox/OCI passe.
+
+**Soumission publique (collecte)** : la preuve de travail est exigée par défaut
+(`CORE_PUBLIC_SUBMIT_POW_DISABLED=0`, câblée dans le compose et le chart Helm). Ne la
+désactivez (`1`) que pour des tests ou une démo fermée : les clients tiers doivent sinon
+résoudre le défi `GET /v1/public/submit/{token}/challenge` (voir le `CHANGELOG.md`).
+
+**Mise à jour d'une instance existante** : lisez d'abord les notes de rupture du
+[`CHANGELOG.md`](../../CHANGELOG.md) (secrets à recréer, réglages Postgres, flags).
 
 Vérifier l'authenticité des images avant de démarrer :
 `INSTALL_VERIFY_SIGNATURES=1 ./scripts/install.sh` (exige `cosign`) — voir

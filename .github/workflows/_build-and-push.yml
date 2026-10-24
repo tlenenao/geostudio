@@ -131,7 +131,7 @@ jobs:
         env:
           IMAGE: ${{ matrix.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
-        run: cosign sign --yes "ghcr.io/tlenenao/${IMAGE}@${DIGEST}"
+        run: scripts/ci/sign-image.sh "ghcr.io/tlenenao/${IMAGE}@${DIGEST}"
 
       # Les `outputs` d'un job à matrice ne remontent que la dernière leg : le
       # digest de chaque image passe par un artefact, consommé par `pin-digests`

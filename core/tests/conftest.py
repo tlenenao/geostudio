@@ -141,6 +141,8 @@ def chromium_available():
     finally:
         driver.stop()
     if not executable.exists():
+        if os.environ.get("GEOSTUDIO_REQUIRE_CHROMIUM") == "1":
+            pytest.fail(f"binaire Chromium introuvable ({executable}) alors qu'il est exigé")
         pytest.skip(
             f"binaire Chromium introuvable ({executable}) — "
             "playwright install --with-deps chromium requis — test playwright skippé"
@@ -185,3 +187,9 @@ def dcat_shacl_shapes():
         format="turtle",
     )
     return g
+
+
+# AUD-192 : les tests d'aller-retour des migrations rétrogradent des bases PEUPLÉES (leur objet,
+# piège n°8) ; la garde de downgrade destructif (app/migration_guard.py) est donc levée par défaut
+# ici. test_migrations_populated.py la rétablit explicitement (monkeypatch.delenv) pour la tester.
+os.environ.setdefault("GEOSTUDIO_ALLOW_DESTRUCTIVE_DOWNGRADE", "1")

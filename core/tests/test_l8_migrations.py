@@ -229,7 +229,7 @@ def test_0162_geometry_required_defaults_false_on_existing_rows_and_round_trips(
     command.upgrade(cfg, "head")
 
 
-def test_0163_keeps_pending_submissions_and_enforces_client_op_uniqueness(migrate):
+def test_0163_keeps_pending_submissions_and_enforces_client_op_uniqueness(migrate, monkeypatch):
     cfg, engine = migrate
     command.upgrade(cfg, "0162")
     with engine.begin() as conn:
@@ -296,6 +296,10 @@ def test_0163_keeps_pending_submissions_and_enforces_client_op_uniqueness(migrat
             payload="{}",
             client_op_id="op",
         )
+    monkeypatch.delenv("GEOSTUDIO_ALLOW_DESTRUCTIVE_DOWNGRADE", raising=False)
+    with pytest.raises(RuntimeError, match="downgrade refusé"):  # AUD-192 : submission_files
+        command.downgrade(cfg, "0162")
+    monkeypatch.setenv("GEOSTUDIO_ALLOW_DESTRUCTIVE_DOWNGRADE", "1")
     command.downgrade(cfg, "0162")
     with engine.begin() as conn:
         assert conn.scalar(sa.text("SELECT count(*) FROM submissions")) == 3

@@ -16,7 +16,7 @@
 # de titiler en amont nécessitera de rebasculer à la main ces 4 numéros de
 # version — même modèle que deploy/postgis/Dockerfile (pgvector/wal2json).
 ARG PYTHON_VERSION=3.11
-FROM ghcr.io/vincentsarago/uvicorn-gunicorn:${PYTHON_VERSION}
+FROM ghcr.io/vincentsarago/uvicorn-gunicorn:${PYTHON_VERSION}@sha256:6fc0dfe01f5f886002bf778121d2d53d1167dae4500d7db2c520b312d017a31e
 RUN python -m pip install -U pip
 RUN python -m pip install --no-cache-dir \
       "titiler.core==0.18.4" \
@@ -27,5 +27,9 @@ RUN python -m pip install --no-cache-dir \
 # starlette 1.x change la signature de TemplateResponse : la landing `/`
 # de titiler 0.18.4 répond 500 « unhashable type: 'dict' » (P17.02, j08b-005).
 # Vérifié en conteneur : starlette 0.52 -> GET / = 200.
+# AUD-179 : non-root (aucun volume ; le port 8000 est > 1024).
+RUN groupadd --system --gid 10001 titiler \
+    && useradd --system --uid 10001 --gid 10001 --no-create-home titiler
+USER 10001:10001
 ENV MODULE_NAME=titiler.application.main
 ENV VARIABLE_NAME=app

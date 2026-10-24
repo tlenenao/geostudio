@@ -36,6 +36,7 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
+  define: { "import.meta.env.VITE_DESKTOP_ETL": JSON.stringify("1") },
   build: {
     outDir: "dist-desktop",
     target: "es2022", // attente au niveau module de i18n/index.ts

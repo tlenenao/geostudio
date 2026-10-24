@@ -35,6 +35,7 @@ from app.history import service as history
 from app.history.models import EntityHistory
 from app.pipelines.errors import PipelineCancelledError, PipelineRuntimeError
 from app.quotas.service import QuotaExceededError
+from app.relations.service import check_rows, parent_key_blocker, relations_of
 from app.sql_ident import quote_ident
 from app.sql_ident import quote_ident_duckdb as _qi
 
@@ -434,6 +435,8 @@ def write_rows(
         safe = {k: v for k, v in raw_row.items() if k not in sensitive and k != "geometry"}
         rejects.append((json.dumps(safe, default=str, ensure_ascii=False), rule, message))
 
+    rels = relations_of(session, collection.tenant_id, collection.id)
+    parent_rels = [r for r in rels if r.parent_collection_id == collection.id]
     if mode == "replace":
         with rls_scope(session, tenant_id, geo_limits=geo_limits):
             res.replace_purged = replace_purge()
@@ -492,8 +495,40 @@ def write_rows(
                     continue
             if key is not None:
                 seen.add(key)
-            batch.append({"props": row, "geom": geometry, "key": key, "bound": bound})
+            batch.append(
+                {"props": row, "geom": geometry, "key": key, "bound": bound, "source": source}
+            )
 
+        if (
+            batch
+            and mode != "delete"
+            and any(
+                r.child_collection_id == collection.id and r.cardinality != "many_to_many"
+                for r in rels
+            )
+        ):
+            # AUD-165 : clé étrangère logique des relations, ligne par ligne (le rejet suit la
+            # politique `onInvalid` du nœud). Hors `rls_scope` : la lecture des parents ouvre le
+            # sien. 1-1 contre l'existant : lignes neuves seulement (un upsert se réécrit).
+            bad = check_rows(
+                session,
+                user,
+                collection,
+                [b["props"] for b in batch],
+                lambda sess, tid, masked=False: rls_scope(
+                    sess, tid, masked=masked, geo_limits=geo_limits
+                ),
+                new_rows=mode in ("append", "replace"),
+            )
+            if bad and p.onInvalid == "fail":
+                raise PipelineRuntimeError(
+                    f"writer.collection: invalid row: {next(iter(bad.values()))}"
+                )
+            for i in sorted(bad):
+                reject(
+                    batch[i]["source"], bad[i]["code"], f"{bad[i]['field']} : {bad[i]['message']}"
+                )
+            batch = [b for i, b in enumerate(batch) if i not in bad]
         if mode in ("append", "replace"):
             with rls_scope(session, tenant_id, geo_limits=geo_limits):
                 insert_features(session, info, [(b["props"], b["geom"]) for b in batch])
@@ -509,6 +544,18 @@ def write_rows(
                 res,
                 scope=lambda: rls_scope(session, tenant_id, geo_limits=geo_limits),
                 tenant_id=tenant_id,
+                # AUD-166 : changer `parent_key` d'un parent orphelinerait ses enfants ; en masse
+                # on refuse toujours (le cascade reste réservé à la voie unitaire).
+                veto=(
+                    (
+                        lambda old, new: parent_key_blocker(
+                            session, collection, parent_rels, old, new
+                        )
+                    )
+                    if parent_rels
+                    else None
+                ),
+                reject=reject,
             )
         _journal(session, collection, journal, user.id)  # hors rls_scope (cf. docstring history)
         if on_progress is not None:
@@ -553,7 +600,18 @@ def write_rows(
 
 
 def _match_and_write(
-    session, info, keys, mode, batch, has_geom_in, res: WriteResult, *, scope, tenant_id
+    session,
+    info,
+    keys,
+    mode,
+    batch,
+    has_geom_in,
+    res: WriteResult,
+    *,
+    scope,
+    tenant_id,
+    veto=None,
+    reject=None,
 ) -> list[tuple]:
     """Un lot : lectures en propriétaire (clés, avant/après), écritures sous `scope()` (RLS).
     Renvoie les lignes de journal ARC-15 (écrites par l'appelant, hors RLS)."""
@@ -591,6 +649,18 @@ def _match_and_write(
     if to_update:
         pks = [pk for pk, _ in to_update]
         before = _snapshots(session, info, tenant_id, pks)
+        if veto is not None:
+            kept = []
+            for pk, b in to_update:
+                msg = veto((before.get(pk) or {}).get("properties") or {}, b["props"])
+                if msg:
+                    reject(b["source"], "relation_restrict", msg)
+                else:
+                    kept.append((pk, b))
+            to_update = kept
+            pks = [pk for pk, _ in to_update]
+        if not to_update:
+            return journal
         present = set().union(*(b["props"].keys() for _, b in to_update))
         ucols = [
             c

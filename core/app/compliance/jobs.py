@@ -20,6 +20,7 @@ from app.history.service import purge_expired as purge_expired_history
 from app.ingestion.storage import make_s3_client
 from app.jobs import app
 from app.jobs.common import session_factory as _session_factory
+from app.notifications.repository import purge_expired_notifications
 
 
 def s3_client_from_env():
@@ -146,3 +147,14 @@ def audit_retention_task(timestamp: int) -> None:
         session.commit()
     if n:
         logging.getLogger(__name__).info("%d ligne(s) d'audit archivée(s) puis supprimée(s)", n)
+
+
+@app.periodic(cron="57 3 * * *")
+@app.task(queue="etl", queueing_lock="purge_notifications_task")
+def purge_notifications_task(timestamp: int) -> None:
+    """Rétention des notifications in-app : lues 90 j, non lues 365 j (REV-401)."""
+    with request_scoped_session(_session_factory()) as session:
+        n = purge_expired_notifications(session)
+        session.commit()
+    if n:
+        logging.getLogger(__name__).info("%d notification(s) expirée(s) purgée(s)", n)

@@ -4,6 +4,7 @@ import time
 from logging.config import fileConfig
 from pathlib import Path
 
+from alembic.script import ScriptDirectory
 from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
@@ -17,6 +18,7 @@ from app.configs import (
 )
 from app.db import Base
 from app.items import models as items_models  # noqa: F401
+from app.migration_guard import refuse_destructive_downgrade
 from app.sharing import models as sharing_models  # noqa: F401
 from app.tenants import models as tenants_models  # noqa: F401
 from app.users import models as users_models  # noqa: F401
@@ -38,6 +40,23 @@ def run_migrations_offline() -> None:
     context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
     with context.begin_transaction():
         context.run_migrations()
+
+
+def _guard_destructive_downgrade(connection) -> None:
+    """AUD-192 : refuse, avant toute étape, un downgrade qui détruirait des lignes."""
+    script = ScriptDirectory.from_config(config)
+    current = context.get_context().get_current_heads()
+    if not current:
+        return
+    target = context.get_revision_argument() or "base"
+    try:  # résolution d'alembic (`-1`, `base`, id) ; une montée de version n'a rien à descendre
+        steps = script._downgrade_revs(target, tuple(current))
+    except Exception:
+        return
+    downgraded = {step.revision.revision for step in steps}
+    if downgraded:
+        refuse_destructive_downgrade(connection, downgraded)
+        connection.rollback()  # fin de la transaction de lecture, alembic ouvre la sienne
 
 
 def run_migrations_online() -> None:
@@ -65,7 +84,17 @@ def run_migrations_online() -> None:
                 time.sleep(0.5)
         try:
             with connectable.connect() as connection:
+                if connection.dialect.name == "postgresql":
+                    # AUD-188 : une migration n'attend pas indéfiniment un verrou (elle bloquerait
+                    # lectures/écritures derrière elle) ni ne tourne sans borne. Ajustables.
+                    for guc, var, default in (
+                        ("lock_timeout", "CORE_MIGRATION_LOCK_TIMEOUT", "30s"),
+                        ("statement_timeout", "CORE_MIGRATION_STATEMENT_TIMEOUT", "30min"),
+                    ):
+                        connection.exec_driver_sql(f"SET {guc} = '{os.environ.get(var, default)}'")
+                    connection.commit()
                 context.configure(connection=connection, target_metadata=target_metadata)
+                _guard_destructive_downgrade(connection)
                 with context.begin_transaction():
                     context.run_migrations()
         finally:

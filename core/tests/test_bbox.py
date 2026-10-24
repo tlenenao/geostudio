@@ -14,7 +14,7 @@ def test_antimeridian_bbox_is_accepted():
 
 
 @pytest.mark.parametrize(
-    "raw", ["1,2,3", "a,b,c,d", "nan,0,1,1", "0,0,inf,1", "0,0,181,1", "0,-91,1,1"]
+    "raw", ["1,2,3", "a,b,c,d", "nan,0,1,1", "0,0,inf,1", "0,0,181,1", "0,-91,1,1", "0,5,1,4"]
 )
 def test_malformed_non_finite_or_out_of_bounds_raises(raw):
     with pytest.raises(ValueError):
@@ -23,3 +23,8 @@ def test_malformed_non_finite_or_out_of_bounds_raises(raw):
 
 def test_bounds_check_can_be_disabled_for_projected_crs():
     assert parse_bbox_floats("100000,6000000,200000,7000000", check_bounds=False) is not None
+
+
+def test_inverted_latitudes_rejected_even_without_bounds_check():
+    with pytest.raises(ValueError):
+        parse_bbox_floats("100000,7000000,200000,6000000", check_bounds=False)

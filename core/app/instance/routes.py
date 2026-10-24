@@ -109,9 +109,13 @@ def get_instance_status(
         ).all()
         stalled = session.execute(
             text(
-                "SELECT COUNT(*) FROM procrastinate_jobs j WHERE j.status = 'doing' "
-                "AND NOT EXISTS (SELECT 1 FROM procrastinate_events e WHERE e.job_id = j.id "
-                "AND e.at > now() - make_interval(mins => :m))"
+                # Bloqué = 'doing' sans worker vivant (battement procrastinate absent ou plus
+                # vieux que le seuil). Les événements ne servent pas : un job long sain n'en
+                # émet aucun entre `started` et sa fin (REV-401).
+                "SELECT COUNT(*) FROM procrastinate_jobs j "
+                "LEFT JOIN procrastinate_workers w ON w.id = j.worker_id "
+                "WHERE j.status = 'doing' AND (w.id IS NULL "
+                "OR w.last_heartbeat < now() - make_interval(mins => :m))"
             ),
             {"m": _stalled_minutes()},
         ).scalar_one()

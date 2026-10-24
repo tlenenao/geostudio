@@ -204,7 +204,8 @@ def _read_ctx(session: Session, user, col: Collection, rls):
 
 def _matching(session, user, col, key, values, *, limit, offset, rls):
     """Enregistrements de `col` dont `key` ∈ values, sous RLS + masquage de `col`.
-    Renvoie (features, total)."""
+    Renvoie (features, total) ; `total` ne compte QUE les lignes lisibles par l'appelant
+    (AUD-163 : plus de fuite du nombre de valeurs liées masquées par la RLS)."""
     if not values:
         return [], 0
     info, masked = _read_ctx(session, user, col, rls)
@@ -216,17 +217,31 @@ def _matching(session, user, col, key, values, *, limit, offset, rls):
                 f = features_repo.get_feature(session, info, fid=str(v))
                 if f is not None:
                     feats.append(f)
-            return feats, len(
-                values
-            )  # ponytail: total = valeurs liées (hors lignes masquées par RLS)
-        page = features_repo.select_features(
-            session,
-            info,
-            limit=limit,
-            offset=offset,
-            filters={f"{key}__in": _fid_text_filter(values)},
-            count_mode="exact",
-        )
+            # total sous RLS : comptage SQL (la policy du rôle de scope filtre les lignes)
+            coerced = [
+                c for v in values if (c := features_repo._coerce_fid(info, str(v))) is not None
+            ]
+            q = lambda n: quote_ident(session, n)  # noqa: E731
+            total = session.execute(
+                text(
+                    f"SELECT count(*) FROM public.{q(info.table_name)} "
+                    f"WHERE {q(info.pk_column)} = ANY(:v)"
+                ),
+                {"v": coerced},
+            ).scalar_one()
+            return feats, total
+        try:
+            page = features_repo.select_features(
+                session,
+                info,
+                limit=limit,
+                offset=offset,
+                filters={f"{key}__in": _fid_text_filter(values)},
+                count_mode="exact",
+            )
+        except features_repo.FilterError as exc:
+            # AUD-164 : une clé devenue inutilisable (colonne supprimée/sensible) = 422, pas 500.
+            raise _invalid(exc.field or key, exc.code, exc.message) from exc
         return page.features, page.number_matched
 
 
@@ -287,16 +302,20 @@ def related_records(
                 if direction == "children"
                 else (rel.link_child_key, rel.link_parent_key)
             )
+            assert lk_in is not None
             l_info, l_masked = _read_ctx(session, user, link_col, rls)  # type: ignore[arg-type]
             with rls(session, link_col.tenant_id, masked=l_masked):  # type: ignore[union-attr]
-                page = features_repo.select_features(
-                    session,
-                    l_info,
-                    limit=MAX_LINKED,
-                    offset=0,
-                    filters={lk_in: str(value)},
-                    count_mode="none",
-                )
+                try:
+                    page = features_repo.select_features(
+                        session,
+                        l_info,
+                        limit=MAX_LINKED,
+                        offset=0,
+                        filters={lk_in: str(value)},
+                        count_mode="none",
+                    )
+                except features_repo.FilterError as exc:  # AUD-164
+                    raise _invalid(exc.field or lk_in, exc.code, exc.message) from exc
             values = [
                 p
                 for f in page.features
@@ -378,6 +397,215 @@ def check_write(session: Session, user, col: Collection, properties: dict, fid: 
                 )
 
 
+def _existing_parent_values(session, user, parent: Collection, key: str, values: list, rls) -> set:
+    """Valeurs de `key` parmi `values` qui désignent un parent LISIBLE (RLS + limite
+    géographique), sous forme de chaînes. Une requête par tranche (clé non-PK)."""
+    info, _masked = _read_ctx(session, user, parent, rls)
+    if key == info.pk_column:  # ponytail: lecture unitaire (PK non filtrable), tranche à venir
+        return {
+            str(v)
+            for v in values
+            if _matching(session, user, parent, key, [v], limit=1, offset=0, rls=rls)[0]
+        }
+    found: set = set()
+    for i in range(0, len(values), 200):
+        chunk = values[i : i + 200]
+        feats, _total = _matching(
+            session, user, parent, key, chunk, limit=len(chunk), offset=0, rls=rls
+        )
+        found |= {str(_source_value(f, info, key)) for f in feats}
+    return found
+
+
+def check_rows(
+    session: Session, user, col: Collection, rows: list[dict], rls, *, new_rows: bool
+) -> dict[int, dict]:
+    """Version GROUPÉE de `check_write` (AUD-165) pour les producteurs en masse (import,
+    `writer.collection`, soumission approuvée) : même règle de clé étrangère logique, une
+    lecture par tranche de valeurs distinctes. Renvoie {indice de ligne: erreur} (`code`,
+    `field`, `message`, `status`) sans rien lever : l'appelant rejette la ligne selon sa
+    politique. 1-1 : doublon DANS le lot toujours détecté ; doublon contre l'existant
+    seulement pour des lignes neuves (`new_rows`), un upsert se réécrivant lui-même."""
+    out: dict[int, dict] = {}
+    for rel in relations_of(session, col.tenant_id, col.id):
+        if rel.child_collection_id != col.id or rel.cardinality == "many_to_many":
+            continue
+        by_value: dict[str, list[int]] = {}
+        originals: dict[str, object] = {}
+        for i, props in enumerate(rows):
+            v = (props or {}).get(rel.child_key)
+            if v is not None:
+                by_value.setdefault(str(v), []).append(i)
+                originals.setdefault(str(v), v)
+        if not by_value:
+            continue
+        parent = get_readable_collection(session, user, rel.parent_collection_id)
+        found = _existing_parent_values(
+            session, user, parent, rel.parent_key, list(originals.values()), rls
+        )
+        for sval, idxs in by_value.items():
+            if sval not in found:
+                for i in idxs:
+                    out.setdefault(
+                        i,
+                        {
+                            "field": rel.child_key,
+                            "code": "relation_target_missing",
+                            "message": f"no '{parent.id}' record with {rel.parent_key}={sval}",
+                            "status": 422,
+                        },
+                    )
+        if rel.cardinality != "one_to_one":
+            continue
+        taken: set = set()
+        if new_rows:
+            info = introspect_table(session, col.table_name)
+            q = lambda n: quote_ident(session, n)  # noqa: E731
+            vals = list(originals.values())
+            for i in range(0, len(vals), 500):
+                rows_db = session.execute(
+                    text(
+                        f"SELECT {q(rel.child_key)} FROM public.{q(info.table_name)} "
+                        f"WHERE tenant_id = :t AND {q(rel.child_key)} = ANY(:v)"
+                    ),
+                    {"t": col.tenant_id, "v": vals[i : i + 500]},
+                ).all()
+                taken |= {str(r[0]) for r in rows_db}
+        for sval, idxs in by_value.items():
+            dup = idxs[1:] if sval not in taken else idxs
+            for i in dup:
+                out.setdefault(
+                    i,
+                    {
+                        "field": rel.child_key,
+                        "code": "relation_one_to_one",
+                        "message": f"one_to_one relation '{rel.name}': parent already linked",
+                        "status": 409,
+                    },
+                )
+    return out
+
+
+def parent_key_blocker(
+    session: Session, col: Collection, parent_rels: list, old_props: dict, new_props: dict
+) -> str | None:
+    """Nom de la relation que le changement de `parent_key` (ancien -> nouveau) orphelinerait
+    (enfants existants, rang propriétaire), sinon None. Version en masse de `before_update` :
+    ne cascade jamais, `parent_rels` = relations dont `col` est le parent (lues une fois)."""
+    for rel in parent_rels:
+        key = rel.parent_key
+        if key not in new_props:
+            continue
+        old, new = old_props.get(key), new_props[key]
+        if old is None or str(old) == str(new):
+            continue
+        if rel.cardinality == "many_to_many":
+            target_id, lk = rel.link_collection_id, rel.link_parent_key
+        else:
+            target_id, lk = rel.child_collection_id, rel.child_key
+        assert lk is not None  # clé de liaison validée à la création de la relation
+        target = _same_tenant_collection(session, col.tenant_id, target_id)
+        t_info = introspect_table(session, target.table_name)
+        if _owner_values(session, target, t_info, t_info.pk_column, lk, old, cap=1):
+            return rel.name
+    return None
+
+
+def before_update(session: Session, user, col: Collection, fid: str, properties: dict, rls) -> None:
+    """AUD-166 : un changement de `parent_key` d'un parent détacherait ses enfants. restrict
+    (défaut) : 409 si des enregistrements liés existent (rang propriétaire). cascade : la
+    nouvelle valeur est propagée à chaque enfant par la voie normale (can() write, RLS,
+    journal ARC-15, audit), profondeur 1 ; une clé vidée (NULL) n'est jamais propagée."""
+    rels = [
+        r for r in relations_of(session, col.tenant_id, col.id) if col.id == r.parent_collection_id
+    ]
+    if not rels:  # chemin chaud
+        return
+    info = introspect_table(session, col.table_name)
+    for rel in rels:
+        key = rel.parent_key
+        if key == info.pk_column:
+            continue  # la PK ne se modifie pas
+        old = _key_value(session, col, info, key, fid)
+        new = (properties or {}).get(key)
+        if old is None or (new is not None and str(new) == str(old)):
+            continue
+        if rel.cardinality == "many_to_many":
+            target_id, lk = rel.link_collection_id, rel.link_parent_key
+        else:
+            target_id, lk = rel.child_collection_id, rel.child_key
+        assert lk is not None  # clé de liaison validée à la création de la relation
+        target = _same_tenant_collection(session, col.tenant_id, target_id)  # type: ignore[arg-type]
+        t_info = introspect_table(session, target.table_name)
+        ids = _owner_values(
+            session,
+            target,
+            t_info,
+            t_info.pk_column,
+            lk,
+            old,
+            cap=MAX_LINKED + 1,
+        )
+        if not ids:
+            continue
+        if rel.on_delete != "cascade" or new is None or len(ids) > MAX_LINKED:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"update restricted by relation '{rel.name}': changing '{key}' would "
+                    "orphan related records"
+                ),
+            )
+        for child_fid in ids:
+            _cascade_rekey(session, user, target, str(child_fid), lk, new, rel, rls)
+
+
+def _cascade_rekey(session, user, target: Collection, fid: str, lk: str, new, rel, rls) -> None:
+    target = writable_collection(session, user, target.id)
+    if not target.editable:
+        raise HTTPException(status_code=403, detail="collection is not editable")
+    info = introspect_table(session, target.table_name)
+    q = lambda n: quote_ident(session, n)  # noqa: E731
+    with rls(session, target.tenant_id):
+        before = history.snapshot(features_repo.get_feature(session, info, fid=fid))
+        r = session.execute(
+            text(
+                f"UPDATE public.{q(info.table_name)} SET {q(lk)} = :n "
+                f"WHERE {q(info.pk_column)} = :f"
+            ),
+            {"n": new, "f": features_repo._coerce_fid(info, fid)},
+        )
+        after = history.snapshot(features_repo.get_feature(session, info, fid=fid))
+    if r.rowcount != 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"cascade blocked by relation '{rel.name}': "
+                "some related records are not updatable by you"
+            ),
+        )
+    history.record_change(
+        session,
+        tenant_id=target.tenant_id,
+        collection_id=target.id,
+        fid=fid,
+        op="update",
+        before=before,
+        after=after,
+        actor_id=user.id,
+    )
+    write_audit(
+        session,
+        tenant_id=target.tenant_id,
+        actor_id=user.id,
+        actor_kind="user",
+        action="feature.update",
+        object_type="feature",
+        object_id=fid,
+        payload={"collection": target.id, "fid": fid, "cascade": rel.id},
+    )
+
+
 def before_delete(session: Session, user, col: Collection, fid: str, rls, s3, *, depth: int = 0):
     """Politique de suppression (ADR 0021). restrict (défaut) : 409 si des enregistrements
     liés existent (comptés au rang propriétaire). cascade : les supprime, un à un, par la
@@ -401,6 +629,7 @@ def before_delete(session: Session, user, col: Collection, fid: str, rls, s3, *,
             key, lk, target_id = rel.parent_key, rel.child_key, rel.child_collection_id
         else:
             continue
+        assert lk is not None
         value = _key_value(session, col, info, key, fid)
         if value is None:
             continue
@@ -413,7 +642,7 @@ def before_delete(session: Session, user, col: Collection, fid: str, rls, s3, *,
             t_info.pk_column,
             lk,
             value,
-            cap=MAX_LINKED + 1,  # type: ignore[arg-type]
+            cap=MAX_LINKED + 1,
         )
         if not ids:
             continue
@@ -517,6 +746,9 @@ class RelationHooks:
 
     def check_write(self, session, user, col, properties, fid, rls):
         check_write(session, user, col, properties, fid, rls)
+
+    def before_update(self, session, user, col, fid, properties, rls):
+        before_update(session, user, col, fid, properties, rls)
 
     def before_delete(self, session, user, col, fid, rls, s3):
         before_delete(session, user, col, fid, rls, s3)

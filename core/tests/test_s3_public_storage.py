@@ -79,6 +79,8 @@ def test_presigned_url_keeps_client_host_without_public_endpoint(monkeypatch):
 def test_real_minio_cors_bucket_and_presign_roundtrip(monkeypatch):
     endpoint = os.environ.get("CORE_TEST_S3_ENDPOINT")
     if not endpoint:
+        if os.environ.get("CORE_REQUIRE_S3") == "1":
+            pytest.fail("CORE_REQUIRE_S3=1 mais CORE_TEST_S3_ENDPOINT n'est pas défini")
         pytest.skip("CORE_TEST_S3_ENDPOINT non défini — test MinIO réel skippé")
     key, secret = os.environ["CORE_TEST_S3_KEY"], os.environ["CORE_TEST_S3_SECRET"]
     monkeypatch.setenv("S3_PUBLIC_ENDPOINT_URL", endpoint)

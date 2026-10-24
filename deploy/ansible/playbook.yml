@@ -50,6 +50,7 @@
         BACKUP_S3_SECRET_KEY: "{{ vault_backup_s3_secret_key }}"
         BACKUP_S3_BUCKET: "{{ vault_backup_s3_bucket }}"
       register: install_pass1
+      no_log: true  # REV-401 : stdout porte le mot de passe admin temporaire ; affiché 1 fois plus bas
       changed_when: true
 
     # Si ensure_docker (scripts/install.sh) vient d'installer Docker, le
@@ -67,6 +68,7 @@
         chdir: "{{ geostudio_repo_dest }}"
       environment: *geostudio_install_env
       register: install_pass2
+      no_log: true  # idem ; en cas d'échec, relancer ./scripts/install.sh en SSH pour le détail
       changed_when: true
 
     # Le mot de passe temporaire de l'admin n'est imprimé qu'à la création du

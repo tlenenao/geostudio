@@ -10,6 +10,7 @@ from sqlalchemy import select, text
 from app import db
 from app.attachments import routes as attachments_routes
 from app.auth.dependency import get_current_user, get_current_user_optional
+from app.collections import routes as collections_routes
 from app.db import Base, make_session_factory, request_scoped_session
 from app.history.models import EntityHistory
 from app.main import create_app
@@ -25,6 +26,12 @@ SQUARE = {"type": "Polygon", "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 10]
 class _S3:
     def delete_object(self, *, Bucket, Key):
         pass
+
+    def list_objects_v2(self, **_kw):
+        return {"Contents": [], "IsTruncated": False}
+
+    def delete_objects(self, **_kw):
+        return {}
 
 
 def _f(props, x=5.0, y=5.0):
@@ -47,11 +54,11 @@ def env(pg_engine):
         )
     tables = ("rel_liens", "rel_proprios", "rel_parcelles")
     with pg_engine.begin() as conn:
-        for t in tables:
+        for t in (*tables, "rel_proprios__rejected", "rel_parcelles__rejected"):
             conn.execute(text(f"DROP TABLE IF EXISTS {t}"))
         conn.execute(
             text(
-                "CREATE TABLE rel_parcelles (id serial PRIMARY KEY, ref text, "
+                "CREATE TABLE rel_parcelles (id serial PRIMARY KEY, ref text, code text, "
                 "geom geometry(Point, 4326))"
             )
         )
@@ -103,6 +110,7 @@ def env(pg_engine):
 
     app.dependency_overrides[db.get_session] = override_session
     app.dependency_overrides[attachments_routes.get_s3_client] = lambda: _S3()
+    app.dependency_overrides[collections_routes.get_s3_client] = lambda: _S3()
     client = TestClient(app)
 
     def as_user(user):
@@ -117,7 +125,7 @@ def env(pg_engine):
         assert r.status_code == 200, r.text
     yield client, as_user, admin, reader, group_id, Session
     with pg_engine.begin() as conn:
-        for t in tables:
+        for t in (*tables, "rel_proprios__rejected", "rel_parcelles__rejected"):
             conn.execute(text(f"DROP TABLE IF EXISTS {t}"))
         conn.execute(
             text(

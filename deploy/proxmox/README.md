@@ -96,6 +96,9 @@ ansible-playbook -i inventory.ini --ask-vault-pass ../../ansible/playbook.yml
 
 À la fin, le résumé imprimé par `scripts/install.sh` (URL publique, compte
 admin) s'affiche dans la sortie Ansible (tâche « Afficher le résumé »).
+Les deux tâches d'installation sont en `no_log` (leur sortie porte le mot de passe
+temporaire de l'admin) : en cas d'échec, Ansible ne montre pas le détail — relancez
+`./scripts/install.sh` en SSH sur la VM pour le lire.
 
 ## 3. Vérifications réelles (critères §8 de la spec)
 

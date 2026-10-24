@@ -5,9 +5,8 @@ mono-utilisateur, mono-process, 127.0.0.1 uniquement (jamais exposé sur
 0.0.0.0, cf. Phase E du plan et l'entrypoint de la Tâche 4).
 
 Phase G (docs/superpowers/plans/2026-09-18-desktop-etl-phase-fg.md, Tâche 1) :
-`token` ferme le DNS rebinding avant que ce process ne soit un vrai
-sous-processus lancé par Tauri — `None` (le défaut) reproduit exactement le
-comportement d'avant cette tâche, pour ne rien casser des tests Phase E."""
+`token` ferme le DNS rebinding ; il est obligatoire depuis AUD-158 (plus de
+mode sans authentification)."""
 
 import hmac
 
@@ -61,38 +60,53 @@ _SIDECAR_SAFE_OPS = frozenset(
 )
 
 
-def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
+_ALLOWED_ORIGINS = ("http://tauri.localhost", "https://tauri.localhost", "tauri://localhost")
+
+
+def _check_pipeline_ops(payload: PipelinePayload) -> None:
+    """AUD-160 : l'allowlist d'op vaut au PUT, pas seulement dans le catalogue."""
+    bad = sorted({n.op for n in payload.nodes if n.op not in _SIDECAR_SAFE_OPS})
+    if bad:
+        raise HTTPException(status_code=422, detail=f"op non autorisée dans le sidecar : {bad}")
+
+
+def create_sidecar_app(*, base_uri: str, token: str) -> FastAPI:
     # CORE_PIPELINE_FILE_IO_ENABLED est posé par le point d'entrée du process
     # (scripts/pipeline_sidecar.py), plus ici : écrire os.environ à la construction
     # fuyait entre tests et vers tout appelant du module (REV-328).
+    # AUD-158 : jeton obligatoire, Host contrôlé sans condition, Origin hors allowlist rejetée.
+    if not token:
+        raise ValueError("un jeton de sidecar est obligatoire")
 
     app = FastAPI()
     store = PipelineStore()
     registry = RunRegistry()
 
-    if token is not None:
-        expected_authorization = f"Bearer {token}"
+    expected_authorization = f"Bearer {token}"
 
-        @app.middleware("http")
-        async def _enforce_loopback_auth(request: Request, call_next):
-            host_header = request.headers.get("host")
-            if host_header is not None and host_header.split(":")[0] != "127.0.0.1":
-                return Response(status_code=400, content="invalid Host header")
-            authorization = request.headers.get("authorization")
-            if authorization is None:
+    @app.middleware("http")
+    async def _enforce_loopback_auth(request: Request, call_next):
+        host_header = request.headers.get("host")
+        if host_header is None or host_header.rsplit(":", 1)[0] != "127.0.0.1":
+            return Response(status_code=400, content="invalid Host header")
+        origin = request.headers.get("origin")
+        if origin is not None and origin not in _ALLOWED_ORIGINS:
+            return Response(status_code=403, content="origin not allowed")
+        authorization = request.headers.get("authorization")
+        if authorization is None:
+            return Response(status_code=401, content="missing or invalid bearer token")
+        # Encode both sides to bytes to avoid TypeError on non-ASCII characters
+        # (Starlette decodes HTTP headers as latin-1, so any byte sequence is
+        # valid as a str; hmac.compare_digest rejects non-ASCII in str comparison).
+        try:
+            if not hmac.compare_digest(
+                authorization.encode("utf-8"),
+                expected_authorization.encode("utf-8"),
+            ):
                 return Response(status_code=401, content="missing or invalid bearer token")
-            # Encode both sides to bytes to avoid TypeError on non-ASCII characters
-            # (Starlette decodes HTTP headers as latin-1, so any byte sequence is
-            # valid as a str; hmac.compare_digest rejects non-ASCII in str comparison).
-            try:
-                if not hmac.compare_digest(
-                    authorization.encode("utf-8"),
-                    expected_authorization.encode("utf-8"),
-                ):
-                    return Response(status_code=401, content="missing or invalid bearer token")
-            except UnicodeEncodeError:
-                return Response(status_code=401, content="missing or invalid bearer token")
-            return await call_next(request)
+        except UnicodeEncodeError:
+            return Response(status_code=401, content="missing or invalid bearer token")
+        return await call_next(request)
 
     # CORS : la webview Tauri (Windows, origine http(s)://tauri.localhost)
     # appelle ce process en cross-origin (127.0.0.1:<port> != tauri.localhost)
@@ -108,13 +122,14 @@ def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
     # préflights OPTIONS (jamais porteurs d'Authorization) avant l'auth.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://tauri.localhost", "https://tauri.localhost"],
+        allow_origins=list(_ALLOWED_ORIGINS),
         allow_methods=["GET", "PUT", "POST"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
     @app.put("/pipelines/{item_id}", status_code=204)
     def put_pipeline(item_id: str, payload: PipelinePayload) -> Response:
+        _check_pipeline_ops(payload)
         store.set(item_id, payload)
         return Response(status_code=204)
 
@@ -124,6 +139,9 @@ def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
 
     @app.post("/pipelines/{item_id}/run", status_code=202)
     def run_pipeline_route(item_id: str) -> dict:
+        stored = store.get(item_id)
+        if stored is not None:
+            _check_pipeline_ops(stored)
         run_id = start_run(store, registry, item_id, base_uri=base_uri)
         if run_id is None:
             raise HTTPException(status_code=404, detail="no pipeline stored for this item")
@@ -146,6 +164,7 @@ def create_sidecar_app(*, base_uri: str, token: str | None = None) -> FastAPI:
         payload = body.pipeline if body and body.pipeline is not None else store.get(item_id)
         if payload is None:
             raise HTTPException(status_code=404, detail="no pipeline stored for this item")
+        _check_pipeline_ops(payload)
         try:
             return runtime.preview_pipeline(
                 session=None,

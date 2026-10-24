@@ -6,7 +6,7 @@
 # le `worker` partagé (ingestion/search/cdc/etl) n'ont besoin de porter
 # (SP-17a, design §Infrastructure — même rationale que deploy/qgis-worker,
 # à ceci près que la raison ici est le poids de l'image, pas une licence).
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 
 WORKDIR /app
 
@@ -26,7 +26,8 @@ RUN python -m playwright install --with-deps chromium
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
-COPY scripts ./scripts
+# AUD-187 : liste blanche (cf. core/Dockerfile) ; pas de spike_*/measure_*/audit_*.
+COPY scripts/__init__.py scripts/healthcheck_worker_stalled.py scripts/ensure_procrastinate_schema.py ./scripts/
 
 # Playwright/Chromium écrit son cache sous $HOME/.cache par défaut au
 # premier lancement si absent — installé ci-dessus alors que HOME est déjà
