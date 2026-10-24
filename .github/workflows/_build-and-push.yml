@@ -201,19 +201,22 @@ jobs:
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: ghcr.io/tlenenao/${{ matrix.image }}@${{ steps.build.outputs.digest }}
-          artifact-name: ${{ matrix.image }}-sbom.spdx.json
-          output-file: ${{ matrix.image }}-sbom.spdx.json
+          # CycloneDX et non SPDX : le SPDX de geostudio-titiler pèse 21 Mo (liste de fichiers des
+          # paquets) et dépasse les 16 Mio acceptés par `actions/attest` (rc3 échoué) ; 8,6 Mo en CycloneDX.
+          format: cyclonedx-json
+          artifact-name: ${{ matrix.image }}-sbom.cdx.json
+          output-file: ${{ matrix.image }}-sbom.cdx.json
 
       # ADR 0014 : attestation SBOM attachée au digest dans le registre.
       # `actions/attest` (et non `actions/attest-sbom`, déprécié : son action.yml
       # émet un avertissement et délègue à `actions/attest`, vérifié au SHA épinglé).
       # `create-storage-record: false` évite la permission `artifact-metadata`.
       - name: Attest SBOM
-        if: inputs.run_scans && hashFiles(format('{0}-sbom.spdx.json', matrix.image)) != ''
+        if: inputs.run_scans && hashFiles(format('{0}-sbom.cdx.json', matrix.image)) != ''
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-name: ghcr.io/tlenenao/${{ matrix.image }}
           subject-digest: ${{ steps.build.outputs.digest }}
-          sbom-path: ${{ matrix.image }}-sbom.spdx.json
+          sbom-path: ${{ matrix.image }}-sbom.cdx.json
           push-to-registry: true
           create-storage-record: false
