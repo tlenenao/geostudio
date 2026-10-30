@@ -95,7 +95,7 @@ fail() { echo "[drill] ÉCHEC : $*" >&2; FAILS+=("$*"); }
 
 # Buckets sauvegardés = ceux de la boucle de backup.sh (source unique, pas de copie).
 mapfile -t BUCKETS < <(sed -n '/^for bucket in/,/; do/p' deploy/backup/backup.sh | grep -o 'geostudio-[a-z0-9]*')
-[ "${#BUCKETS[@]}" -eq 7 ] || { echo "backup.sh : ${#BUCKETS[@]} buckets lus (7 attendus)" >&2; exit 1; }
+[ "${#BUCKETS[@]}" -eq 8 ] || { echo "backup.sh : ${#BUCKETS[@]} buckets lus (8 attendus)" >&2; exit 1; }
 REGENERABLE=(geostudio-exports geostudio-appexports)   # exclus du backup par décision (BACKUP_EXCLUDED_BUCKETS)
 
 T_START=$SECONDS
