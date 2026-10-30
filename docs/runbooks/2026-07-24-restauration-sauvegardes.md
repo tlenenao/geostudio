@@ -58,8 +58,8 @@ mais chacune retombe silencieusement sur un défaut de démo/dev sinon :
 ## Périmètre de la sauvegarde (ce qui revient, et ce qui ne revient pas)
 
 **Restauré** : la base Postgres complète (donc aussi les comptes Keycloak,
-même base `gis`), et sept buckets MinIO — `thumbnails`, `uploads`, `cdc`,
-`tileset3d`, `terrain3d`, `mapicons`, `attachments`. **Correction SP-59** :
+même base `gis`), et huit buckets MinIO — `thumbnails`, `uploads`, `cdc`,
+`tileset3d`, `terrain3d`, `raster`, `mapicons`, `attachments`. **Correction SP-59** :
 cette section n'en listait que cinq jusqu'ici (`mapicons`/`attachments`
 ajoutés à `deploy/backup/backup.sh` après SP-33/SP-40, jamais reportés ici
 ni côté restauration) — `restore.sh` (§3-4 ci-dessous) et cette liste sont
@@ -178,7 +178,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm \
 "
 ```
 
-**Note :** la commande `mc mb` ci-dessus recrée les sept buckets déclarés dans
+**Note :** la commande `mc mb` ci-dessus recrée les huit buckets déclarés dans
 la section « Périmètre de la sauvegarde » ci-dessus, en lisant les mêmes variables
 d'environnement que `deploy/backup/backup.sh` (`S3_THUMBNAILS_BUCKET`,
 `S3_UPLOADS_BUCKET`, `S3_CDC_BUCKET`, `S3_TILESET3D_BUCKET`,
@@ -353,7 +353,7 @@ DRILL_PORT_OFFSET=10000 scripts/replay/drill.sh  # poste de dev avec une stack d
 DRILL_FALSIFY=1 ...                              # auto-test : le drill DOIT échouer (sentinelle retirée)
 ```
 
-Déroulé : stack OIDC réelle -> alice crée une carte -> sentinelle dans chacun des 7 buckets sauvegardés
+Déroulé : stack OIDC réelle -> alice crée une carte -> sentinelle dans chacun des 8 buckets sauvegardés
 -> `backup.sh` réel (clé `age` jetable) -> sonde de fraîcheur (`.last_success`) -> `down -v` ->
 `restore.sh` -> redémarrage -> sentinelles relues, realm Keycloak servi, reconnexion OIDC du même
 compte et carte visible. Échec (code 1) si un bucket sauvegardé est manquant ou altéré, si l'export du
