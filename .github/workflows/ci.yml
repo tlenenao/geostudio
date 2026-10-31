@@ -1,13 +1,9 @@
 name: CI
 
 on:
-  # REV-400 : un seul run par commit. `push` sur `dev` doublait le run `pull_request` de la PR
-  # dev -> main (même SHA, deux runs complets) ; `dev` est donc couvert par la PR de promotion
-  # (ou, hors PR, par `workflow_dispatch`), `main` garde son verdict post-fusion.
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-  workflow_dispatch:
 
 # P27.13 : un nouveau push sur une PR annule les runs obsolètes ; jamais sur
 # push (dev/main) — chaque commit y garde son verdict complet.
