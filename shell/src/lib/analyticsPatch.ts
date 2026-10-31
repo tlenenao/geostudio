@@ -28,9 +28,11 @@ export function derivePatch(
     patch.bbox = ctx.extent.join(",");
   }
 
-  const directCrossFilter = ctx.crossFilter[source.datasetId];
-  if (directCrossFilter && directCrossFilter.originSourceId !== source.id) {
-    applyCrossFilterValue(patch, directCrossFilter.field, directCrossFilter.value);
+  // AUD-059 : toutes les sélections d'autres widgets émetteurs s'appliquent ; ET entre champs
+  // distincts, OU intra-champ (valeurs d'un même widget) ; deux widgets sur le même champ :
+  // la dernière entrée gagne (limite documentée).
+  for (const entry of Object.values(ctx.crossFilter[source.datasetId] ?? {})) {
+    if (entry.originSourceId !== source.id) applyCrossFilterValue(patch, entry.field, entry.value);
   }
 
   // SP-14n — cross-filter inter-datasets : pour chaque AUTRE dataset avec un
@@ -38,22 +40,24 @@ export function derivePatch(
   // cette source, et traduire en conséquence. Un seul saut (pas de chaînage
   // transitif) ; en cas de liens contradictoires vers la même cible, le
   // dernier résolu gagne (limite documentée, spec §1).
-  for (const [originDatasetId, entry] of Object.entries(ctx.crossFilter)) {
-    if (!entry || originDatasetId === source.datasetId) continue;
+  for (const [originDatasetId, entries] of Object.entries(ctx.crossFilter)) {
+    if (originDatasetId === source.datasetId) continue;
     const originDataset = datasets[originDatasetId];
-    const link = originDataset?.crossFilterLinks?.find(
-      (l) => l.targetDatasetId === source.datasetId,
-    );
-    if (!link) continue;
-    if (link.mode === "attribute") {
-      if (entry.field === link.sourceField)
-        applyCrossFilterValue(patch, link.targetField, entry.value);
-    } else if (entry.geometry !== undefined) {
-      if (link.precision === "bbox") {
-        const bbox = bboxFromGeometry(entry.geometry);
-        if (bbox) patch.bbox = bbox.join(",");
-      } else {
-        patch.geomIntersects = entry.geometry;
+    for (const entry of Object.values(entries)) {
+      const link = originDataset?.crossFilterLinks?.find(
+        (l) => l.targetDatasetId === source.datasetId,
+      );
+      if (!link) continue;
+      if (link.mode === "attribute") {
+        if (entry.field === link.sourceField)
+          applyCrossFilterValue(patch, link.targetField, entry.value);
+      } else if (entry.geometry !== undefined) {
+        if (link.precision === "bbox") {
+          const bbox = bboxFromGeometry(entry.geometry);
+          if (bbox) patch.bbox = bbox.join(",");
+        } else {
+          patch.geomIntersects = entry.geometry;
+        }
       }
     }
   }

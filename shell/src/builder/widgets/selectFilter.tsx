@@ -98,13 +98,13 @@ export function registerSelectFilterWidget(): void {
         );
       }
 
-      const active = analyticsCtx.crossFilter[datasetId];
+      const active = analyticsCtx.crossFilter[datasetId]?.[originSourceId];
       const checked =
         active && active.field === field && Array.isArray(active.value) ? active.value : [];
 
       function toggle(value: string, isChecked: boolean) {
         const next = isChecked ? [...checked, value] : checked.filter((v) => v !== value);
-        if (next.length === 0) clearCrossFilter(datasetId!);
+        if (next.length === 0) clearCrossFilter(datasetId!, originSourceId);
         else setCrossFilter(datasetId!, field, next, originSourceId);
       }
 

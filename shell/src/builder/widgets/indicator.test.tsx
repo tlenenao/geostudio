@@ -298,7 +298,9 @@ test("two indicator widgets on the same dataset and metric do not collide on cac
           initialState={{
             timeRange: { from: "2026-01-01", to: "2026-01-31" },
             extent: null,
-            crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-A" } },
+            crossFilter: {
+              "ds-1": { "src-A": { field: "region", value: "Nord", originSourceId: "src-A" } },
+            },
           }}
         >
           <div data-testid="widget-a">

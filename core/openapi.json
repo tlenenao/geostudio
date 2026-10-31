@@ -1660,7 +1660,10 @@
           },
           "crossFilter": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/BookmarkCrossFilterEntry"
+              "additionalProperties": {
+                "$ref": "#/components/schemas/BookmarkCrossFilterEntry"
+              },
+              "type": "object"
             },
             "title": "Crossfilter",
             "type": "object"

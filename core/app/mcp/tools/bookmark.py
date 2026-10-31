@@ -38,7 +38,7 @@ def register(server: FastMCP, session_factory) -> None:
         pageId: str,
         timeRange: BookmarkTimeRange | None = None,
         extent: tuple[float, float, float, float] | None = None,
-        crossFilter: dict[str, BookmarkCrossFilterEntry] | None = None,
+        crossFilter: dict[str, dict[str, BookmarkCrossFilterEntry]] | None = None,
     ) -> ItemRead:
         """Save a named analytics view (time range/extent/cross-filter) on an
         app page — mirrors POST /configs with kind="bookmark". SP-14m."""

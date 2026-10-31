@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useItemClient } from "../api/ItemClientProvider";
 import { encodeAnalyticsContext } from "../lib/analyticsContextUrl";
+import { normalizeCrossFilter } from "../builder/AnalyticsContext";
 import { resolvePipelineEditorPath } from "./resolvePipelineEditorPath";
 import type { Item, ResourceType } from "../api/types";
 import { editorPath } from "./editorPath";
@@ -32,7 +33,7 @@ export function useOpenItem() {
         const ctx = encodeAnalyticsContext({
           timeRange: bookmark.timeRange,
           extent: bookmark.extent,
-          crossFilter: bookmark.crossFilter,
+          crossFilter: normalizeCrossFilter(bookmark.crossFilter),
         });
         setOpenError(false);
         void navigate(

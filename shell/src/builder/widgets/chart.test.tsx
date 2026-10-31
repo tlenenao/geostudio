@@ -518,7 +518,9 @@ test("two chart widgets in compare mode on the same dataset and metric do not co
           initialState={{
             timeRange: { from: "2026-01-01", to: "2026-01-02" },
             extent: null,
-            crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-A" } },
+            crossFilter: {
+              "ds-1": { "src-A": { field: "region", value: "Nord", originSourceId: "src-A" } },
+            },
           }}
         >
           <Chart

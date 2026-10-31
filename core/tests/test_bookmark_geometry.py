@@ -23,8 +23,16 @@ def _entry(**extra) -> dict:
 
 def test_bookmark_keeps_the_spatial_cross_filter_geometry():
     bookmark = _payload({"d1": _entry(geometry=_POLY)})
-    assert bookmark.crossFilter["d1"].geometry == _POLY
-    assert bookmark.model_dump()["crossFilter"]["d1"]["geometry"] == _POLY
+    assert bookmark.crossFilter["d1"]["s"].geometry == _POLY
+    assert bookmark.model_dump()["crossFilter"]["d1"]["s"]["geometry"] == _POLY
+
+
+def test_bookmark_cross_filter_keeps_one_entry_per_origin_and_upgrades_the_flat_form():
+    nested = _payload(
+        {"d1": {"s1": _entry(originSourceId="s1"), "s2": _entry(originSourceId="s2")}}
+    )
+    assert set(nested.crossFilter["d1"]) == {"s1", "s2"}
+    assert set(_payload({"d1": _entry(originSourceId="s9")}).crossFilter["d1"]) == {"s9"}
 
 
 def test_bookmark_rejects_an_oversized_geometry():
@@ -36,5 +44,5 @@ def test_bookmark_rejects_an_oversized_geometry():
 def test_scheduled_report_context_carries_the_geometry_but_omits_an_absent_one():
     encoded = encode_analytics_context(_payload({"d1": _entry(geometry=_POLY), "d2": _entry()}))
     decoded = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
-    assert decoded["crossFilter"]["d1"]["geometry"] == _POLY
-    assert "geometry" not in decoded["crossFilter"]["d2"]
+    assert decoded["crossFilter"]["d1"]["s"]["geometry"] == _POLY
+    assert "geometry" not in decoded["crossFilter"]["d2"]["s"]

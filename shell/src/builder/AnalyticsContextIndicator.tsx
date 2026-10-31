@@ -26,8 +26,11 @@ export function AnalyticsContextIndicator() {
   const setExtent = useSetExtent();
   const clearCrossFilter = useClearCrossFilter();
 
-  const crossFilterIds = Object.keys(ctx.crossFilter).filter((id) => ctx.crossFilter[id]);
-  const chipCount = (ctx.timeRange ? 1 : 0) + (ctx.extent ? 1 : 0) + crossFilterIds.length;
+  const crossFilterChips = Object.entries(ctx.crossFilter).flatMap(([datasetId, entries]) =>
+    Object.values(entries).map((entry) => ({ datasetId, entry })),
+  );
+  const crossFilterIds = Object.keys(ctx.crossFilter);
+  const chipCount = (ctx.timeRange ? 1 : 0) + (ctx.extent ? 1 : 0) + crossFilterChips.length;
   if (chipCount === 0) return null;
 
   function clearAll() {
@@ -62,8 +65,7 @@ export function AnalyticsContextIndicator() {
           </button>
         </span>
       )}
-      {crossFilterIds.map((datasetId) => {
-        const entry = ctx.crossFilter[datasetId]!;
+      {crossFilterChips.map(({ datasetId, entry }) => {
         const propagatesTo = (datasets[datasetId]?.crossFilterLinks ?? [])
           .filter((link) =>
             link.mode === "attribute"
@@ -72,7 +74,7 @@ export function AnalyticsContextIndicator() {
           )
           .map((link) => link.targetDatasetId);
         return (
-          <span key={datasetId} className={chipCls}>
+          <span key={`${datasetId}:${entry.originSourceId}`} className={chipCls}>
             {entry.field} : {formatCrossFilterValue(entry.value)}
             {propagatesTo.length > 0 && (
               <span className="text-[var(--gs-color-muted)]"> → {propagatesTo.join(", ")}</span>
@@ -80,7 +82,7 @@ export function AnalyticsContextIndicator() {
             <button
               type="button"
               aria-label={t("analyticsContext.clearCrossFilterAria", { field: entry.field })}
-              onClick={() => clearCrossFilter(datasetId)}
+              onClick={() => clearCrossFilter(datasetId, entry.originSourceId)}
             >
               ×
             </button>

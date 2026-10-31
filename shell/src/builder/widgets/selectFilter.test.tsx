@@ -99,7 +99,9 @@ test("checking a value sets a single-element array cross-filter", async () => {
   renderSelect({}, queryDataSource);
   await userEvent.click(await screen.findByLabelText(/^Nord/));
   expect(
-    screen.getByText(/"ds-1":\{"field":"region","value":\["Nord"\],"originSourceId":"src-1"\}/),
+    screen.getByText(
+      /"ds-1":\{"src-1":\{"field":"region","value":\["Nord"\],"originSourceId":"src-1"\}\}/,
+    ),
   ).toBeInTheDocument();
 });
 

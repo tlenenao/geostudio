@@ -74,7 +74,9 @@ def test_create_bookmark_accepts_extent_and_cross_filter(app_client):  # noqa: F
                 "pageId": "page-1",
                 "extent": [2.0, 46.0, 3.0, 47.0],
                 "crossFilter": {
-                    "dataset-1": {"field": "region", "value": "Nord", "originSourceId": "src-1"}
+                    "dataset-1": {
+                        "src-1": {"field": "region", "value": "Nord", "originSourceId": "src-1"}
+                    }
                 },
             },
         )
@@ -82,7 +84,7 @@ def test_create_bookmark_accepts_extent_and_cross_filter(app_client):  # noqa: F
     with app_client.session_factory() as session:
         config = configs_repo.get_config_by_item(session, result["pk"])
         assert config.config.bookmark.extent == (2.0, 46.0, 3.0, 47.0)
-        assert config.config.bookmark.crossFilter["dataset-1"].field == "region"
+        assert config.config.bookmark.crossFilter["dataset-1"]["src-1"].field == "region"
 
 
 def test_create_bookmark_writes_audit_log_with_agent_actor(app_client):  # noqa: F811

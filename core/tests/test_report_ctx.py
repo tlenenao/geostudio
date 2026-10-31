@@ -38,9 +38,11 @@ def test_encode_round_trips_full_context():
     assert decoded["extent"] == [1.0, 2.0, 3.0, 4.0]
     assert decoded["crossFilter"] == {
         "dataset-1": {
-            "field": "score",
-            "value": {"from": "10", "to": "90"},
-            "originSourceId": "src-1",
+            "src-1": {
+                "field": "score",
+                "value": {"from": "10", "to": "90"},
+                "originSourceId": "src-1",
+            },
         },
     }
 

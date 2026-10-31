@@ -80,7 +80,9 @@ test("setCrossFilter toggles: same (field, value) twice clears it, a different v
   );
   await userEvent.click(screen.getByText("set-cf"));
   expect(
-    screen.getByText(/"ds1":\{"field":"region","value":"Nord","originSourceId":"src1"\}/),
+    screen.getByText(
+      /"ds1":\{"src1":\{"field":"region","value":"Nord","originSourceId":"src1"\}\}/,
+    ),
   ).toBeInTheDocument();
   await userEvent.click(screen.getByText("set-cf"));
   expect(screen.getByText("crossFilter:{}")).toBeInTheDocument();
@@ -95,7 +97,7 @@ test("setCrossFilter accepts a {from,to} range value", async () => {
   await userEvent.click(screen.getByText("set-cf-range"));
   expect(
     screen.getByText(
-      /"ds1":\{"field":"period","value":\{"from":"2026-01-01","to":"2026-02-01"\},"originSourceId":"src1"\}/,
+      /"ds1":\{"src1":\{"field":"period","value":\{"from":"2026-01-01","to":"2026-02-01"\},"originSourceId":"src1"\}\}/,
     ),
   ).toBeInTheDocument();
 });

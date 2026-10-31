@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { EMPTY_ANALYTICS_CONTEXT, type AnalyticsContextState } from "../builder/AnalyticsContext";
+import {
+  EMPTY_ANALYTICS_CONTEXT,
+  normalizeCrossFilter,
+  type AnalyticsContextState,
+} from "../builder/AnalyticsContext";
 
 // Unicode-safe base64url: JSON can contain accented labels/values (field
 // names, cross-filter values), so a plain btoa(json) would throw on any
@@ -20,7 +24,7 @@ export function decodeAnalyticsContext(raw: string | null): AnalyticsContextStat
     return {
       timeRange: parsed.timeRange ?? null,
       extent: parsed.extent ?? null,
-      crossFilter: parsed.crossFilter ?? {},
+      crossFilter: normalizeCrossFilter(parsed.crossFilter),
     };
   } catch {
     return EMPTY_ANALYTICS_CONTEXT;

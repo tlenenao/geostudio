@@ -25,8 +25,11 @@ def encode_analytics_context(bookmark: BookmarkPayload) -> str:
         # "from". Sans by_alias=True, la clé sortirait en "from_", cassant la
         # compatibilité de format avec le décodeur JS du shell.
         "crossFilter": {
-            key: entry.model_dump(by_alias=True, exclude_none=True)
-            for key, entry in bookmark.crossFilter.items()
+            key: {
+                origin: entry.model_dump(by_alias=True, exclude_none=True)
+                for origin, entry in entries.items()
+            }
+            for key, entries in bookmark.crossFilter.items()
         },
     }
     json_bytes = json.dumps(state).encode("utf-8")

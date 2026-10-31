@@ -102,7 +102,7 @@ export function registerSliderFilterWidget(): void {
       }
 
       const { min, max } = query.data;
-      const active = analyticsCtx.crossFilter[datasetId];
+      const active = analyticsCtx.crossFilter[datasetId]?.[originSourceId];
       const activeRange =
         active &&
         active.field === field &&
@@ -114,7 +114,7 @@ export function registerSliderFilterWidget(): void {
       const to = activeRange ? Number(activeRange.to) : max;
 
       function commit(nextFrom: number, nextTo: number) {
-        if (nextFrom === min && nextTo === max) clearCrossFilter(datasetId!);
+        if (nextFrom === min && nextTo === max) clearCrossFilter(datasetId!, originSourceId);
         else
           setCrossFilter(
             datasetId!,

@@ -92,7 +92,9 @@ test("skips the extent patch when reactsToExtent is false", () => {
 test("adds a cross-filter patch for a different origin source", () => {
   const ctx: AnalyticsContextState = {
     ...EMPTY,
-    crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-OTHER" } },
+    crossFilter: {
+      "ds-1": { "src-OTHER": { field: "region", value: "Nord", originSourceId: "src-OTHER" } },
+    },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({ region: "Nord" });
 });
@@ -100,7 +102,9 @@ test("adds a cross-filter patch for a different origin source", () => {
 test("excludes the cross-filter patch when this source is the origin", () => {
   const ctx: AnalyticsContextState = {
     ...EMPTY,
-    crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-1" } },
+    crossFilter: {
+      "ds-1": { "src-1": { field: "region", value: "Nord", originSourceId: "src-1" } },
+    },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({});
 });
@@ -109,7 +113,9 @@ test("uses field__in with a comma-joined value for an array cross-filter value",
   const ctx: AnalyticsContextState = {
     ...EMPTY,
     crossFilter: {
-      "ds-1": { field: "region", value: ["Nord", "Sud"], originSourceId: "src-OTHER" },
+      "ds-1": {
+        "src-OTHER": { field: "region", value: ["Nord", "Sud"], originSourceId: "src-OTHER" },
+      },
     },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({ region__in: "Nord,Sud" });
@@ -119,7 +125,9 @@ test("combines time, extent and cross-filter patches together", () => {
   const ctx: AnalyticsContextState = {
     timeRange: { from: "2026-01-01", to: "2026-02-01" },
     extent: [1, 2, 3, 4],
-    crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-OTHER" } },
+    crossFilter: {
+      "ds-1": { "src-OTHER": { field: "region", value: "Nord", originSourceId: "src-OTHER" } },
+    },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({
     date_releve__gte: "2026-01-01",
@@ -133,7 +141,13 @@ test("uses field__gte/field__lte for a range cross-filter value", () => {
   const ctx: AnalyticsContextState = {
     ...EMPTY,
     crossFilter: {
-      "ds-1": { field: "score", value: { from: "10", to: "50" }, originSourceId: "src-OTHER" },
+      "ds-1": {
+        "src-OTHER": {
+          field: "score",
+          value: { from: "10", to: "50" },
+          originSourceId: "src-OTHER",
+        },
+      },
     },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({
@@ -146,7 +160,9 @@ test("excludes a range cross-filter patch when this source is the origin", () =>
   const ctx: AnalyticsContextState = {
     ...EMPTY,
     crossFilter: {
-      "ds-1": { field: "score", value: { from: "10", to: "50" }, originSourceId: "src-1" },
+      "ds-1": {
+        "src-1": { field: "score", value: { from: "10", to: "50" }, originSourceId: "src-1" },
+      },
     },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({});
@@ -169,7 +185,9 @@ const linked: DatasetConfig = {
 test("translates an attribute link from another dataset's active cross-filter", () => {
   const ctx: AnalyticsContextState = {
     ...EMPTY,
-    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
+    crossFilter: {
+      "ds-2": { "src-OTHER": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
+    },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset, "ds-2": linked })).toEqual({
     nom_commune: "Brive",
@@ -179,7 +197,11 @@ test("translates an attribute link from another dataset's active cross-filter", 
 test("ignores an attribute link when the active field doesn't match sourceField", () => {
   const ctx: AnalyticsContextState = {
     ...EMPTY,
-    crossFilter: { "ds-2": { field: "autre_champ", value: "Brive", originSourceId: "src-OTHER" } },
+    crossFilter: {
+      "ds-2": {
+        "src-OTHER": { field: "autre_champ", value: "Brive", originSourceId: "src-OTHER" },
+      },
+    },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset, "ds-2": linked })).toEqual({});
 });
@@ -198,7 +220,9 @@ test("ignores a link that doesn't target this source's dataset", () => {
   };
   const ctx: AnalyticsContextState = {
     ...EMPTY,
-    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
+    crossFilter: {
+      "ds-2": { "src-OTHER": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
+    },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset, "ds-2": elsewhere })).toEqual({});
 });
@@ -223,7 +247,14 @@ test("translates a spatial/bbox link into a bbox patch derived from the entry's 
   const ctx: AnalyticsContextState = {
     ...EMPTY,
     crossFilter: {
-      "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER", geometry: polygon },
+      "ds-2": {
+        "src-OTHER": {
+          field: "commune",
+          value: "Brive",
+          originSourceId: "src-OTHER",
+          geometry: polygon,
+        },
+      },
     },
   };
   expect(
@@ -256,7 +287,14 @@ test("translates a spatial/exact link into a geomIntersects patch carrying the r
   const ctx: AnalyticsContextState = {
     ...EMPTY,
     crossFilter: {
-      "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER", geometry: polygon },
+      "ds-2": {
+        "src-OTHER": {
+          field: "commune",
+          value: "Brive",
+          originSourceId: "src-OTHER",
+          geometry: polygon,
+        },
+      },
     },
   };
   expect(
@@ -276,7 +314,9 @@ test("ignores a spatial link when the active entry has no geometry", () => {
   };
   const ctx: AnalyticsContextState = {
     ...EMPTY,
-    crossFilter: { "ds-2": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
+    crossFilter: {
+      "ds-2": { "src-OTHER": { field: "commune", value: "Brive", originSourceId: "src-OTHER" } },
+    },
   };
   expect(
     derivePatch(source, ctx, {
@@ -289,7 +329,9 @@ test("ignores a spatial link when the active entry has no geometry", () => {
 test("does not resolve a link declared on the same dataset as the target source (no self-link)", () => {
   const ctx: AnalyticsContextState = {
     ...EMPTY,
-    crossFilter: { "ds-1": { field: "region", value: "Nord", originSourceId: "src-1" } },
+    crossFilter: {
+      "ds-1": { "src-1": { field: "region", value: "Nord", originSourceId: "src-1" } },
+    },
   };
   // dataset "ds-1" has no crossFilterLinks of its own here — this just proves the
   // direct same-dataset path (already tested above) and the link path don't double-fire.
@@ -324,10 +366,27 @@ test("cross-filter __in escapes values containing a comma", () => {
   const ctx: AnalyticsContextState = {
     ...EMPTY,
     crossFilter: {
-      "ds-1": { field: "city", value: ["Paris, France", "Lyon"], originSourceId: "x" },
+      "ds-1": { x: { field: "city", value: ["Paris, France", "Lyon"], originSourceId: "x" } },
     },
   };
   expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({
     city__in: "Paris\\, France,Lyon",
+  });
+});
+
+test("AUD-059 : combine les sélections de plusieurs widgets émetteurs (ET entre champs)", () => {
+  const ctx: AnalyticsContextState = {
+    ...EMPTY,
+    crossFilter: {
+      "ds-1": {
+        "src-A": { field: "region", value: "Nord", originSourceId: "src-A" },
+        "src-B": { field: "annee", value: ["2024", "2025"], originSourceId: "src-B" },
+        "src-1": { field: "autre", value: "x", originSourceId: "src-1" },
+      },
+    },
+  };
+  expect(derivePatch(source, ctx, { "ds-1": dataset })).toEqual({
+    region: "Nord",
+    annee__in: "2024,2025",
   });
 });

@@ -344,12 +344,33 @@ class BookmarkCrossFilterEntry(BaseModel):
         return v
 
 
+def _nest_entry(v: Any) -> Any:
+    """Entrée plate (ancienne forme) -> `{originSourceId: entrée}` ; forme imbriquée inchangée."""
+    if isinstance(v, BookmarkCrossFilterEntry):
+        return {v.originSourceId: v}
+    if isinstance(v, dict) and "field" in v and "originSourceId" in v:
+        return {v["originSourceId"]: v}
+    return v
+
+
 class BookmarkPayload(BaseModel):
     appId: str
     pageId: str
     timeRange: BookmarkTimeRange | None = None
     extent: tuple[float, float, float, float] | None = None
-    crossFilter: dict[str, BookmarkCrossFilterEntry] = Field(default_factory=dict)
+    # AUD-059 : une entrée par widget émetteur (`originSourceId`) et par dataset.
+    crossFilter: dict[str, dict[str, BookmarkCrossFilterEntry]] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _upgrade_flat_cross_filter(cls, data: Any) -> Any:
+        """Lecture tolérante de l'ancienne forme `{dataset: entrée}` (sans SQL)."""
+        if isinstance(data, dict) and isinstance(data.get("crossFilter"), dict):
+            data = {
+                **data,
+                "crossFilter": {ds: _nest_entry(v) for ds, v in data["crossFilter"].items()},
+            }
+        return data
 
     @model_validator(mode="after")
     def _require_non_empty_page_id(self) -> "BookmarkPayload":

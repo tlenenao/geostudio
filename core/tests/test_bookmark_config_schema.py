@@ -31,8 +31,8 @@ def test_bookmark_config_valide():
     assert config.bookmark.timeRange.from_ == "2026-01-01"
     assert config.bookmark.timeRange.to == "2026-02-01"
     assert config.bookmark.extent == (2.0, 46.0, 3.0, 47.0)
-    assert config.bookmark.crossFilter["dataset-1"].field == "region"
-    assert config.bookmark.crossFilter["dataset-1"].originSourceId == "src-1"
+    assert config.bookmark.crossFilter["dataset-1"]["src-1"].field == "region"
+    assert config.bookmark.crossFilter["dataset-1"]["src-1"].originSourceId == "src-1"
 
 
 def test_bookmark_config_sans_payload_rejete():
@@ -86,12 +86,15 @@ def test_bookmark_config_cross_filter_range_shape_accepted():
         },
     )
     config = BuilderConfig.model_validate(body)
-    entry = config.bookmark.crossFilter["dataset-1"]
+    entry = config.bookmark.crossFilter["dataset-1"]["src-1"]
     assert entry.value.from_ == "10"
     assert entry.value.to == "100"
 
     dumped = config.model_dump(by_alias=True)
-    assert dumped["bookmark"]["crossFilter"]["dataset-1"]["value"] == {"from": "10", "to": "100"}
+    assert dumped["bookmark"]["crossFilter"]["dataset-1"]["src-1"]["value"] == {
+        "from": "10",
+        "to": "100",
+    }
 
     reloaded = BuilderConfig.model_validate(dumped)
-    assert reloaded.bookmark.crossFilter["dataset-1"].value.to == "100"
+    assert reloaded.bookmark.crossFilter["dataset-1"]["src-1"].value.to == "100"

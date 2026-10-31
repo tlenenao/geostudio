@@ -12,8 +12,23 @@ export type CrossFilterEntry = {
 export type AnalyticsContextState = {
   timeRange: { from: string; to: string } | null;
   extent: [number, number, number, number] | null;
-  crossFilter: Record<string, CrossFilterEntry | undefined>;
+  // AUD-059 : une entrée par dataset ET par widget émetteur (`originSourceId`).
+  crossFilter: Record<string, Record<string, CrossFilterEntry>>;
 };
+
+/** Lecture tolérante de l'ancienne forme `{dataset: entrée}` (URL, signets). */
+export function normalizeCrossFilter(raw: unknown): AnalyticsContextState["crossFilter"] {
+  const out: AnalyticsContextState["crossFilter"] = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [ds, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== "object") continue;
+    const e = v as Partial<CrossFilterEntry>;
+    if (typeof e.field === "string" && typeof e.originSourceId === "string")
+      out[ds] = { [e.originSourceId]: e as CrossFilterEntry };
+    else out[ds] = v as Record<string, CrossFilterEntry>;
+  }
+  return out;
+}
 
 export const EMPTY_ANALYTICS_CONTEXT: AnalyticsContextState = {
   timeRange: null,
@@ -41,7 +56,7 @@ type SetCrossFilter = (
   originSourceId: string,
   geometry?: unknown,
 ) => void;
-type ClearCrossFilter = (datasetId: string) => void;
+type ClearCrossFilter = (datasetId: string, originSourceId?: string) => void;
 
 const AnalyticsStateContext = createContext<AnalyticsContextState>(EMPTY_ANALYTICS_CONTEXT);
 const AnalyticsSettersContext = createContext<{
@@ -115,14 +130,16 @@ export function AnalyticsContextProvider({
     (datasetId, field, value, originSourceId, geometry) => {
       if (!active) return;
       setState((prev) => {
-        const current = prev.crossFilter[datasetId];
+        const current = prev.crossFilter[datasetId]?.[originSourceId];
         const isToggleOff =
           Boolean(current) &&
           current!.field === field &&
           sameCrossFilterValue(current!.value, value);
-        const nextCrossFilter = { ...prev.crossFilter };
-        if (isToggleOff) delete nextCrossFilter[datasetId];
-        else nextCrossFilter[datasetId] = { field, value, originSourceId, geometry };
+        const entries = { ...prev.crossFilter[datasetId] };
+        if (isToggleOff) delete entries[originSourceId];
+        else entries[originSourceId] = { field, value, originSourceId, geometry };
+        const nextCrossFilter = { ...prev.crossFilter, [datasetId]: entries };
+        if (Object.keys(entries).length === 0) delete nextCrossFilter[datasetId];
         return { ...prev, crossFilter: nextCrossFilter };
       });
     },
@@ -130,12 +147,18 @@ export function AnalyticsContextProvider({
   );
 
   const clearCrossFilter = useCallback<ClearCrossFilter>(
-    (datasetId) => {
+    (datasetId, originSourceId) => {
       if (!active) return;
       setState((prev) => {
-        if (!prev.crossFilter[datasetId]) return prev;
+        const entries = prev.crossFilter[datasetId];
+        if (!entries) return prev;
+        if (originSourceId !== undefined && !entries[originSourceId]) return prev;
         const nextCrossFilter = { ...prev.crossFilter };
-        delete nextCrossFilter[datasetId];
+        const rest = { ...entries };
+        if (originSourceId !== undefined) delete rest[originSourceId];
+        if (originSourceId === undefined || Object.keys(rest).length === 0)
+          delete nextCrossFilter[datasetId];
+        else nextCrossFilter[datasetId] = rest;
         return { ...prev, crossFilter: nextCrossFilter };
       });
     },

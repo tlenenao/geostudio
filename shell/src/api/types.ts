@@ -1547,7 +1547,7 @@ export type BookmarkPayload = {
   pageId: string;
   timeRange: { from: string; to: string } | null;
   extent: [number, number, number, number] | null;
-  crossFilter: Record<string, BookmarkCrossFilterEntry | undefined>;
+  crossFilter: Record<string, Record<string, BookmarkCrossFilterEntry>>;
 };
 
 export type CreateBookmarkInput = { title: string; owner: string } & BookmarkPayload;

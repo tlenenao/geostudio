@@ -3832,7 +3832,9 @@ export interface components {
             appId: string;
             /** Crossfilter */
             crossFilter?: {
-                [key: string]: components["schemas"]["BookmarkCrossFilterEntry"];
+                [key: string]: {
+                    [key: string]: components["schemas"]["BookmarkCrossFilterEntry"];
+                };
             };
             /** Extent */
             extent?: [
