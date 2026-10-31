@@ -219,15 +219,19 @@ test("save a view with a cross-filter and a time range, find it in Mes vues, reo
       appId: "9",
       pageId: expect.any(String),
       timeRange: { from: "2026-01-01", to: "2026-12-31" },
-      crossFilter: {
-        "dataset-1": {
-          field: "score",
-          value: { from: "50", to: "90" },
-          originSourceId: expect.any(String),
-        },
-      },
     },
   });
+  // crossFilter imbriqué : datasetId -> originSourceId -> entrée (AUD-059)
+  const savedCrossFilter = (
+    bookmarkConfigBody.bookmark as { crossFilter: Record<string, Record<string, unknown>> }
+  ).crossFilter;
+  expect(Object.values(savedCrossFilter["dataset-1"])).toEqual([
+    {
+      field: "score",
+      value: { from: "50", to: "90" },
+      originSourceId: expect.any(String),
+    },
+  ]);
 
   // 3. La vue apparaît dans /bookmarks.
   await page.route("**/items*", async (route) => {

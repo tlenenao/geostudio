@@ -307,7 +307,7 @@ test("clicking a category always emits categorySelected on the bus", async () =>
 test("sets the cross-filter when interactions is auto and the source is dataset-bound", async () => {
   function Probe() {
     const ctx = useAnalyticsContext();
-    const entry = ctx.crossFilter["dataset-1"];
+    const entry = Object.values(ctx.crossFilter["dataset-1"] ?? {})[0];
     return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
   }
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -613,7 +613,7 @@ test("PropsPanel lets the author add up to 3 hierarchy levels for treemap/sunbur
 test("handleClick uses resolveClickFilter — treemap click cross-filters on the deepest level", async () => {
   function Probe() {
     const ctx = useAnalyticsContext();
-    const entry = ctx.crossFilter["ds-1"];
+    const entry = Object.values(ctx.crossFilter["ds-1"] ?? {})[0];
     return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
   }
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

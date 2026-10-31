@@ -622,7 +622,7 @@ test("map sets the extent (debounced by the provider) when the view moves and in
 test("map sets a cross-filter by pkColumn on feature click when dataset-bound", async () => {
   function CrossFilterProbe() {
     const ctx = useAnalyticsContext();
-    const entry = ctx.crossFilter["dataset-1"];
+    const entry = Object.values(ctx.crossFilter["dataset-1"] ?? {})[0];
     return (
       <p>
         cf:

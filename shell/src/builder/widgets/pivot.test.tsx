@@ -123,7 +123,7 @@ test("renders row/column headers, cells and totals", () => {
 test("clicking a row header cross-filters on the rows field", async () => {
   function Probe() {
     const ctx = useAnalyticsContext();
-    const entry = ctx.crossFilter["ds-1"];
+    const entry = Object.values(ctx.crossFilter["ds-1"] ?? {})[0];
     return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
   }
   const Pivot = getWidget("pivot")!.Component;
@@ -143,7 +143,7 @@ test("clicking a row header cross-filters on the rows field", async () => {
 test("clicking a column header cross-filters on the columns field", async () => {
   function Probe() {
     const ctx = useAnalyticsContext();
-    const entry = ctx.crossFilter["ds-1"];
+    const entry = Object.values(ctx.crossFilter["ds-1"] ?? {})[0];
     return <p>cf:{entry ? `${entry.field}=${entry.value}` : "none"}</p>;
   }
   const Pivot = getWidget("pivot")!.Component;

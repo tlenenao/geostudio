@@ -399,7 +399,7 @@ test("SP-B12c : le panneau de propriétés de la table avec une colonne calculé
 
 function CrossFilterProbe({ datasetId }: { datasetId: string }) {
   const ctx = useAnalyticsContext();
-  const entry = ctx.crossFilter[datasetId];
+  const entry = Object.values(ctx.crossFilter[datasetId] ?? {})[0];
   return (
     <p>
       cf:
