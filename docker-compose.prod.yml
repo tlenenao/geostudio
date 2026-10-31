@@ -377,7 +377,7 @@ services:
     # `docker image inspect`, 0.3.0) : tout à 0 sauf EVENTS/PING/VERSION ;
     # CONTAINERS=1 est le strict nécessaire au provider Docker de Traefik.
     # Aucun port publié : joignable sur gis-net uniquement.
-    image: tecnativa/docker-socket-proxy:0.3.0
+    image: tecnativa/docker-socket-proxy:v0.5.0
     environment:
       CONTAINERS: "1"
       POST: "0"
