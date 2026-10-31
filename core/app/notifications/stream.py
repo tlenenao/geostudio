@@ -82,7 +82,9 @@ async def event_stream(request: Request, tenant_id: str, user_id: str) -> AsyncI
     deadline = loop.time() + STREAM_LIFETIME_S
     last: tuple[int, str | None] | None = None
     yield "retry: 5000\n\n"
-    while loop.time() < deadline and not await request.is_disconnected():
+    first = True  # au moins un tick : une base lente ne doit pas produire un flux vide
+    while first or (loop.time() < deadline and not await request.is_disconnected()):
+        first = False
         state = await run_in_threadpool(read)
         if state != last:  # premier tick = synchronisation initiale
             last = state
