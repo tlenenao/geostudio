@@ -15,6 +15,20 @@ _RUNNING_RECLAIM_MINUTES = 60
 _TERMINAL = ("done", "error", "cancelled")
 
 
+def key_in_use(session: Session, *, tenant_id: str, key: str) -> bool:
+    """La clé est déjà la source d'un job (jumelle de terrain3d.key_in_use, AUD-151)."""
+    return (
+        session.scalar(
+            select(IngestionJob.id).where(
+                IngestionJob.tenant_id == tenant_id,
+                IngestionJob.source_key == key,
+                IngestionJob.status.not_in(("error", "cancelled")),  # réessai légitime
+            )
+        )
+        is not None
+    )
+
+
 def create_job(
     session: Session,
     *,

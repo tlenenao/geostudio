@@ -132,6 +132,19 @@ def test_create_upload_job_defers_task_and_returns_job_id(env):
     }
 
 
+def test_create_upload_job_rejects_replayed_and_traversal_keys(env):
+    # REV-403 : jumelle de la validation de clé terrain3d (AUD-151).
+    client, Session, tenant, alice, deferred, _fake_s3 = env
+    body = {"key": "default/abc-villes.geojson", "filename": "v.geojson", "collectionTitle": "V"}
+    assert client.post("/v1/uploads", json=body).status_code == 201
+    assert client.post("/v1/uploads", json=body).status_code == 409  # source déjà prise
+    for bad in ("default/../other/x.geojson", "default//x.geojson", "default/"):
+        r = client.post("/v1/uploads", json={**body, "key": bad})
+        assert r.status_code == 400, bad
+    r = client.post("/v1/uploads/inspect", json={"key": "default/../x.csv", "filename": "x.csv"})
+    assert r.status_code == 400
+
+
 def test_create_upload_job_rejects_key_with_foreign_tenant_prefix(env):
     client, *_ = env
     r = client.post(

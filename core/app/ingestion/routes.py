@@ -78,6 +78,14 @@ def get_task_deferrer() -> Callable[[str, str], None]:
     return deferrer
 
 
+def _check_upload_key(user: User, key: str) -> None:
+    """Jumelle de la validation de clé terrain3d (AUD-151, REV-403) : sous le préfixe du tenant
+    de l'appelant, sans segment vide ni `..`."""
+    parts = key.split("/")
+    if parts[0] != user.tenant_id or len(parts) < 2 or any(p in ("", "..") for p in parts):
+        raise HTTPException(status_code=400, detail="invalid upload key")
+
+
 @router.post("/uploads/presign", response_model=PresignResponse)
 def presign_upload(
     body: PresignRequest,
@@ -106,8 +114,7 @@ def inspect_upload(
     bucket: str = Depends(get_uploads_bucket),
 ) -> InspectResponse:
     require_privilege(session, user, Privilege.DATA_MANAGE.value)
-    if not body.key.startswith(f"{user.tenant_id}/"):
-        raise HTTPException(status_code=400, detail="invalid upload key")
+    _check_upload_key(user, body.key)
     try:
         # REV-268 : JSON Lines n'est inspecté que sur ses premières lignes.
         load = download_object_head if body.filename.lower().endswith(".jsonl") else download_object
@@ -213,8 +220,11 @@ def create_upload_job(
     # sous le préfixe d'un AUTRE tenant (deviné, réutilisé depuis une fuite,
     # etc.) ferait sinon lire par le worker un objet S3 hors de son tenant
     # (confused deputy) sous son propre job/collection/tenant courant.
-    if not body.key.startswith(f"{user.tenant_id}/"):
-        raise HTTPException(status_code=400, detail="invalid upload key")
+    _check_upload_key(user, body.key)
+    if repo.key_in_use(session, tenant_id=user.tenant_id, key=body.key):
+        # Jumelle terrain3d (AUD-151) : un job supprime sa source ; rejouer la clé d'un autre
+        # job ferait lire/supprimer son objet.
+        raise HTTPException(status_code=409, detail="upload key already used")
     # SP-58 Tâche 5 (GAP-73/GAP-11) : cette route ne connaissait jusqu'ici
     # pas la taille de l'objet déjà téléversé (upload direct présigné) —
     # head_object est le seul moyen de l'apprendre, même patron que
