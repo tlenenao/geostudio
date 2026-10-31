@@ -103,8 +103,12 @@ test.describe("menu « Actions » d'une carte", () => {
     // Radix n'écoute le pointerdown extérieur qu'après le montage du menu
     // (setTimeout 0) : cliquer avant que le menu soit visible est une course.
     await expect(page.getByRole("menu")).toBeVisible();
-    await page.mouse.click(5, 400);
-    await expect(page.getByRole("menu")).toHaveCount(0);
+    // CI (runner lent) : un pointerdown émis avant l'armement de l'écouteur Radix est perdu —
+    // on rejoue le clic jusqu'à fermeture (attente d'un état, pas d'une durée).
+    await expect(async () => {
+      await page.mouse.click(5, 400);
+      await expect(page.getByRole("menu")).toHaveCount(0, { timeout: 1000 });
+    }).toPass({ timeout: 8000 });
 
     // annulation d'une confirmation de suppression : alertdialog décrit, focus rendu
     await trigger.click();
