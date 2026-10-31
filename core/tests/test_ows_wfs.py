@@ -321,6 +321,23 @@ def test_get_feature_is_bounded_by_statement_timeout(env, monkeypatch):
     assert c.get(BASE, params=q).status_code == 200
     assert seen == [5000]
 
+    # REV-397 : `hits` ne déclenche jamais un count(*) complet.
+    from app.features import repository as real_repo
+
+    modes = []
+
+    class _SpyRepo:
+        def __getattr__(self, name):
+            return getattr(real_repo, name)
+
+        def select_features(self, *a, **k):
+            modes.append(k.get("count_mode"))
+            return real_repo.select_features(*a, **k)
+
+    c.app.dependency_overrides[get_features_repo] = lambda: _SpyRepo()
+    assert c.get(BASE, params=q).status_code == 200
+    assert modes == ["capped"]
+
     class _Canceled:
         sqlstate = "57014"
 

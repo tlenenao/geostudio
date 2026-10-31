@@ -184,8 +184,10 @@ def _exposed(session, user) -> list:
     return [c for c in cols if c.ows_enabled and c.geometry_column and wms.NCNAME.match(c.id)]
 
 
-def _png(body: bytes, truncated: bool) -> Response:
-    headers = {"Cache-Control": "private, no-cache"}
+def _png(body: bytes, truncated: bool, *, anonymous: bool = False) -> Response:
+    # REV-397 : une image rendue pour un anonyme (ni compte ni lien de partage) est la même
+    # pour tous : cache public court (CDN) ; toute autre reste privée.
+    headers = {"Cache-Control": "public, max-age=60" if anonymous else "private, no-cache"}
     if truncated:
         headers["X-GeoStudio-Truncated"] = "true"
     return Response(content=body, media_type="image/png", headers=headers)
@@ -329,7 +331,7 @@ def _get_map(q, session, user, guest, introspect, repo, rls, masked, legacy=Fals
         session, rls, repo, introspect, masked, user, guest,
         layers=names, styles=styles, bbox=bbox, srid=srid, size=size, bg=bg,
     )  # fmt: skip
-    return _png(body, truncated)
+    return _png(body, truncated, anonymous=user is None and guest is None)
 
 
 def _get_feature_info(
@@ -434,7 +436,7 @@ def _tile(session, user, guest, introspect, repo, rls, masked, *, layer, style, 
         if e.code in ("LayerNotDefined", "StyleNotDefined"):
             raise _OwsError(e.status, "InvalidParameterValue", "Layer", e.message) from None
         raise
-    return _png(body, truncated)
+    return _png(body, truncated, anonymous=user is None and guest is None)
 
 
 def _tile_int(raw: str | None, name: str) -> int:

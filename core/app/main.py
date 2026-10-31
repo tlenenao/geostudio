@@ -81,6 +81,7 @@ from app.pipelines import config_validation as pipelines_config_validation  # no
 from app.pipelines import routes as pipelines_routes
 from app.public import routes as public_routes
 from app.public_submit import routes as public_submit_routes
+from app.public_submit import service as submit_service
 from app.quality import routes as quality_routes
 from app.quotas import routes as quotas_routes
 from app.quotas.service import QuotaExceededError, validate_quota_settings
@@ -509,6 +510,11 @@ def create_app() -> FastAPI:
     # unrelated tests.
     rate_limiter = make_rate_limiter(database_url)
     shared_limiter = isinstance(rate_limiter, PgRateLimiter)
+    # REV-396 : compteurs horaires de la soumission publique partagés entre réplicas
+    # (singletons de module : jamais liés hors backend Postgres, pas de fuite entre tests).
+    _submit_engine = rate_limiter.engine if isinstance(rate_limiter, PgRateLimiter) else None
+    submit_service.ip_limiter.bind(_submit_engine)
+    submit_service.token_limiter.bind(_submit_engine)
 
     @app.middleware("http")
     async def rate_limit_guard(request: Request, call_next):

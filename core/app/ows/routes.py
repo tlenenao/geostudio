@@ -249,7 +249,7 @@ def _get_feature(request, q, session, user, guest, introspect, repo, rls, masked
                 info,
                 limit=1 if hits else max(count, 1),
                 offset=0 if hits else start,
-                count_mode="exact" if hits else "capped",
+                count_mode="capped",  # REV-397 : jamais de count(*) complet, même pour `hits`
                 **kwargs,
             )
         except DBAPIError as exc:

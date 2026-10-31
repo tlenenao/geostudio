@@ -12,7 +12,7 @@ import uuid
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import Engine, select, text, update
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -41,19 +41,65 @@ class HourlyLimiter:
     limiteur SP-26 (même limite assumée : pas de partage entre répliques, cf. ARC-32).
     Dédié : le limiteur du middleware est à fenêtre de 60 s."""
 
-    def __init__(self, limit: int, window_seconds: float = 3600.0) -> None:
+    def __init__(self, limit: int, window_seconds: float = 3600.0, group: str = "hourly") -> None:
         self.limit = limit
         self.window = window_seconds
+        self.group = group
+        self._engine: Engine | None = None
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._calls = 0
 
+    def bind(self, engine: Engine | None) -> None:
+        """REV-396 : compteur partagé entre réplicas (table `rate_limit_counters` d'ARC-32,
+        fenêtre fixe d'une heure). Sans moteur, ou base en panne : repli sur le process."""
+        self._engine = engine
+
+    def _pg(self, key: str, *, incr: bool) -> int | None:
+        if self._engine is None:
+            return None
+        k = hashlib.sha256(key.encode()).hexdigest()
+        w = int(time.time() // self.window)
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(text("SET LOCAL statement_timeout = 250"))
+                if incr:
+                    return int(
+                        conn.execute(
+                            text(
+                                "INSERT INTO rate_limit_counters"
+                                " (key_hash, grp, window_start, hits)"
+                                " VALUES (:k, :g, :w, 1) ON CONFLICT (key_hash, grp, window_start)"
+                                " DO UPDATE SET hits = rate_limit_counters.hits + 1 RETURNING hits"
+                            ),
+                            {"k": k, "g": self.group, "w": w},
+                        ).scalar_one()
+                    )
+                return int(
+                    conn.execute(
+                        text(
+                            "SELECT COALESCE(SUM(hits), 0) FROM rate_limit_counters"
+                            " WHERE key_hash = :k AND grp = :g AND window_start = :w"
+                        ),
+                        {"k": k, "g": self.group, "w": w},
+                    ).scalar_one()
+                )
+        except Exception:
+            logger.warning("limiteur horaire: Postgres indisponible, repli local", exc_info=True)
+            return None
+
     def has_room(self, key: str) -> bool:
         """Sans décompter (revue SP-L2 I4) : une requête refusée ne consomme rien."""
+        hits = self._pg(key, incr=False)
+        if hits is not None:
+            return hits < self.limit
         now = time.monotonic()
         bucket = self._hits.get(key)
         return bucket is None or sum(now - t <= self.window for t in bucket) < self.limit
 
     def allow(self, key: str) -> bool:
+        hits = self._pg(key, incr=True)
+        if hits is not None:
+            return hits <= self.limit
         now = time.monotonic()
         bucket = self._hits[key]
         while bucket and now - bucket[0] > self.window:
@@ -73,13 +119,15 @@ class HourlyLimiter:
 
 # 100 requêtes/h/IP : la 101e est refusée (429). Compte TOUTES les requêtes vers la
 # route publique (jeton invalide compris), sinon le brute-force du jeton serait gratuit.
-ip_limiter = HourlyLimiter(100)
+ip_limiter = HourlyLimiter(100, group="pubsub-ip-h")
 # AUD-154 : aussi par jeton, quel que soit le nombre d'IP. Revue SP-L2 I4 : ne
 # décompte que les soumissions ACCEPTÉES (sinon des requêtes invalides épuisent le
 # formulaire d'autrui) ; seuil CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT (défaut 1000).
 # ponytail: compteurs horaires par process ; le budget par minute partagé entre
 # répliques est celui de PgRateLimiter.
-token_limiter = HourlyLimiter(int(os.environ.get("CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT") or 1000))
+token_limiter = HourlyLimiter(
+    int(os.environ.get("CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT") or 1000), group="pubsub-token-h"
+)
 
 
 def _utcnow() -> datetime:

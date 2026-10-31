@@ -308,6 +308,10 @@ class PgRateLimiter(RateLimiter):
         self._local_lock = threading.Lock()
 
     @property
+    def engine(self) -> Engine:
+        return self._engine
+
+    @property
     def degraded(self) -> bool:
         return time.monotonic() < self._open_until
 

@@ -157,6 +157,19 @@ def test_getfeatureinfo_masks_sensitive_like_features_api(env):
     assert c.get(WMS, params={**q, "i": 9999}).status_code == 400  # InvalidPoint
 
 
+def test_anonymous_render_is_publicly_cacheable_but_authenticated_is_not(env):
+    # REV-397 : cache public court réservé à l'anonyme ; un compte reste en `private`.
+    c, login, _admin = env
+    _enable(c)
+    tile = f"{WMTS}/1.0.0/demo_ows/default/WebMercatorQuad/0/0/0.png"
+    login(None)
+    assert c.get(WMS, params=_map()).headers["cache-control"] == "public, max-age=60"
+    assert c.get(tile).headers["cache-control"] == "public, max-age=60"
+    login(_admin)
+    assert c.get(WMS, params=_map()).headers["cache-control"] == "private, no-cache"
+    assert c.get(tile).headers["cache-control"] == "private, no-cache"
+
+
 def test_private_collection_same_rights_as_features_api(env):
     c, login, _admin = env
     assert c.patch("/v1/collections/demo_ows", json={"owsEnabled": True}).status_code == 200

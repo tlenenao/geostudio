@@ -93,6 +93,25 @@ def test_local_fallback_is_thread_safe_under_concurrent_requests():
     assert errors == []
 
 
+def test_hourly_submit_limiter_is_shared_between_replicas(engine):
+    # REV-396 : deux « process » liés au même moteur partagent le budget horaire.
+    from app.public_submit.service import HourlyLimiter
+
+    a, b = HourlyLimiter(3, group="t-h"), HourlyLimiter(3, group="t-h")
+    a.bind(engine)
+    b.bind(engine)
+    assert [(a if i % 2 else b).allow("k") for i in range(5)] == [True] * 3 + [False] * 2
+    assert not a.has_room("k") and not b.has_room("k")
+
+
+def test_hourly_submit_limiter_falls_back_locally_when_db_is_down():
+    from app.public_submit.service import HourlyLimiter
+
+    lim = HourlyLimiter(2)
+    lim.bind(create_engine("postgresql+psycopg://x:x@127.0.0.1:1/x"))
+    assert [lim.allow("k") for _ in range(3)] == [True, True, False]
+
+
 def test_routing_budget_is_shared_between_processes(engine, test_db_url, monkeypatch):
     """Le budget routage (100/min/utilisateur) vaut pour core ET worker : deux _Window distincts
     (deux process) consomment le même compteur Postgres (repli du limiteur de la voie P)."""
