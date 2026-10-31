@@ -8176,3 +8176,10 @@ Spec/plan : `docs/superpowers/specs|plans/2026-10-18-l8-collecte-terrain-offline
 ## V1 Relations (REV-371 à 375, 2026-10-31)
 
 Relecture du code (piège n°12) : `relations/service.py` (`check_write`, `check_rows`, `before_update`, `parent_key_blocker`, total `_matching` sous RLS, 422 sur `FilterError`), `collections/routes.py` (409 suppression avec relation, 409 PATCH `sensitiveFields`), `public_submit`, `ingestion/importer.py`, `pipelines/collection_writer.py` portaient déjà les gardes ; 25 tests relations verts sur base `gis_v1` dédiée. Falsification : retrait de `check_write` (soumission) et de la garde de suppression -> `test_aud165_approved_*` et `test_aud167_*` rouges. Jumelles listées : POST/PUT/restore REST (même `_replace`), soumission, import, writer, `replace`/`delete` de pipeline (`restricting_relation`), MCP (aucun écrivain direct). REV-403 reste ouverte pour ses autres jumelles (terrain3d, `/vsi*`, chaînes brutes, `.defer()` nus). Aucun code modifié.
+## Voie V2 base et migrations (REV-376…383), 2026-10-31
+
+Relecture du code d'abord (piège n°12) : REV-377 à 382 étaient déjà livrés (`env.py` timeouts, 0071
+concurrente, backfills 0005/0007, FK `NOT VALID`, `migration_guard.py`, `init.sql` hors prod) ;
+vérifiés, backlog réaligné. REV-376 : `list_changes_since` rejoue 30 s avant `since` (le client
+dédoublonne par `id`) ; test PostGIS réel. REV-383 : `If-Match` reste optionnel, 428 exigerait de
+migrer d'abord shell/MCP/clients. Aucune migration créée.

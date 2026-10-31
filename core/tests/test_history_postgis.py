@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """ARC-15 : journal d'entité sur PostGIS réel (critères d'acceptation du comparatif)."""
 
+from datetime import timedelta
+
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 
 from app import db
 from app.attachments import routes as attachments_routes
@@ -131,12 +133,24 @@ def test_changes_since_returns_only_the_delta(seeded):
     client, app, admin, _l, Session, fid = seeded
     with Session() as s:
         last = s.scalars(select(EntityHistory).order_by(EntityHistory.id.desc())).first()
-        since = last.created_at.isoformat() + "Z"
+        since_dt = last.created_at
+        since = since_dt.isoformat() + "Z"
     client.put(f"/v1/collections/demo_hist/items/{fid}", json=_feature("C", 300))
     r = client.get("/v1/collections/demo_hist/changes", params={"since": since})
     assert r.status_code == 200
     changes = r.json()["changes"]
-    assert len(changes) == 1 and changes[0]["after"]["properties"]["nom"] == "C"
+    # recouvrement (REV-376) : la dernière version déjà vue est rejouée, le client dédoublonne
+    assert [c["after"]["properties"]["nom"] for c in changes] == ["A", "B", "C"]
+    # hors fenêtre (> 30 s avant le curseur) : plus rejouée
+    with Session() as s:
+        s.execute(
+            update(EntityHistory)
+            .where(EntityHistory.id <= changes[1]["id"])
+            .values(created_at=since_dt - timedelta(hours=1))
+        )
+        s.commit()
+    r = client.get("/v1/collections/demo_hist/changes", params={"since": since})
+    assert [c["after"]["properties"]["nom"] for c in r.json()["changes"]] == ["C"]
     everything = client.get(
         "/v1/collections/demo_hist/changes", params={"since": "2000-01-01T00:00:00Z"}
     ).json()["changes"]

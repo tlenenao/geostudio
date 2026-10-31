@@ -113,9 +113,17 @@ def get_version(
     )
 
 
+# REV-376 : `created_at` est posé à l'écriture, pas au commit — une transaction lente peut commiter
+# APRÈS qu'un client a avancé son curseur au-delà de son horodatage. On rejoue donc une fenêtre de
+# recouvrement ; le client dédoublonne par `id`. ponytail: borne de durée de transaction d'écriture,
+# curseur transactionnel (xmin/snapshot) si des écritures dépassent cette fenêtre.
+CHANGES_OVERLAP = timedelta(seconds=30)
+
+
 def list_changes_since(
     session: Session, *, tenant_id: str, collection_id: str, since: datetime, limit: int
 ) -> list[EntityHistory]:
+    since = since - CHANGES_OVERLAP
     return list(
         session.scalars(
             select(EntityHistory)

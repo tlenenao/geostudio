@@ -72,7 +72,9 @@ def entity_history(
 def collection_changes(
     collection_id: str,
     since: datetime = Query(
-        ..., description="ISO 8601 ; renvoie les changements strictement postérieurs"
+        ...,
+        description="ISO 8601 ; changements postérieurs, avec 30 s de recouvrement "
+        "(transactions commitées tardivement) : dédoublonner par `id`",
     ),
     limit: int = Query(default=200, ge=1, le=MAX_CHANGES),
     user=Depends(get_current_user),

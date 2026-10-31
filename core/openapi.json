@@ -11216,12 +11216,12 @@
             }
           },
           {
-            "description": "ISO 8601 ; renvoie les changements strictement post\u00e9rieurs",
+            "description": "ISO 8601 ; changements post\u00e9rieurs, avec 30 s de recouvrement (transactions commit\u00e9es tardivement) : d\u00e9doublonner par `id`",
             "in": "query",
             "name": "since",
             "required": true,
             "schema": {
-              "description": "ISO 8601 ; renvoie les changements strictement post\u00e9rieurs",
+              "description": "ISO 8601 ; changements post\u00e9rieurs, avec 30 s de recouvrement (transactions commit\u00e9es tardivement) : d\u00e9doublonner par `id`",
               "format": "date-time",
               "title": "Since",
               "type": "string"

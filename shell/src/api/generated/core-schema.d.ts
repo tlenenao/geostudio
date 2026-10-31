@@ -7511,7 +7511,7 @@ export interface operations {
     collection_changes_v1_collections__collection_id__changes_get: {
         parameters: {
             query: {
-                /** @description ISO 8601 ; renvoie les changements strictement postérieurs */
+                /** @description ISO 8601 ; changements postérieurs, avec 30 s de recouvrement (transactions commitées tardivement) : dédoublonner par `id` */
                 since: string;
                 limit?: number;
             };
