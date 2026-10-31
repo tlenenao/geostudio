@@ -8198,3 +8198,13 @@ Relecture avant tout : REV-384 (liste blanche de scripts dans `core/Dockerfile` 
 ## V10 reliquats pré-release, 2026-10-31
 
 Relecture seule de REV-275/276/277/278/280/282/283 : chaque lettre codable est déjà dans le code (preuves dans les lignes `Relecture V10` du backlog) ; les specs `j06b-001/014/015/016`, `j06-012`, `j07-016`, `j02-005`, `j09b-009/011`, `j03-002`, `j08-009/012`, `j05-009` sont déjà des `test()`. Restent `bug()` : `t03-006` (build requis) et `t03-009` (décision produit). Reliquat unique : rejeux sur stack réelle. Aucun code, aucune migration.
+## Voie V9 « Reliquats AUD (A) », 2026-10-31
+
+Relecture du code avant d'écrire : 052 (popup CEL `popupContext` + DOMPurify), 056 (`tile_proxy.py`),
+récents ⌘K (119), `PUT /v1/admin/usage/limits` et le paramètre `invalidGeometry` étaient déjà livrés
+(piège n°12). Livré : AUD-059 cross-filter multi-entrées (`crossFilter: Record<dataset,
+Record<originSourceId, entrée>>`, `derivePatch` combine les widgets émetteurs, `normalizeCrossFilter`
+lit l'ancienne forme dans l'URL/les signets, `BookmarkPayload` imbriqué + `before`-validator côté cœur,
+OpenAPI/types régénérés, aucune migration ; l'entrée MCP `create_bookmark` exige la forme imbriquée).
+Non fait : 126/127 (~240 contrôles bruts), `jobs/common.py` (cadré : 18 importeurs, > 1 j), rapport par
+fid d'`invalidGeometry`, cache des tuiles MVT, généralisation de `HelpHint`.
