@@ -22,6 +22,9 @@ function item(pk: string, type = "app", title = `Item ${pk}`) {
 }
 
 export const handlers = [
+  // Sonde de connectivité (hors /v1) : un tour tardif d'un test précédent ne
+  // doit pas écrire une erreur « requête non gérée » dans le test suivant.
+  http.get("https://core.test/health", () => HttpResponse.json({ status: "ok" })),
   http.get(`${CORE}/analytics/sql/saved`, () => HttpResponse.json([])),
   http.get(`${CORE}/items`, () =>
     HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 }),

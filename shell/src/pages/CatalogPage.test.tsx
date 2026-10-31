@@ -256,15 +256,19 @@ test("le filtre Type propose les treize types plus « Tous »", () => {
 });
 
 test("fixedType locks the type filter and hides the selector", async () => {
-  let lastUrl = "";
+  // Un tour de requête tardif d'un test précédent peut atterrir ici (msw 3) :
+  // on garde donc toutes les URL plutôt que la dernière.
+  const urls: string[] = [];
   server.use(
     http.get("https://core.test/v1/items", ({ request }) => {
-      lastUrl = request.url;
+      urls.push(request.url);
       return HttpResponse.json({ items: [], total: 0, page: 1, pageSize: 12 });
     }),
   );
   render(<CatalogPage onOpenItem={() => {}} fixedType="bookmark" />, { wrapper });
-  await waitFor(() => expect(new URL(lastUrl).searchParams.get("type")).toBe("bookmark"));
+  await waitFor(() =>
+    expect(urls.map((u) => new URL(u).searchParams.get("type"))).toContain("bookmark"),
+  );
   expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
 });
 
