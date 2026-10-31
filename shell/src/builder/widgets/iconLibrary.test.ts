@@ -41,9 +41,9 @@ test("LUCIDE_ICONS n'a aucun nom en doublon", () => {
 // absent du module généré signifie que gen-lucide-icons.mjs n'a pas été
 // relancé après une modification du catalogue.
 // Constat B4 (Bloquant) du 2026-08-28 : l'assertion précédente était
-// `toMatch(/^<svg/)`. MESURÉE sur le tarball réel lucide-static@1.34.0 :
+// `toMatch(/^<svg/)`. MESURÉE sur le tarball réel lucide-static@1.61.0 :
 // **0 des 2035** fichiers commence par `<svg` après `.trim()` — tous
-// commencent par `<!-- @license lucide-static v1.34.0 - ISC -->`, et ce
+// commencent par `<!-- @license lucide-static v1.61.0 - ISC -->`, et ce
 // commentaire est précisément la notice que la licence ISC oblige à conserver,
 // donc le script ne le retire PAS. Le test échouait sur 140/140. Le plan
 // énonçait d'ailleurs ce fait lui-même 40 lignes plus bas : c'était une
@@ -54,7 +54,7 @@ test("chaque nom du catalogue a bien un SVG dans le module généré", () => {
     expect(svg, `SVG manquant pour "${name}"`).toBeDefined();
     // La notice ISC est en tête et doit y rester (obligation de licence).
     expect(svg, `notice ISC absente pour "${name}"`).toMatch(
-      /^<!-- @license lucide-static v1\.34\.0 - ISC -->/,
+      /^<!-- @license lucide-static v1\.61\.0 - ISC -->/,
     );
     expect(svg, `pas de <svg> dans "${name}"`).toContain("<svg");
   }

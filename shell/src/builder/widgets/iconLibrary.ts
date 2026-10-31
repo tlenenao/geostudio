@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Sous-ensemble curaté de Lucide (ISC), 140 pictogrammes en 7 catégories
 // cartographiques — PAS le jeu complet, qui compte 2035 fichiers dans
-// lucide-static@1.34.0. Les SVG eux-mêmes vivent dans
+// lucide-static@1.61.0. Les SVG eux-mêmes vivent dans
 // lucideIconSvgs.generated.ts, produit par scripts/gen-lucide-icons.mjs :
 // lucide-static est une devDependency, rien n'est téléchargé au runtime.
 import { LUCIDE_ICON_SVGS } from "./lucideIconSvgs.generated";
@@ -180,7 +180,7 @@ export const LUCIDE_ICONS: { name: string; category: IconCategory }[] = (
 ).flatMap(([category, names]) => names.map((name) => ({ name, category })));
 
 // Couleur de trait injectée : les SVG de lucide-static portent
-// `stroke="currentColor"` (vérifié sur le paquet 1.34.0). Hors d'un document
+// `stroke="currentColor"` (vérifié sur le paquet 1.61.0). Hors d'un document
 // CSS — dans un <img> ou createImageBitmap — `currentColor` retombe sur la
 // valeur initiale de `color`, donc noir. On substitue explicitement pour que
 // l'icône ait la couleur voulue du dépôt, et pour que ce ne soit pas un

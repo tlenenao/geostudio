@@ -61,7 +61,7 @@ writeFileSync(
 // Régénérer : cd shell && npm run gen:lucide-icons
 //
 // Contenu : ${names.length} pictogrammes de Lucide (https://lucide.dev),
-// distribués sous licence ISC via le paquet npm lucide-static@1.34.0.
+// distribués sous licence ISC via le paquet npm lucide-static@1.61.0.
 // Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as
 // part of Feather (MIT). All other copyright (c) for Lucide are held by
 // Lucide Contributors 2022. Licence ISC conservée telle quelle.
