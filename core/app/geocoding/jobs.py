@@ -7,12 +7,13 @@ job `running` périmé : le balayage le repasse `pending` et le redéfère, la
 reprise repart de `len(results)` (piège n°14 : commit puis defer = balayage).
 File `dataexport` réutilisée (déjà câblée dans le worker : pas de nouvelle file)."""
 
+import json
 import logging
 import time
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 
 from app.auth.dependency import is_read_only_mode
@@ -96,6 +97,24 @@ def _take(session: Session, job_id: str) -> bool:
     return bool(res.rowcount)  # type: ignore[attr-defined]
 
 
+def _append_results(session: Session, job_id: str, new: list[dict]) -> None:
+    """REV-398 : ajoute une tranche à `results` sans réécrire les précédentes (jsonb `||`
+    côté PostgreSQL, un UPDATE de la taille de la tranche) ; SQLite (tests) relit puis réécrit."""
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            text(
+                "UPDATE geocode_jobs SET results = (results::jsonb || CAST(:new AS jsonb))::json, "
+                "updated_at = :now WHERE id = :id AND status = 'running'"
+            ),
+            {"new": json.dumps(new), "now": _now(), "id": job_id},
+        )
+        return
+    job = session.get(GeocodeJob, job_id)
+    if job is not None and job.status == "running":
+        job.results = [*job.results, *new]
+        job.updated_at = _now()
+
+
 @app.task(queue="dataexport")
 def run_geocode_job(job_id: str, tenant_id: str) -> None:
     factory = session_factory()
@@ -117,15 +136,11 @@ def run_geocode_job(job_id: str, tenant_id: str) -> None:
                     time.sleep(1)
             else:
                 raise GeocoderBusy("géocodeur occupé, lot à relancer plus tard")
-            done.extend(r.model_dump() for r in rows)
-            # ponytail: réécrit tout `results` à chaque tranche (O(n²) borné par
-            # MAX_JOB_ADDRESSES / CHUNK = 50 écritures) ; table de lignes si le plafond monte.
+            new = [r.model_dump() for r in rows]
+            done.extend(new)
+            # REV-398 : écriture incrémentale (concaténation JSONB côté base, plus O(n²)).
             with request_scoped_session(factory) as session:
-                session.execute(
-                    update(GeocodeJob)
-                    .where(GeocodeJob.id == job_id, GeocodeJob.status == "running")
-                    .values(results=done, updated_at=_now())
-                )
+                _append_results(session, job_id, new)
     except Exception as exc:
         logger.exception("geocode job %s : échec", job_id)
         with request_scoped_session(factory) as session:

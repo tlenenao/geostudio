@@ -12,7 +12,7 @@ import uuid
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Engine, select, text, update
+from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -20,6 +20,7 @@ from app.collections.models import Collection
 from app.notifications import repository as notifications_repo
 from app.outbox.emit import emit
 from app.public_submit.models import Submission, SubmissionFile, SubmissionToken
+from app.ratelimit.limiter import pg_long_hit
 from app.sharing.models import CollectionShare, GroupMember, share_active
 from app.upload_sniff import sniff_content_type  # noqa: F401  (liste blanche partagée, L8)
 
@@ -41,7 +42,9 @@ class HourlyLimiter:
     limiteur SP-26 (même limite assumée : pas de partage entre répliques, cf. ARC-32).
     Dédié : le limiteur du middleware est à fenêtre de 60 s."""
 
-    def __init__(self, limit: int, window_seconds: float = 3600.0, group: str = "hourly") -> None:
+    def __init__(
+        self, limit: int, window_seconds: float = 3600.0, group: str = "hourly:long"
+    ) -> None:
         self.limit = limit
         self.window = window_seconds
         self.group = group
@@ -57,32 +60,10 @@ class HourlyLimiter:
     def _pg(self, key: str, *, incr: bool) -> int | None:
         if self._engine is None:
             return None
-        k = hashlib.sha256(key.encode()).hexdigest()
-        w = int(time.time() // self.window)
         try:
-            with self._engine.begin() as conn:
-                conn.execute(text("SET LOCAL statement_timeout = 250"))
-                if incr:
-                    return int(
-                        conn.execute(
-                            text(
-                                "INSERT INTO rate_limit_counters"
-                                " (key_hash, grp, window_start, hits)"
-                                " VALUES (:k, :g, :w, 1) ON CONFLICT (key_hash, grp, window_start)"
-                                " DO UPDATE SET hits = rate_limit_counters.hits + 1 RETURNING hits"
-                            ),
-                            {"k": k, "g": self.group, "w": w},
-                        ).scalar_one()
-                    )
-                return int(
-                    conn.execute(
-                        text(
-                            "SELECT COALESCE(SUM(hits), 0) FROM rate_limit_counters"
-                            " WHERE key_hash = :k AND grp = :g AND window_start = :w"
-                        ),
-                        {"k": k, "g": self.group, "w": w},
-                    ).scalar_one()
-                )
+            return pg_long_hit(
+                self._engine, self.group, key, int(time.time() // self.window), incr=incr
+            )
         except Exception:
             logger.warning("limiteur horaire: Postgres indisponible, repli local", exc_info=True)
             return None
@@ -119,14 +100,14 @@ class HourlyLimiter:
 
 # 100 requêtes/h/IP : la 101e est refusée (429). Compte TOUTES les requêtes vers la
 # route publique (jeton invalide compris), sinon le brute-force du jeton serait gratuit.
-ip_limiter = HourlyLimiter(100, group="pubsub-ip-h")
+ip_limiter = HourlyLimiter(100, group="pubsub-ip:long")
 # AUD-154 : aussi par jeton, quel que soit le nombre d'IP. Revue SP-L2 I4 : ne
 # décompte que les soumissions ACCEPTÉES (sinon des requêtes invalides épuisent le
 # formulaire d'autrui) ; seuil CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT (défaut 1000).
 # ponytail: compteurs horaires par process ; le budget par minute partagé entre
 # répliques est celui de PgRateLimiter.
 token_limiter = HourlyLimiter(
-    int(os.environ.get("CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT") or 1000), group="pubsub-token-h"
+    int(os.environ.get("CORE_PUBLIC_SUBMIT_TOKEN_HOURLY_LIMIT") or 1000), group="pubsub-token:long"
 )
 
 

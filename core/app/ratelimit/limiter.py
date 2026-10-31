@@ -8,6 +8,7 @@ logique de app.auth.dependency pour un usage qui n'a besoin que d'une clé
 stable, pas d'une identité vérifiée. Limite assumée : ne tient pas
 multi-process (pas de --workers aujourd'hui côté uvicorn, cf. C2/vague 0)."""
 
+import functools
 import hashlib
 import ipaddress
 import logging
@@ -288,6 +289,38 @@ _UPSERT = text(
 )
 
 
+# Compteurs « longs » (fenêtre > 60 s, REV-396/398) : le suffixe du groupe les exclut de la
+# purge à fenêtre de 60 s ci-dessous ; ils se purgent eux-mêmes (`pg_long_hit`).
+LONG_SUFFIX = ":long"
+
+
+def pg_long_hit(engine: Engine, group: str, key: str, window: int, *, incr: bool = True) -> int:
+    """Compteur partagé entre réplicas pour une fenêtre `window` (entier : heure, seconde…).
+    `incr=False` lit sans compter. Lève si la base est injoignable : l'appelant se replie.
+    Le groupe doit se terminer par LONG_SUFFIX."""
+    assert group.endswith(LONG_SUFFIX)
+    k = hashlib.sha256(key.encode()).hexdigest()
+    with engine.begin() as conn:
+        conn.execute(text("SET LOCAL statement_timeout = 250"))
+        if not incr:
+            return int(
+                conn.execute(
+                    text(
+                        "SELECT COALESCE(SUM(hits), 0) FROM rate_limit_counters "
+                        "WHERE key_hash = :k AND grp = :g AND window_start = :w"
+                    ),
+                    {"k": k, "g": group, "w": window},
+                ).scalar_one()
+            )
+        hits = conn.execute(_UPSERT, {"k": k, "g": group, "w": window}).scalar_one()
+        if hits == 1:  # nouvelle fenêtre : on purge les anciennes de ce groupe
+            conn.execute(
+                text("DELETE FROM rate_limit_counters WHERE grp = :g AND window_start < :w - 1"),
+                {"g": group, "w": window},
+            )
+        return int(hits)
+
+
 class PgRateLimiter(RateLimiter):
     """Limiteur partagé entre réplicas `core` (ARC-32) : compteur à fenêtre fixe de 60 s en
     UPSERT Postgres, un aller-retour par requête limitée. La clé (en-tête Authorization brut)
@@ -325,8 +358,11 @@ class PgRateLimiter(RateLimiter):
             if self._calls_since_purge >= 500:
                 self._calls_since_purge = 0
                 conn.execute(
-                    text("DELETE FROM rate_limit_counters WHERE window_start < :w"),
-                    {"w": window - 1},
+                    text(
+                        "DELETE FROM rate_limit_counters "
+                        "WHERE window_start < :w AND grp NOT LIKE :l"
+                    ),
+                    {"w": window - 1, "l": "%" + LONG_SUFFIX},
                 )
         return bool(hits <= budget)
 
@@ -339,6 +375,20 @@ class PgRateLimiter(RateLimiter):
                 self._open_until = time.monotonic() + _BREAKER_SECONDS
         with self._local_lock:
             return super().allow(key, group)
+
+
+@functools.cache
+def _shared_engine(backend: str, database_url: str) -> Engine | None:
+    limiter = make_rate_limiter(database_url) if backend == "postgres" else None
+    return limiter.engine if isinstance(limiter, PgRateLimiter) else None
+
+
+def shared_engine() -> Engine | None:
+    """Moteur du limiteur Postgres pour un process hors `create_app` (worker, MCP) ; None en
+    backend mémoire. Mis en cache par (backend, URL)."""
+    return _shared_engine(
+        os.environ.get("CORE_RATELIMIT_BACKEND", "memory"), os.environ.get("DATABASE_URL", "")
+    )
 
 
 def make_rate_limiter(database_url: str) -> RateLimiter:

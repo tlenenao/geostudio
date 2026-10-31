@@ -54,6 +54,32 @@ def test_job_runs_to_completion_and_exposes_results(env):
     assert [x["status"] for x in out["results"]] == ["trouvé", "non_trouvé", "trouvé"]
 
 
+def test_batch_and_jobs_require_data_manage(env):
+    # REV-398 : coût d'egress -> privilège `data.manage` ; un compte sans rôle créateur est refusé.
+    client, deferred, _g, factory = env
+    assert client.get("/v1/me").status_code == 200  # provisionne le compte mock
+    from sqlalchemy import select
+
+    from app.auth.dependency import get_current_user
+    from app.roles.repository import ensure_built_in_roles
+    from app.users.models import User
+
+    with factory() as s:
+        u = s.scalars(select(User)).one()
+        roles = ensure_built_in_roles(s, tenant_id=u.tenant_id)
+        u.role_id, u.is_admin = roles["reader"].id, False
+        s.commit()
+        s.refresh(u)
+        s.expunge(u)
+    client.app.dependency_overrides[get_current_user] = lambda: u
+    for path, body in (
+        ("/v1/geocode/jobs", {"addresses": ["aaa 1"]}),
+        ("/v1/geocode/batch", {"addresses": ["aaa 1"]}),
+    ):
+        assert client.post(path, json=body).status_code == 403
+    assert deferred == []
+
+
 def test_resume_does_not_regeocode_done_rows(env):
     client, deferred, geocoder, factory = env
     job_id = client.post("/v1/geocode/jobs", json={"addresses": ["aaa", "bbb", "ccc"]}).json()["id"]

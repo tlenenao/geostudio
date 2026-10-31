@@ -97,11 +97,79 @@ def test_hourly_submit_limiter_is_shared_between_replicas(engine):
     # REV-396 : deux « process » liés au même moteur partagent le budget horaire.
     from app.public_submit.service import HourlyLimiter
 
-    a, b = HourlyLimiter(3, group="t-h"), HourlyLimiter(3, group="t-h")
+    a, b = HourlyLimiter(3, group="t:long"), HourlyLimiter(3, group="t:long")
     a.bind(engine)
     b.bind(engine)
     assert [(a if i % 2 else b).allow("k") for i in range(5)] == [True] * 3 + [False] * 2
     assert not a.has_room("k") and not b.has_room("k")
+
+
+def test_minute_purge_never_deletes_long_counters(engine):
+    # Les compteurs `:long` (heure, seconde) ont des fenêtres d'une autre échelle : la purge à
+    # fenêtre de 60 s ne doit pas les emporter (sinon le budget horaire se réinitialise).
+    from app.public_submit.service import HourlyLimiter
+
+    lim = HourlyLimiter(10**6, group="t:long")
+    lim.bind(engine)
+    lim.allow("k")
+    pg = PgRateLimiter(engine)
+    for i in range(1100):  # > 2 purges (toutes les 500 appels)
+        pg.allow(f"c{i % 7}", "sql")
+    lim2 = HourlyLimiter(1, group="t:long")
+    lim2.bind(engine)
+    assert not lim2.has_room("k")  # le compteur de `lim` a survécu : 1 >= limite 1
+
+
+def test_geocode_pacer_caps_per_second_across_processes(engine, monkeypatch):
+    from app.geocoding import batch
+
+    monkeypatch.setattr(batch, "shared_engine", lambda: engine)
+    monkeypatch.setattr(batch.time, "time", lambda: 1000.5)
+
+    class _Slept(Exception):
+        pass
+
+    def sleep(_s):
+        raise _Slept
+
+    a = batch._Pacer(2, shared=True, sleep=sleep)
+    b = batch._Pacer(2, shared=True, sleep=sleep)
+    a._wait_shared()
+    b._wait_shared()  # 2 appels/s au total, tous process confondus
+    with pytest.raises(_Slept):  # le 3e doit attendre la seconde suivante
+        a._wait_shared()
+
+
+def test_geocode_job_results_are_appended_not_rewritten(pg_engine):
+    import uuid
+
+    from app.db import Base, make_session_factory
+    from app.geocoding.jobs import _append_results
+    from app.geocoding.models import GeocodeJob
+    from app.tenants.repository import get_or_create_default_tenant
+    from app.users.repository import get_or_create_user
+
+    Base.metadata.create_all(pg_engine)
+    Session = make_session_factory(pg_engine)
+    with Session() as s:
+        tenant = get_or_create_default_tenant(s)
+        user = get_or_create_user(
+            s, tenant_id=tenant.id, oidc_sub="g", username="g", email=None,
+            first_name="", last_name="", bootstrap_admin=True,
+        )  # fmt: skip
+        job = GeocodeJob(
+            id=uuid.uuid4().hex, tenant_id=tenant.id, created_by=user.id,
+            status="running", addresses=["a", "b", "c"], results=[],
+        )  # fmt: skip
+        s.add(job)
+        s.commit()
+        _append_results(s, job.id, [{"address": "a"}])
+        _append_results(s, job.id, [{"address": "b"}, {"address": "c"}])
+        s.commit()
+        s.refresh(job)
+        assert [r["address"] for r in job.results] == ["a", "b", "c"]
+        s.delete(job)
+        s.commit()
 
 
 def test_hourly_submit_limiter_falls_back_locally_when_db_is_down():

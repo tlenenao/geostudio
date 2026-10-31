@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.geocoding.provider import Geocoder
+from app.ratelimit.limiter import pg_long_hit, shared_engine
 
 MAX_BATCH = 500
 # Sous le plafond amont de 50 req/s/IP, marge pour les autres usages de l'instance.
@@ -32,8 +33,10 @@ class _Pacer:
         per_second: float,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        shared: bool = False,
     ):
         self._step, self._clock, self._sleep = 1.0 / per_second, clock, sleep
+        self._per_second, self._shared = per_second, shared
         self._next = 0.0
         self._lock = threading.Lock()
 
@@ -44,13 +47,28 @@ class _Pacer:
             self._next = slot + self._step
         if slot > now:
             self._sleep(slot - now)
+        if self._shared:
+            self._wait_shared()
+
+    def _wait_shared(self) -> None:
+        """REV-398 : plafond par seconde commun à tous les process (core, worker) qui partagent
+        l'IP sortante : un compteur Postgres par seconde ; base HS, cadence locale seule."""
+        engine = shared_engine()
+        while engine is not None:
+            sec = int(time.time())
+            try:
+                if pg_long_hit(engine, "geocode:long", "ban", sec) <= self._per_second:
+                    return
+            except Exception:  # noqa: BLE001 — repli sur la cadence du process
+                return
+            self._sleep(sec + 1 - time.time())
 
 
 # Cadence amont partagée par REST et MCP (BAN : 50 req/s/IP, donc par process),
 # et un seul lot à la fois par process.
-# ponytail: par process — plusieurs workers uvicorn multiplient le plafond ;
-# pacer/verrou partagés (Redis/PG) si on scale horizontalement.
-_PACER = _Pacer(MAX_PER_SECOND)
+# Cadence : partagée entre process via Postgres (`_wait_shared`) ; le verrou « un lot à la
+# fois » reste par process (il borne la mémoire/les threads, pas le débit amont).
+_PACER = _Pacer(MAX_PER_SECOND, shared=True)
 _BATCH_LOCK = threading.Lock()
 
 

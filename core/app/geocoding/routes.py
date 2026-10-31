@@ -16,6 +16,8 @@ from app.geocoding import jobs as geocode_jobs
 from app.geocoding.batch import MAX_BATCH, BatchBusy, BatchRow, geocode_batch
 from app.geocoding.egress import EgressBlockedError
 from app.geocoding.provider import Geocoder, GeocodeResult, get_geocoder
+from app.roles.guards import require_privilege
+from app.roles.privileges import Privilege
 from app.users.models import User
 
 router = APIRouter(prefix="/geocode", tags=["geocoding"])
@@ -63,9 +65,11 @@ class BatchResponse(BaseModel):
 @router.post("/batch", response_model=BatchResponse)
 def geocode_many(
     body: BatchRequest,
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session, scope="function"),
     geocoder: Geocoder = Depends(get_geocoder),
 ) -> BatchResponse:
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)  # REV-398 : coût d'egress
     # ponytail: synchrone (500 adresses ~ 15 s à 40 req/s), pas de table de job
     # (migration non autorisée sur cette voie) ; job + reprise = vague 1.
     if any(not 3 <= len(a) <= 200 for a in body.addresses):
@@ -127,6 +131,7 @@ def create_geocode_job(
 ) -> GeocodeJobOut:
     """Lot asynchrone avec reprise (REV-367 j) : jusqu'à 5000 adresses, progression
     par GET /geocode/jobs/{id}. Le POST /batch synchrone reste pour <= 500."""
+    require_privilege(session, user, Privilege.DATA_MANAGE.value)  # REV-398
     if any(not 3 <= len(a) <= 200 for a in body.addresses):
         raise HTTPException(status_code=422, detail="Chaque adresse doit faire 3 à 200 caractères.")
     active = geocode_jobs.count_active_jobs(session, tenant_id=user.tenant_id, user_id=user.id)
