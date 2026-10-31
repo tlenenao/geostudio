@@ -259,7 +259,7 @@ export function createItemsMethods(base: ItemClientBase): ItemsMethods {
         // user not found"), qui ne contient plus la sous-chaîne "404"
         // qu'un ancien Error générique portait. .status se lit directement.
         if (err instanceof ApiError && err.status === 404) {
-          throw new Error(t("errors.groupMemberForbidden"));
+          throw new Error(t("errors.groupMemberForbidden"), { cause: err });
         }
         throw err;
       }

@@ -131,7 +131,7 @@ export function HarvestSourcesAdminPage() {
     const rows = sourcesQuery.data ?? [];
     if (!sortKey) return rows;
     return [...rows].sort((a, b) => {
-      let cmp = 0;
+      let cmp: number;
       switch (sortKey) {
         case "type":
           cmp = a.type.localeCompare(b.type);

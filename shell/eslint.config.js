@@ -79,7 +79,11 @@ export default tseslint.config(
     },
     plugins: { "react-hooks": reactHooks },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      // react-hooks 7 : `recommended` active aussi les règles du compilateur React
+      // (set-state-in-effect, refs, purity, immutability — ~50 sites à réécrire).
+      // On garde le périmètre de la v5 ; les règles du compilateur sont un chantier à part.
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/no-misused-promises": "error",
       "no-restricted-syntax": [

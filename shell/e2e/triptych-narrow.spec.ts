@@ -95,7 +95,7 @@ async function expectNoClippedContent(page: Page) {
   const MAX_WAIT_MS = 5000;
 
   const history: number[] = [];
-  let lastOffenders: ClipOffender[] = [];
+  let lastOffenders: ClipOffender[];
   const deadline = Date.now() + MAX_WAIT_MS;
 
   for (;;) {
