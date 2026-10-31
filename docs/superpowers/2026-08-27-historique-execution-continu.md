@@ -8192,3 +8192,6 @@ Relecture du code : tout était déjà livré par `5afeefb4` (AUD-158 à 161 : j
 contrôlés, allowlist d'op au PUT/run/preview, `/vsi*` et `://` refusés, aperçu sans répertoire de writer,
 `read_*`/`glob` interdits, CSP Tauri non compilée ici faute de cargo) et le job WebDriver est vert sur
 dev/main. Aucun changement de code ; seuls les états du backlog sont soldés.
+## Voie V3 « Images et supply chain » (plan 2026-10-31-cloture-dettes-backlog), 2026-10-31
+
+Relecture avant tout : REV-384 (liste blanche de scripts dans `core/Dockerfile` et `export-worker`, test existant), REV-385 (cpus/pids_limit déjà dans le compose, seule la règle de test manquait, ajoutée), REV-394 (versions figées + HEALTHCHECK) et REV-395 (`MINIO_COMMIT` vérifié) étaient déjà faites. REV-393 : minio et titiler non-root déjà livrés ; postgis laissé root (entrypoint officiel qui drop vers `postgres` après chown du volume ; un `USER` statique exige un rejeu sur volume existant, stack non lancée ici). REV-392 : Dockerfile tous épinglés par digest ; images tierces du compose par tag exact, digest = décision liste B (non résolvable sans registre). Aucune migration.

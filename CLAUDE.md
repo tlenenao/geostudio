@@ -697,6 +697,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **Voie V2 base et migrations (REV-376…383)** — curseur `/changes` avec recouvrement de 30 s (dédoublonner par `id`) ; 377-382 déjà livrés (vérifiés), REV-383 `If-Match` obligatoire laissé ouvert par décision. Aucune migration. Détail dans l'archive.
 - **Voie V6 CI (REV-400/321)** — `push` CI limité à `main` (fin du doublon avec la PR dev -> main), clic extérieur du menu Actions rejoué par état ; REV-321 reste partielle (rejeu `--workers=2` non mesuré).
 - **Voie V4 Desktop (REV-386 à 390)** — déjà livrées par `5afeefb4` (sidecar durci, `reader.file`, CSP Tauri) et job WebDriver vert ; backlog soldé, aucun code.
+- **Voie V3 images et supply chain** — REV-384/385/394/395 fermées (relecture : déjà corrigées sauf la règle `cpus`/`pids_limit` de `test_deployability`), REV-392/393 partielles (digests des images tierces du compose et USER non-root postgis non faits, documentés dans le backlog). Aucune migration. Détail dans l'archive.
 
 ### Conventions tranchées (2026-09-01)
 

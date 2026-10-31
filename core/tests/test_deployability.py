@@ -866,6 +866,25 @@ def test_cdc_worker_is_bounded_by_default_and_titiler_concurrency_is_pinned():
         assert var in documented_env_vars(include_commented=False), var
 
 
+PIDS_DEFAULTS = {"postgis": "1024", "core": "1024", "worker": "1024", "export-worker": "2048",
+                 "cdc-worker": "512", "keycloak": "1024", "minio": "1024", "titiler": "512"}
+
+
+@pytest.mark.parametrize("service", sorted(MEM_LIMITS))
+def test_long_running_services_have_resolved_cpu_and_pids_limits(service):
+    """REV-385 (AUD-184) : mémoire seule ne borne ni un fork bomb ni la saturation CPU.
+    `cpus` et `pids_limit` à valeur RÉSOLUE sans `.env` + noms documentés (piège n°2)."""
+    svc = services(BASE)[service]
+    prefix = MEM_LIMITS[service][0].removesuffix("_MEM_LIMIT")
+    assert svc.get("cpus") is not None, f"service `{service}` sans cpus"
+    assert float(_resolve_effective_value(str(svc["cpus"]), f"{prefix}_CPUS")) > 0
+    assert svc.get("pids_limit") is not None, f"service `{service}` sans pids_limit"
+    pids = _resolve_effective_value(str(svc["pids_limit"]), f"{prefix}_PIDS_LIMIT")
+    assert pids == PIDS_DEFAULTS[service]
+    for var in (f"{prefix}_CPUS", f"{prefix}_PIDS_LIMIT"):
+        assert var in documented_env_vars(include_commented=True), var
+
+
 OTEL_ENTRYPOINTS = ("app.main", "app.jobs", "app.cdc")
 
 
