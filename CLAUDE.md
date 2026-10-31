@@ -701,6 +701,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **Voie V3 images et supply chain** — REV-384/385/394/395 fermées (relecture : déjà corrigées sauf la règle `cpus`/`pids_limit` de `test_deployability`), REV-392/393 partielles (digests des images tierces du compose et USER non-root postgis non faits, documentés dans le backlog). Aucune migration. Détail dans l'archive.
 
 - **V10 reliquats pré-release (REV-275/276/277/278/280/282/283)** — relecture : toutes les lettres codables déjà livrées, specs `bug()` basculées (reste `t03-006`/`t03-009`) ; seuls restent les rejeux stack réelle ; aucun code, aucune migration.
+- **Voie V5 « Core divers » (plan `2026-10-31-cloture-dettes-backlog`)** — REV-370/396/397/398/399 fermées, 401/402/403 partielles : limiteur horaire de soumission publique partagé via `rate_limit_counters` (groupes `:long`), cache public court OWS anonyme + `hits` borné, géocodage par lot (cadence partagée, `data.manage`, écriture incrémentale), erreurs de jobs sans détail brut, clé d'upload d'ingestion non rejouable, `/public/items` refuse `deprecated`. Aucune migration. Détail dans l'archive.
 
 ### Conventions tranchées (2026-09-01)
 
