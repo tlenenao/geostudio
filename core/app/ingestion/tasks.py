@@ -21,7 +21,7 @@ from app.ingestion.storage import (
     make_s3_client,
     max_upload_bytes,
 )
-from app.job_errors import INTERNAL_ERROR_MESSAGE
+from app.job_errors import INTERNAL_ERROR_MESSAGE, public_error
 from app.jobs import app
 from app.jobs.common import notify_best_effort, session_factory
 from app.quotas.service import QuotaExceededError
@@ -210,8 +210,11 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
         # le message utilisateur est volontairement expurgé (P28.03) : le
         # détail GDAL (cause chaînée) reste dans les logs serveur.
         logger.warning("ingestion job %s refusé : %s", job_id, exc, exc_info=True)
+        user_msg = public_error(
+            exc, user_errors=(IngestionParseError, ObjectTooLarge, QuotaExceededError)
+        )
         with request_scoped_session(factory) as session:
-            ingestion_repo.mark_error(session, job_id=job_id, error_message=str(exc))
+            ingestion_repo.mark_error(session, job_id=job_id, error_message=user_msg)
         _notify(
             factory,
             tenant_id=tenant_id,
@@ -219,7 +222,7 @@ def run_ingestion_task(job_id: str, tenant_id: str) -> None:
             status="failure",
             item_id=None,
             collection_title=collection_title,
-            error=str(exc),
+            error=user_msg,
         )
     except Exception:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("ingestion job %s : erreur inattendue", job_id)

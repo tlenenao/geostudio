@@ -18,6 +18,7 @@ from app.compliance.purge import purge_tenant, retry_pending_s3_purges
 from app.db import request_scoped_session
 from app.history.service import purge_expired as purge_expired_history
 from app.ingestion.storage import make_s3_client
+from app.job_errors import public_error
 from app.jobs import app
 from app.jobs.common import session_factory as _session_factory
 from app.notifications.repository import purge_expired_notifications
@@ -61,7 +62,9 @@ def purge_tenant_task(*, purge_id: str, tenant_id: str, requested_by_user_id: st
         # une nouvelle demande redevient possible) au lieu de laisser un 202 éternel. La
         # transaction de purge est annulée : la base est intacte, S3 n'a pas été touché.
         logging.getLogger(__name__).exception("purge du tenant %s échouée", tenant_id)
-        _set_receipt_status(factory, purge_id, "failed", error=f"{type(exc).__name__}: {exc}")
+        _set_receipt_status(
+            factory, purge_id, "failed", error=public_error(exc)
+        )  # REV-399 : détail au journal
 
 
 @app.periodic(cron="23 3 * * *")

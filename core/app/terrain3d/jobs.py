@@ -19,7 +19,7 @@ from app.configs.schemas import BuilderConfig, Terrain3DPayload
 from app.db import request_scoped_session
 from app.ingestion.storage import make_s3_client
 from app.items import repository as items_repo
-from app.job_errors import INTERNAL_ERROR_MESSAGE
+from app.job_errors import INTERNAL_ERROR_MESSAGE, public_error
 from app.jobs import app
 from app.jobs.common import notify_best_effort
 from app.jobs.engine import session_factory as common_session_factory
@@ -155,9 +155,10 @@ def convert_terrain3d_task(job_id: str, tenant_id: str) -> None:
             session_factory=session_factory,
         )
     except Terrain3DConversionError as exc:
+        user_msg = public_error(exc, user_errors=(Terrain3DConversionError,))  # REV-399
         with request_scoped_session(session_factory) as session:
-            terrain3d_repo.mark_error(session, job_id=job_id, error_message=str(exc))
-        _notify_outcome("failure", None, str(exc))
+            terrain3d_repo.mark_error(session, job_id=job_id, error_message=user_msg)
+        _notify_outcome("failure", None, user_msg)
         if s3 is not None:
             _purge_raw_upload(
                 s3,

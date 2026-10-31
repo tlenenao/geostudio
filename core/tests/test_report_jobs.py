@@ -603,7 +603,7 @@ def test_notify_marks_notified_even_when_channel_fails(monkeypatch):
         s.commit()
 
     def _fail(*a, **kw):
-        raise NotifyError("webhook unreachable")
+        raise NotifyError("webhook delivery failed: ConnectError http://10.0.0.5:9000/hook")
 
     monkeypatch.setattr(report_jobs, "send_webhook", _fail)
     report_jobs._notify_pending_reports(Session)
@@ -611,6 +611,13 @@ def test_notify_marks_notified_even_when_channel_fails(monkeypatch):
     with Session() as s:
         fetched = reports_repo.get_run(s, tenant_id=tenant.id, run_id=run.id)
         assert fetched.notified_at is not None  # never retried, even on failure
+        # REV-399 : la cause (hôte interne) ne va pas dans l'audit, seulement le libellé.
+        from sqlalchemy import select
+
+        from app.audit.models import AuditLog
+
+        rows = s.scalars(select(AuditLog).where(AuditLog.action == "report.notify")).all()
+        assert [r.payload["error"] for r in rows] == ["webhook delivery failed"]
 
 
 def test_notify_marks_notified_when_channel_raises_a_non_notify_error(monkeypatch):

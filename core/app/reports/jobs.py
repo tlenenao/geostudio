@@ -430,7 +430,8 @@ def _notify_pending_reports(session_factory) -> None:
                             )
                         success = True
                     except NotifyError as exc:
-                        error_detail = str(exc)
+                        # REV-399 : la cause (URL, hôte SMTP) reste au journal ci-dessous.
+                        error_detail = str(exc).split(":", 1)[0][:200]
                         logger.warning("report notification failed for run %s: %s", run.id, exc)
                     write_audit(
                         session,

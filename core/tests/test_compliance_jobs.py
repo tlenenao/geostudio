@@ -6,6 +6,8 @@ direct de purge_tenant (Tâche 9) — même patron que la Tâche 9 Step 4 du
 plan ("réutiliser le test caractéristique en le faisant passer par le
 job")."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from app.compliance.jobs import purge_tenant_task
@@ -68,3 +70,32 @@ def test_purge_tenant_task_commits_and_creates_the_receipt(env, monkeypatch):
         from app.tenants.models import Tenant
 
         assert s.get(Tenant, tenant_id) is None
+
+
+def test_failed_purge_receipt_never_exposes_the_raw_exception(env, monkeypatch):
+    # REV-399 : le reçu est lisible par l'API ; le détail (DSN, SQL) reste au journal.
+    Session, tenant_id, user_id = env
+    monkeypatch.setattr("app.compliance.jobs.s3_client_from_env", lambda: _FakeS3Client())
+
+    def boom(*a, **k):
+        raise RuntimeError("password authentication failed for postgres://u:secret@db/x")
+
+    monkeypatch.setattr("app.compliance.jobs.purge_tenant", boom)
+    with Session() as s:
+        s.add(
+            PurgeReceipt(
+                id="p-fail",
+                tenant_slug="default",
+                requested_by_user_id=user_id,
+                requested_at=datetime.now(UTC),
+                counts={},
+                status="pending",
+                purged_tenant_id=tenant_id,
+            )
+        )
+        s.commit()
+    purge_tenant_task(purge_id="p-fail", tenant_id=tenant_id, requested_by_user_id=user_id)
+    with Session() as s:
+        receipt = s.get(PurgeReceipt, "p-fail")
+        assert receipt.status == "failed"
+        assert "secret" not in receipt.error and "RuntimeError" not in receipt.error

@@ -14,7 +14,7 @@ from app.configs.schemas import BuilderConfig, Tileset3DPayload
 from app.db import request_scoped_session
 from app.ingestion.storage import make_s3_client
 from app.items import repository as items_repo
-from app.job_errors import INTERNAL_ERROR_MESSAGE
+from app.job_errors import INTERNAL_ERROR_MESSAGE, public_error
 from app.jobs import app
 from app.jobs.common import notify_best_effort
 from app.jobs.engine import session_factory as common_session_factory
@@ -135,6 +135,7 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
         # elle réussit (précédent SP-14o, purge du mode "replace"), jamais
         # quand elle échoue (pas de faux enregistrement d'un événement qui
         # n'a pas eu lieu).
+        user_msg = public_error(exc, user_errors=(Tileset3DValidationError,))  # REV-399
         purged = False
         try:
             s3_client_from_env().delete_object(Bucket=_tileset3d_bucket(), Key=source_key)
@@ -153,10 +154,10 @@ def finalize_tileset3d_task(job_id: str, tenant_id: str) -> None:
                     action="tileset3d.purge",
                     object_type="tileset3d_job",
                     object_id=job_id,
-                    payload={"sourceKey": source_key, "reason": str(exc)},
+                    payload={"sourceKey": source_key, "reason": user_msg},
                 )
-            tileset3d_repo.mark_error(session, job_id=job_id, error_message=str(exc))
-        _notify_outcome("failure", None, str(exc))
+            tileset3d_repo.mark_error(session, job_id=job_id, error_message=user_msg)
+        _notify_outcome("failure", None, user_msg)
     except Exception:  # toute erreur inattendue finit "error", jamais zombie
         logger.exception("tileset3d job %s : erreur inattendue", job_id)
         with request_scoped_session(session_factory) as session:
