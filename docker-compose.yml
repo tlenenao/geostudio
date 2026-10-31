@@ -1171,7 +1171,7 @@ services:
     # problème. v3.7.13 vérifiée empiriquement (déploiement Proxmox réel,
     # 2026-09-19) : provider Docker fonctionnel, aucune régression sur
     # providers.file/ACME/entrypoints (mêmes flags, syntaxe inchangée).
-    image: traefik:v3.7.13
+    image: traefik:v3.7.16
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
