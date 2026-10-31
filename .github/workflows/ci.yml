@@ -37,7 +37,7 @@ jobs:
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync
       - run: uv run alembic upgrade head
       - run: uv run alembic downgrade base
@@ -85,7 +85,7 @@ jobs:
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync
       - run: helm version --short
       - run: uv run playwright install --with-deps chromium
@@ -93,7 +93,7 @@ jobs:
       - run: >-
           uv run pytest -rs --cov=app --cov-report=
           --deselect tests/test_s3_public_storage.py::test_real_minio_cors_bucket_and_presign_roundtrip
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: core-cov-shard-${{ matrix.shard }}
           path: core/cov-shard-${{ matrix.shard }}.dat
@@ -129,7 +129,7 @@ jobs:
             curl -fs http://localhost:9000/minio/health/live && break
             sleep 2
           done
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync
       - run: uv run pytest --no-cov tests/test_s3_public_storage.py
 
@@ -155,7 +155,7 @@ jobs:
           [ "${{ needs.core-tests.result }}" = "success" ]
           [ "${{ needs.core-s3-real.result }}" = "success" ]
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -163,7 +163,7 @@ jobs:
       # P27.09 : retention.py (rotation des sauvegardes) vit hors de
       # `testpaths = ["tests"]` — sans cette ligne, aucun job ne le garde.
       - run: uv run pytest --no-cov ../deploy/backup/test_retention.py
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: core-cov-shard-*
           path: core
@@ -171,7 +171,7 @@ jobs:
       - run: uv run coverage combine cov-shard-*.dat
       - run: uv run coverage xml -o coverage.xml
       - run: uv run python scripts/check_coverage.py coverage.xml .coverage-threshold
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: core-coverage
           path: core/coverage.xml
@@ -235,7 +235,7 @@ jobs:
             docker exec ci-postgres pg_isready -U gis && break
             sleep 2
           done
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync
       - run: uv run alembic upgrade head
       - name: Créer une table physique et une collection STAC de démonstration
@@ -287,7 +287,7 @@ jobs:
         working-directory: core
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync
       # PYSEC-2026-4114 (oauthlib, timing PKCE) : ne touche que la grant
       # serveur `AuthorizationCode`, jamais utilisée ici (oauthlib n'entre que
@@ -317,8 +317,8 @@ jobs:
     needs: core
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - run: uv sync
@@ -342,7 +342,7 @@ jobs:
         working-directory: shell
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - run: npm ci
@@ -350,7 +350,7 @@ jobs:
       - run: npm run format:check
       - run: npm run test -- --coverage
       - run: node scripts/check-coverage.mjs coverage/coverage-summary.json .coverage-threshold
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shell-coverage
           path: shell/coverage/coverage-summary.json
@@ -395,7 +395,7 @@ jobs:
             curl -sf http://localhost:8300/ > /dev/null && break
             sleep 5
           done
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - run: npm ci
@@ -462,7 +462,7 @@ jobs:
         working-directory: shell
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - run: npm ci
@@ -477,10 +477,10 @@ jobs:
     needs: [core, shell]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: {name: core-coverage, path: core}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: {name: shell-coverage, path: shell/coverage}
       - run: uv sync
         working-directory: core
@@ -522,7 +522,7 @@ jobs:
         working-directory: core
         env:
           PYTHONPATH: .
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bilan-fonctionnalites
           path: |
@@ -552,7 +552,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - run: npm ci
