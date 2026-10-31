@@ -20,7 +20,11 @@ export function AccountMenu() {
     <Popover
       aria-label={t("account.menu")}
       trigger={
-        <button aria-label={t("account.menu")} className="rounded-full">
+        // WCAG 2.5.3 : axe compare par mots — les initiales visibles doivent être un mot du nom accessible
+        <button
+          aria-label={`${initials(label)} ${t("account.menu")}`.trim()}
+          className="rounded-full"
+        >
           <Avatar alt={label} fallback={initials(label)} />
         </button>
       }

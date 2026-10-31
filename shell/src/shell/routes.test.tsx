@@ -286,7 +286,7 @@ test("without exportRender, the same map route still renders AppLayout's header/
   // Le sign-out n'est plus un bouton direct de l'en-tête (ancien chrome) :
   // il vit désormais dans le Popover d'AccountMenu (Task 9), qu'il faut
   // ouvrir d'abord — même structure que shell/chrome/AccountMenu.test.tsx.
-  await userEvent.click(screen.getByRole("button", { name: "Compte" }));
+  await userEvent.click(screen.getByRole("button", { name: /Compte/ }));
   expect(await screen.findByRole("button", { name: "Déconnexion" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Catalogue" })).toBeInTheDocument();
 }, 45000);

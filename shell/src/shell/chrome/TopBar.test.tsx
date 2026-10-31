@@ -50,7 +50,7 @@ test("affiche la marque, Nouveau, Importer, et le compte", async () => {
   expect(await screen.findByRole("button", { name: "Nouveau" })).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "Importer un fichier" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Compte" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Compte/ })).toBeInTheDocument();
 });
 
 test("AUD-118 : le lien Aide mène aux guides, dans un nouvel onglet sans opener", () => {

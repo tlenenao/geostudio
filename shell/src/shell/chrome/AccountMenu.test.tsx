@@ -60,7 +60,7 @@ test(
   async () => {
     server.use(http.get("https://core.test/v1/me", () => meResponse()));
     renderMenu();
-    await userEvent.click(screen.getByRole("button", { name: "Compte" }));
+    await userEvent.click(screen.getByRole("button", { name: /Compte/ }));
     expect(await screen.findByText("alice")).toBeInTheDocument();
     expect(screen.getByText("Lecteur")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Déconnexion" }));
@@ -78,7 +78,7 @@ test(
       ),
     );
     renderMenu();
-    await userEvent.click(screen.getByRole("button", { name: "Compte" }));
+    await userEvent.click(screen.getByRole("button", { name: /Compte/ }));
     expect(await screen.findByText("Créateur")).toBeInTheDocument();
   },
   OPEN_TIMEOUT,
@@ -93,7 +93,7 @@ test(
       ),
     );
     renderMenu();
-    await userEvent.click(screen.getByRole("button", { name: "Compte" }));
+    await userEvent.click(screen.getByRole("button", { name: /Compte/ }));
     expect(await screen.findByText("Administrateur")).toBeInTheDocument();
   },
   OPEN_TIMEOUT,
@@ -108,7 +108,7 @@ test(
       ),
     );
     renderMenu();
-    await userEvent.click(screen.getByRole("button", { name: "Compte" }));
+    await userEvent.click(screen.getByRole("button", { name: /Compte/ }));
     expect(await screen.findByText("Analyste")).toBeInTheDocument();
   },
   OPEN_TIMEOUT,
@@ -123,7 +123,7 @@ test(
       ),
     );
     renderMenu();
-    await userEvent.click(screen.getByRole("button", { name: "Compte" }));
+    await userEvent.click(screen.getByRole("button", { name: /Compte/ }));
     expect(await screen.findByText("Cartographe")).toBeInTheDocument();
   },
   OPEN_TIMEOUT,
