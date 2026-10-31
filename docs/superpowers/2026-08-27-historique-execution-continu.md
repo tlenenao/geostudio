@@ -8183,3 +8183,6 @@ concurrente, backfills 0005/0007, FK `NOT VALID`, `migration_guard.py`, `init.sq
 vérifiés, backlog réaligné. REV-376 : `list_changes_since` rejoue 30 s avant `since` (le client
 dédoublonne par `id`) ; test PostGIS réel. REV-383 : `If-Match` reste optionnel, 428 exigerait de
 migrer d'abord shell/MCP/clients. Aucune migration créée.
+## Voie V6 CI (REV-400/REV-321), 2026-10-31
+
+Constat (piège n°12) : `concurrency` PR et `timeout-minutes` déjà livrés ; `gh run list` : 51 échecs / 100 runs, dont 36 `pull_request` en échec. Cause du doublon : `push: [main, dev]` + `pull_request` sur la PR dev -> main. Correctif : `push: [main]` + `workflow_dispatch` (compromis : un push sur `dev` sans PR ouverte n'a plus de CI automatique). Échecs lus : `a11y-audit` (`Compte`, axe label-content-name-mismatch, SHA plus récent que la base de la voie, hors périmètre `shell/src`), `pip-audit` (core), `a11y-transverse` menu Actions (clic extérieur Radix perdu avant armement de l'écouteur, 3 retries rouges en CI, 15/15 verts en local) : clic rejoué par `expect().toPass`. Pas de falsification possible (non reproduit hors CI). Restent des `waitForTimeout` dans `collect-offline`, `touch-map`, `map-editor-leak`, `app-builder-delete-widget` (preuves d'absence) et dans les journeys (hors CI).

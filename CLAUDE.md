@@ -695,6 +695,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **Reliquats AUD, vague 3** — AUD-014 (lecture en flux OGR/GeoParquet/XML par fenêtres de 10 000, import toujours atomique), 099 partiel (backfill CDC en flux, créneaux d'agrégat par tenant → 429 `too_many_concurrent_aggregates`), 115 (`users.timezone` consommé, traductions XLSForm), 126/127 partiels (fond vierge thémé, 64 `<select>` → `NativeSelect`, cliquet `rawControlGuard`), 059 partiel (comparaison de périodes garde les filtres d'origine) ; ouverts : 029 (sous-processus par nœud, SP à part), 057, cross-filter multi-entrées, cache de tuiles + index déclaratifs (spec 0181), RTL. Aucune migration. Détail dans l'archive.
 - **V1 Relations (REV-371 à 375)** — vérification code : les 5 correctifs (AUD-163 à 167 : intégrité à la soumission/import/`writer.collection`, `parent_key`, suppression de collection, `sensitiveFields`/`FilterError`, total sous RLS) étaient déjà livrés sans mise à jour du backlog ; falsifiés et soldés. Aucune migration. Détail dans l'archive.
 - **Voie V2 base et migrations (REV-376…383)** — curseur `/changes` avec recouvrement de 30 s (dédoublonner par `id`) ; 377-382 déjà livrés (vérifiés), REV-383 `If-Match` obligatoire laissé ouvert par décision. Aucune migration. Détail dans l'archive.
+- **Voie V6 CI (REV-400/321)** — `push` CI limité à `main` (fin du doublon avec la PR dev -> main), clic extérieur du menu Actions rejoué par état ; REV-321 reste partielle (rejeu `--workers=2` non mesuré).
 
 ### Conventions tranchées (2026-09-01)
 
