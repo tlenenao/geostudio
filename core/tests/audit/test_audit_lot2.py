@@ -114,7 +114,8 @@ def test_purge_task_failure_is_recorded_not_just_raised(tmp_path, monkeypatch):
     with Session() as s:
         receipt = s.get(PurgeReceipt, "p1")
         assert receipt.status == "failed"
-        assert "s3 down" in receipt.error
+        assert "s3 down" not in receipt.error
+        assert receipt.error.startswith("erreur interne")
 
 
 import contextlib  # noqa: E402
