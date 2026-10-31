@@ -4,7 +4,7 @@
 # par export (SP-18a, plan §Architecture). Contexte = racine du dépôt (pas
 # ./shell) : c'est le seul service de la stack dont c'est le cas, pour
 # pouvoir COPY shell/ sans changer le contexte des autres services Node.
-FROM node:22-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
+FROM node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370
 WORKDIR /build
 # uid/gid FIXE à 1001 (revue finale SP-26 round 2, N2) — même convention que
 # core/Dockerfile (`app`), deploy/qgis-worker/Dockerfile (`qgis`, C1) et
