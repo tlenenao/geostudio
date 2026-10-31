@@ -18,7 +18,7 @@ RUN npm run build:export-runtime
 # (vite.export.config.ts's rollupOptions.input), jamais index.html.
 RUN mv dist-export/index.export.html dist-export/index.html
 
-FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913
 WORKDIR /app
 RUN groupadd --system app && useradd --system --gid app --home-dir /opt/geostudio-home --create-home app
 ENV HOME=/opt/geostudio-home
