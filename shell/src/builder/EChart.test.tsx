@@ -51,6 +51,8 @@ vi.mock("echarts/renderers", () => ({
   CanvasRenderer: {},
 }));
 
+const useCallsAtImport = [...useMock.mock.calls];
+
 // EChart.tsx calls `new ResizeObserver(...)` unconditionally (no guard), unlike
 // AppRenderer.tsx which relies on jsdom's lack of ResizeObserver to keep its
 // breakpoint auto-detection at "lg" during tests. Stub it locally to this file
@@ -87,8 +89,10 @@ test("registers SunburstChart with echarts.use", () => {
   // equality) would pass even if SunburstChart were never registered, as long
   // as *some* other `{}` chart mock was in the array. Use `toContain`, which
   // checks reference identity, to genuinely discriminate.
-  expect(useMock).toHaveBeenCalledTimes(1);
-  expect(useMock.mock.calls[0][0]).toContain(SunburstChart);
+  // `echarts.use` runs once at module load ; vitest 5 vide les mocks avant
+  // chaque test, d'où l'instantané pris à l'import.
+  expect(useCallsAtImport).toHaveLength(1);
+  expect(useCallsAtImport[0][0]).toContain(SunburstChart);
 });
 
 test("AUD-114 : rôle img + libellé, tableau alternatif et équivalent clavier du cross-filter", async () => {
