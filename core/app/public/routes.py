@@ -114,7 +114,8 @@ def get_public_item(
     item_id: str, session: Session = Depends(get_session, scope="function")
 ) -> ItemRead:
     result = items_repo.get_published_item(session, item_id=item_id, tenant_id=DEFAULT_TENANT_SLUG)
-    if result is None:
+    # REV-370 : comme la liste publique et Records, un item déprécié n'est plus servi.
+    if result is None or result.contentStatus == "deprecated":
         raise HTTPException(status_code=404, detail="item not found")
     return result
 
@@ -124,7 +125,7 @@ def get_public_site(
     slug: str, session: Session = Depends(get_session, scope="function")
 ) -> ItemRead:
     result = items_repo.get_published_site_by_slug(session, slug=slug)
-    if result is None:
+    if result is None or result.contentStatus == "deprecated":
         raise HTTPException(status_code=404, detail="site not found")
     return result
 

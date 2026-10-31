@@ -72,6 +72,9 @@ def test_deprecated_excluded_from_public_catalog_by_default(env):  # noqa: F811
     client = env["as_user"](env["stranger"])
     public = {i["pk"] for i in client.get("/v1/public/items").json()["items"]}
     assert "dep" not in public and "pub" in public
+    # REV-370 : le détail anonyme suit la liste (404), le publié non déprécié reste servi.
+    assert client.get("/v1/public/items/dep").status_code == 404
+    assert client.get("/v1/public/items/pub").status_code == 200
     scoped = {i["pk"] for i in client.get("/v1/items?scope=public&pageSize=50").json()["items"]}
     assert "dep" not in scoped
     explicit = client.get("/v1/items?scope=public&status=deprecated").json()["items"]
