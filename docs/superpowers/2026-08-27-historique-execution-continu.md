@@ -8186,3 +8186,9 @@ migrer d'abord shell/MCP/clients. Aucune migration créée.
 ## Voie V6 CI (REV-400/REV-321), 2026-10-31
 
 Constat (piège n°12) : `concurrency` PR et `timeout-minutes` déjà livrés ; `gh run list` : 51 échecs / 100 runs, dont 36 `pull_request` en échec. Cause du doublon : `push: [main, dev]` + `pull_request` sur la PR dev -> main. Correctif : `push: [main]` + `workflow_dispatch` (compromis : un push sur `dev` sans PR ouverte n'a plus de CI automatique). Échecs lus : `a11y-audit` (`Compte`, axe label-content-name-mismatch, SHA plus récent que la base de la voie, hors périmètre `shell/src`), `pip-audit` (core), `a11y-transverse` menu Actions (clic extérieur Radix perdu avant armement de l'écouteur, 3 retries rouges en CI, 15/15 verts en local) : clic rejoué par `expect().toPass`. Pas de falsification possible (non reproduit hors CI). Restent des `waitForTimeout` dans `collect-offline`, `touch-map`, `map-editor-leak`, `app-builder-delete-widget` (preuves d'absence) et dans les journeys (hors CI).
+## Voie V4 Desktop (REV-386 à 390), 2026-10-31
+
+Relecture du code : tout était déjà livré par `5afeefb4` (AUD-158 à 161 : jeton obligatoire, `Host`/`Origin`
+contrôlés, allowlist d'op au PUT/run/preview, `/vsi*` et `://` refusés, aperçu sans répertoire de writer,
+`read_*`/`glob` interdits, CSP Tauri non compilée ici faute de cargo) et le job WebDriver est vert sur
+dev/main. Aucun changement de code ; seuls les états du backlog sont soldés.

@@ -696,6 +696,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **V1 Relations (REV-371 à 375)** — vérification code : les 5 correctifs (AUD-163 à 167 : intégrité à la soumission/import/`writer.collection`, `parent_key`, suppression de collection, `sensitiveFields`/`FilterError`, total sous RLS) étaient déjà livrés sans mise à jour du backlog ; falsifiés et soldés. Aucune migration. Détail dans l'archive.
 - **Voie V2 base et migrations (REV-376…383)** — curseur `/changes` avec recouvrement de 30 s (dédoublonner par `id`) ; 377-382 déjà livrés (vérifiés), REV-383 `If-Match` obligatoire laissé ouvert par décision. Aucune migration. Détail dans l'archive.
 - **Voie V6 CI (REV-400/321)** — `push` CI limité à `main` (fin du doublon avec la PR dev -> main), clic extérieur du menu Actions rejoué par état ; REV-321 reste partielle (rejeu `--workers=2` non mesuré).
+- **Voie V4 Desktop (REV-386 à 390)** — déjà livrées par `5afeefb4` (sidecar durci, `reader.file`, CSP Tauri) et job WebDriver vert ; backlog soldé, aucun code.
 
 ### Conventions tranchées (2026-09-01)
 
