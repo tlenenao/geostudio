@@ -8195,3 +8195,6 @@ dev/main. Aucun changement de code ; seuls les états du backlog sont soldés.
 ## Voie V3 « Images et supply chain » (plan 2026-10-31-cloture-dettes-backlog), 2026-10-31
 
 Relecture avant tout : REV-384 (liste blanche de scripts dans `core/Dockerfile` et `export-worker`, test existant), REV-385 (cpus/pids_limit déjà dans le compose, seule la règle de test manquait, ajoutée), REV-394 (versions figées + HEALTHCHECK) et REV-395 (`MINIO_COMMIT` vérifié) étaient déjà faites. REV-393 : minio et titiler non-root déjà livrés ; postgis laissé root (entrypoint officiel qui drop vers `postgres` après chown du volume ; un `USER` statique exige un rejeu sur volume existant, stack non lancée ici). REV-392 : Dockerfile tous épinglés par digest ; images tierces du compose par tag exact, digest = décision liste B (non résolvable sans registre). Aucune migration.
+## V10 reliquats pré-release, 2026-10-31
+
+Relecture seule de REV-275/276/277/278/280/282/283 : chaque lettre codable est déjà dans le code (preuves dans les lignes `Relecture V10` du backlog) ; les specs `j06b-001/014/015/016`, `j06-012`, `j07-016`, `j02-005`, `j09b-009/011`, `j03-002`, `j08-009/012`, `j05-009` sont déjà des `test()`. Restent `bug()` : `t03-006` (build requis) et `t03-009` (décision produit). Reliquat unique : rejeux sur stack réelle. Aucun code, aucune migration.

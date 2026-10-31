@@ -699,6 +699,8 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 - **Voie V4 Desktop (REV-386 à 390)** — déjà livrées par `5afeefb4` (sidecar durci, `reader.file`, CSP Tauri) et job WebDriver vert ; backlog soldé, aucun code.
 - **Voie V3 images et supply chain** — REV-384/385/394/395 fermées (relecture : déjà corrigées sauf la règle `cpus`/`pids_limit` de `test_deployability`), REV-392/393 partielles (digests des images tierces du compose et USER non-root postgis non faits, documentés dans le backlog). Aucune migration. Détail dans l'archive.
 
+- **V10 reliquats pré-release (REV-275/276/277/278/280/282/283)** — relecture : toutes les lettres codables déjà livrées, specs `bug()` basculées (reste `t03-006`/`t03-009`) ; seuls restent les rejeux stack réelle ; aucun code, aucune migration.
+
 ### Conventions tranchées (2026-09-01)
 
 - **Hauteur des contrôles de formulaire** : `h-9` par défaut (aligné
