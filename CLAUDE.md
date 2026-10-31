@@ -702,6 +702,7 @@ débloqué par SP-44 (cf. `### Livré` ci-dessus, `REV-095` clos).
 
 - **V10 reliquats pré-release (REV-275/276/277/278/280/282/283)** — relecture : toutes les lettres codables déjà livrées, specs `bug()` basculées (reste `t03-006`/`t03-009`) ; seuls restent les rejeux stack réelle ; aucun code, aucune migration.
 - **Voie V5 « Core divers » (plan `2026-10-31-cloture-dettes-backlog`)** — REV-370/396/397/398/399 fermées, 401/402/403 partielles : limiteur horaire de soumission publique partagé via `rate_limit_counters` (groupes `:long`), cache public court OWS anonyme + `hits` borné, géocodage par lot (cadence partagée, `data.manage`, écriture incrémentale), erreurs de jobs sans détail brut, clé d'upload d'ingestion non rejouable, `/public/items` refuse `deprecated`. Aucune migration. Détail dans l'archive.
+- **V8 majeures du shell** — deck.gl 9.4 (+ pairs luma.gl/loaders.gl directs), vitest 5, jsdom 30, msw 3, eslint 10 + react-hooks 7 (règles du compilateur React reportées), lucide-static 1.61 ; TypeScript 7 bloqué (typescript-eslint ne supporte pas TS 7.0), react-router 7 déjà en place. Détail dans l'archive.
 
 ### Conventions tranchées (2026-09-01)
 
